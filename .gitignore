@@ -1,0 +1,35 @@
+## ----- 1. Rác do build sinh ra (bin, obj) -----
+**/bin/
+**/obj/
+
+## ----- 2. File cấu hình riêng của trình soạn thảo -----
+.vs/
+.vscode/*
+!.vscode/extensions.json
+*.user
+*.suo
+
+## ----- 3. File chứa thông tin bí mật (mật khẩu, chuỗi kết nối, JWT secret) -----
+**/appsettings.*.json
+!**/appsettings.json
+!**/appsettings.json.example
+
+.env
+.env.*
+
+## ----- 4. Kết quả test & log -----
+[Tt]est[Rr]esult*/
+*.log
+
+## ----- 5. Rác do NuGet (thư viện cài thêm) sinh ra -----
+*.nupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+
+## ----- 6. Phòng khi ai đó dùng trình soạn thảo khác (Rider, hoặc máy Mac/Windows) -----
+.idea/
+.DS_Store
+Thumbs.db
+
+## ----- 7. Nếu sau này frontend cài thêm gói qua npm -----
+node_modules/
