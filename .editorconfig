@@ -1,0 +1,80 @@
+root = true
+
+# =====================================================================
+# .editorconfig dùng chung cho dự án EAIMS (backend C# + frontend HTML/CSS/JS)
+# "root = true" để VS Code không tìm thêm .editorconfig nào.
+# =====================================================================
+
+# ----- Áp dụng cho MỌI loại file -----
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# =====================================================================
+# C# (.cs) - Backend ASP.NET Core
+# =====================================================================
+[*.cs]
+indent_size = 4
+dotnet_sort_system_directives_first = true
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+csharp_prefer_braces = true:warning
+csharp_style_var_for_built_in_types = true:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+dotnet_style_qualification_for_field = false:silent
+dotnet_style_qualification_for_property = false:silent
+dotnet_style_qualification_for_method = false:silent
+dotnet_style_readonly_field = true:suggestion
+# Cảnh báo nếu quên "await" một Task -> đúng nguyên tắc async/await cho mọi thao tác I/O 
+dotnet_diagnostic.CS4014.severity = warning
+
+## --- Quy tắc đặt tên ---
+
+# PascalCase cho class, struct, enum, property, method
+dotnet_naming_rule.pascal_case_for_types_and_members.severity = warning
+dotnet_naming_rule.pascal_case_for_types_and_members.symbols = types_and_members
+dotnet_naming_rule.pascal_case_for_types_and_members.style = pascal_case_style
+dotnet_naming_symbols.types_and_members.applicable_kinds = class, struct, enum, property, method, event
+dotnet_naming_symbols.types_and_members.applicable_accessibilities = *
+dotnet_naming_style.pascal_case_style.capitalization = pascal_case
+
+# Interface bắt buộc có tiền tố I (IAssetRepository, IAssetService, ...)
+dotnet_naming_rule.interface_should_be_prefixed_with_i.severity = warning
+dotnet_naming_rule.interface_should_be_prefixed_with_i.symbols = interface_type
+dotnet_naming_rule.interface_should_be_prefixed_with_i.style = prefix_interface_with_i
+dotnet_naming_symbols.interface_type.applicable_kinds = interface
+dotnet_naming_symbols.interface_type.applicable_accessibilities = *
+dotnet_naming_style.prefix_interface_with_i.required_prefix = I
+dotnet_naming_style.prefix_interface_with_i.capitalization = pascal_case
+
+# camelCase cho biến cục bộ và tham số
+dotnet_naming_rule.camel_case_for_locals_and_parameters.severity = warning
+dotnet_naming_rule.camel_case_for_locals_and_parameters.symbols = locals_and_parameters
+dotnet_naming_rule.camel_case_for_locals_and_parameters.style = camel_case_style
+dotnet_naming_symbols.locals_and_parameters.applicable_kinds = local, parameter
+dotnet_naming_symbols.locals_and_parameters.applicable_accessibilities = *
+dotnet_naming_style.camel_case_style.capitalization = camel_case
+
+# =====================================================================
+# JSON (appsettings.json, postman_collection.json, ...)
+# =====================================================================
+[*.json]
+indent_size = 2
+
+# =====================================================================
+# Frontend: HTML / CSS / JS thuần + Bootstrap 5
+# =====================================================================
+[*.{html,css,js}]
+indent_size = 2
+
+# =====================================================================
+# Markdown / tài liệu (README, báo cáo tuần, ...)
+# =====================================================================
+[*.md]
+trim_trailing_whitespace = false
