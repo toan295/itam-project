@@ -1,0 +1,576 @@
+{
+  "info": {
+    "_postman_id": "4c2cfbd5-bd7c-4b90-a6e6-eaims-api-week2",
+    "name": "EAIMS API",
+    "description": "Khung Postman Collection cho EAIMS - Tuần 2. Các request hiện chỉ định nghĩa method và URL theo API spec.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}/auth/login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh-token",
+              "host": [
+                "{{baseUrl}}/auth/refresh-token"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}/auth/me"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Users & Departments",
+      "item": [
+        {
+          "name": "Get Users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": [
+                "{{baseUrl}}/users"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create User",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": [
+                "{{baseUrl}}/users"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Departments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/departments",
+              "host": [
+                "{{baseUrl}}/departments"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Department",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/departments",
+              "host": [
+                "{{baseUrl}}/departments"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update User",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/{id}",
+              "host": [
+                "{{baseUrl}}/users/{id}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Assets",
+      "item": [
+        {
+          "name": "Get Assets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/assets",
+              "host": [
+                "{{baseUrl}}/assets"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Asset By Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/assets/{id}",
+              "host": [
+                "{{baseUrl}}/assets/{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Asset",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/assets",
+              "host": [
+                "{{baseUrl}}/assets"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Asset",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/assets/{id}",
+              "host": [
+                "{{baseUrl}}/assets/{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Asset",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/assets/{id}",
+              "host": [
+                "{{baseUrl}}/assets/{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Search Assets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/assets/search",
+              "host": [
+                "{{baseUrl}}/assets/search"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Asset Categories",
+      "item": [
+        {
+          "name": "Get Asset Categories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/asset-categories",
+              "host": [
+                "{{baseUrl}}/asset-categories"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Asset Category",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/asset-categories",
+              "host": [
+                "{{baseUrl}}/asset-categories"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Asset Category",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/asset-categories/{id}",
+              "host": [
+                "{{baseUrl}}/asset-categories/{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Asset Category",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/asset-categories/{id}",
+              "host": [
+                "{{baseUrl}}/asset-categories/{id}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Software Licenses",
+      "item": [
+        {
+          "name": "Get Software Licenses",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/software-licenses",
+              "host": [
+                "{{baseUrl}}/software-licenses"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Software License",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/software-licenses",
+              "host": [
+                "{{baseUrl}}/software-licenses"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Software License",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/software-licenses/{id}",
+              "host": [
+                "{{baseUrl}}/software-licenses/{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Software License",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/software-licenses/{id}",
+              "host": [
+                "{{baseUrl}}/software-licenses/{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Expiring Licenses",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/software-licenses/expiring-soon",
+              "host": [
+                "{{baseUrl}}/software-licenses/expiring-soon"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Maintenance Tickets",
+      "item": [
+        {
+          "name": "Get Maintenance Tickets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/maintenance-tickets",
+              "host": [
+                "{{baseUrl}}/maintenance-tickets"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Maintenance Ticket",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/maintenance-tickets",
+              "host": [
+                "{{baseUrl}}/maintenance-tickets"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Ticket Status",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/maintenance-tickets/{id}/status",
+              "host": [
+                "{{baseUrl}}/maintenance-tickets/{id}/status"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Maintenance Stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/maintenance-tickets/stats",
+              "host": [
+                "{{baseUrl}}/maintenance-tickets/stats"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Asset Allocations",
+      "item": [
+        {
+          "name": "Create Allocation",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/allocations",
+              "host": [
+                "{{baseUrl}}/allocations"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Return Allocation",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/allocations/{id}/return",
+              "host": [
+                "{{baseUrl}}/allocations/{id}/return"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Overdue Allocations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/allocations/overdue",
+              "host": [
+                "{{baseUrl}}/allocations/overdue"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Forecast & Budget",
+      "item": [
+        {
+          "name": "Get Forecasts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/forecasts",
+              "host": [
+                "{{baseUrl}}/forecasts"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Generate Forecast",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/forecasts/generate",
+              "host": [
+                "{{baseUrl}}/forecasts/generate"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Dashboard & Reports",
+      "item": [
+        {
+          "name": "Dashboard Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/summary",
+              "host": [
+                "{{baseUrl}}/dashboard/summary"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Export Asset Report",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/reports/assets/export?format=excel",
+              "host": [
+                "{{baseUrl}}/reports/assets/export?format=excel"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Import/Export",
+      "item": [
+        {
+          "name": "Import Assets",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/assets/import",
+              "host": [
+                "{{baseUrl}}/assets/import"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Export Assets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/assets/export",
+              "host": [
+                "{{baseUrl}}/assets/export"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://localhost:7070/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
