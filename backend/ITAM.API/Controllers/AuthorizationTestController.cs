@@ -1,3 +1,4 @@
+using ITAM.API.Models.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -13,17 +14,15 @@ public class AuthorizationTestController : ControllerBase
     [HttpGet("admin-only")]
     public IActionResult AdminOnly()
     {
-        return Ok(new { message = "Admin IT authorization succeeded." });
+        return Ok(ApiResponse<object>.Ok(
+            new { message = "Admin IT authorization succeeded." }));
     }
 
     [Authorize(Policy = "SameDepartmentOnly")]
     [HttpGet("departments/{departmentId:int}")]
     public IActionResult SameDepartment(int departmentId)
     {
-        return Ok(new
-        {
-            message = "Department authorization succeeded.",
-            departmentId
-        });
+        return Ok(ApiResponse<object>.Ok(
+            new { message = "Department authorization succeeded.", departmentId }));
     }
 }
