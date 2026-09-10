@@ -3,10 +3,12 @@ using ITAM.API.Configurations;
 using ITAM.API.Data;
 using ITAM.API.Helpers;
 using ITAM.API.Middlewares.Authorization;
+using ITAM.API.Models.DTOs;
 using ITAM.API.Services.Implementations;
 using ITAM.API.Services.Interfaces;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -16,6 +18,22 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
+
+// Lỗi validate DTO tự động (do [ApiController]) cũng phải theo đúng chuẩn
+// response { success, data, message, errors } thay vì ProblemDetails mặc định.
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var errors = context.ModelState
+            .Where(entry => entry.Value is { Errors.Count: > 0 })
+            .SelectMany(entry => entry.Value!.Errors.Select(error => error.ErrorMessage))
+            .ToList();
+
+        return new BadRequestObjectResult(
+            ApiResponse<object>.Fail("Dữ liệu không hợp lệ.", errors));
+    };
+});
 
 // Swagger / OpenAPI documentation.
 builder.Services.AddSwaggerGen(options =>
