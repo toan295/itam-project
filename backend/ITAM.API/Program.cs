@@ -36,20 +36,9 @@ builder.Services.AddSwaggerGen(options =>
         Description = "Dán JWT token vào đây, không cần gõ chữ Bearer phía trước."
     });
 
-    options.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
-        {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference
-                {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
-            },
-            Array.Empty<string>()
-        }
-    });
+    // Chỉ gắn yêu cầu Bearer token cho action có [Authorize] — tránh Swagger
+    // hiển thị nhầm ổ khóa trên /auth/login và /auth/register (không cần token).
+    options.OperationFilter<AuthorizeCheckOperationFilter>();
 });
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
