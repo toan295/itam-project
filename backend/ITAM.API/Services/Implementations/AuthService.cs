@@ -11,6 +11,10 @@ public class AuthService : IAuthService
 {
     private const int BCryptWorkFactor = 11;
 
+    // Người tự đăng ký luôn nhận role thấp nhất; nâng role (Manager, Admin IT)
+    // phải do Admin thao tác sau, không cho client tự chọn qua /auth/register.
+    private const string DefaultRegisterRoleName = "Technician";
+
     private readonly AppDbContext _context;
     private readonly JwtHelper _jwtHelper;
     private readonly ILogger<AuthService> _logger;
@@ -30,16 +34,17 @@ public class AuthService : IAuthService
             throw new EmailAlreadyExistsException(dto.Email);
         }
 
-        var roleExists = await _context.Roles.AnyAsync(r => r.Id == dto.RoleId);
-        if (!roleExists)
-        {
-            throw new ArgumentException($"RoleId '{dto.RoleId}' không tồn tại.");
-        }
-
         var departmentExists = await _context.Departments.AnyAsync(d => d.Id == dto.DepartmentId);
         if (!departmentExists)
         {
             throw new ArgumentException($"DepartmentId '{dto.DepartmentId}' không tồn tại.");
+        }
+
+        var defaultRole = await _context.Roles.SingleOrDefaultAsync(r => r.Name == DefaultRegisterRoleName);
+        if (defaultRole is null)
+        {
+            throw new InvalidOperationException(
+                $"Role mặc định '{DefaultRegisterRoleName}' chưa tồn tại — cần seed Roles trước khi cho phép đăng ký.");
         }
 
         var user = new User
@@ -47,7 +52,7 @@ public class AuthService : IAuthService
             FullName = dto.FullName,
             Email = dto.Email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password, BCryptWorkFactor),
-            RoleId = dto.RoleId,
+            RoleId = defaultRole.Id,
             DepartmentId = dto.DepartmentId
         };
 

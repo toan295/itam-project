@@ -14,8 +14,5 @@ public class RegisterRequestDto
     public string Password { get; set; } = null!;
 
     [Required]
-    public int RoleId { get; set; }
-
-    [Required]
     public int DepartmentId { get; set; }
 }
