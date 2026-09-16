@@ -1,3 +1,8 @@
+using FluentValidation;
+using ITAM.API.Models.DTOs.SoftwareLicenses;
+using ITAM.API.Repositories.Implementations;
+using ITAM.API.Repositories.Interfaces;
+using ITAM.API.Validators;
 using System.Text;
 using ITAM.API.Configurations;
 using ITAM.API.Data;
@@ -66,6 +71,13 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
 builder.Services.AddSingleton<JwtHelper>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+
+// Software License module.
+builder.Services.AddScoped<ISoftwareLicenseRepository, SoftwareLicenseRepository>();
+builder.Services.AddScoped<ISoftwareLicenseService, SoftwareLicenseService>();
+builder.Services.AddScoped<IValidator<CreateSoftwareLicenseDto>, CreateSoftwareLicenseValidator>();
+builder.Services.AddScoped<IValidator<UpdateSoftwareLicenseDto>, UpdateSoftwareLicenseValidator>();
+builder.Services.AddScoped<IValidator<AssignSoftwareLicenseDto>, AssignSoftwareLicenseValidator>();
 
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()
     ?? throw new InvalidOperationException("Thiếu cấu hình JwtSettings trong appsettings.");
