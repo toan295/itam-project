@@ -1,0 +1,413 @@
+using ITAM.API.Models.DTOs.Assets;
+using ITAM.API.Models.Entities;
+using ITAM.API.Models.Enums;
+using ITAM.API.Repositories.Interfaces;
+using ITAM.API.Services.Implementations;
+using Microsoft.EntityFrameworkCore;
+using Moq;
+
+namespace ITAM.Tests.Services;
+
+public class AssetServiceTests
+{
+    private readonly Mock<IAssetRepository> _repoMock = new();
+    private readonly AssetService _sut;
+
+    public AssetServiceTests()
+    {
+        _sut = new AssetService(_repoMock.Object);
+
+        // Mặc định: CategoryId/DepartmentId hợp lệ, chưa có AssetCode nào trùng — từng test override khi cần.
+        _repoMock.Setup(r => r.CategoryExistsAsync(It.IsAny<int>())).ReturnsAsync(true);
+        _repoMock.Setup(r => r.DepartmentExistsAsync(It.IsAny<int>())).ReturnsAsync(true);
+        _repoMock.Setup(r => r.GetByAssetCodeAsync(It.IsAny<string>())).ReturnsAsync((Asset?)null);
+    }
+
+    private static CreateAssetRequestDto ValidCreateDto(string assetCode = "TS-001", int departmentId = 1) => new()
+    {
+        AssetCode = assetCode,
+        Name = "Laptop Dell",
+        CategoryId = 1,
+        DepartmentId = departmentId,
+    };
+
+    private static UpdateAssetRequestDto ValidUpdateDto(
+        string assetCode = "TS-001", int departmentId = 1, string status = "InUse") => new()
+    {
+        AssetCode = assetCode,
+        Name = "Laptop Dell",
+        CategoryId = 1,
+        DepartmentId = departmentId,
+        Status = status,
+    };
+
+    private void SetupAddAsyncReturnsCreatedAsset()
+    {
+        Asset? savedAsset = null;
+        _repoMock.Setup(r => r.AddAsync(It.IsAny<Asset>()))
+            .Callback<Asset>(a => { a.Id = 1; savedAsset = a; })
+            .Returns(Task.CompletedTask);
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1)).ReturnsAsync(() => savedAsset);
+    }
+
+    // ----- CreateAsync -----
+
+    [Fact]
+    public async Task CreateAsync_DuplicateAssetCode_ThrowsAndDoesNotAdd()
+    {
+        _repoMock.Setup(r => r.GetByAssetCodeAsync("TS-001"))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001" });
+
+        await Assert.ThrowsAsync<AssetCodeAlreadyExistsException>(
+            () => _sut.CreateAsync(ValidCreateDto(), "Admin IT", 1));
+
+        _repoMock.Verify(r => r.AddAsync(It.IsAny<Asset>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateAsync_NewAssetCode_DefaultsStatusToInUse()
+    {
+        SetupAddAsyncReturnsCreatedAsset();
+
+        var result = await _sut.CreateAsync(ValidCreateDto(), "Admin IT", 1);
+
+        Assert.Equal("InUse", result.Status);
+        _repoMock.Verify(r => r.SaveChangesAsync(), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateAsync_TrimsAssetCodeAndName()
+    {
+        SetupAddAsyncReturnsCreatedAsset();
+        var dto = ValidCreateDto();
+        dto.AssetCode = "  TS-777  ";
+        dto.Name = "  Laptop HP  ";
+
+        var result = await _sut.CreateAsync(dto, "Admin IT", 1);
+
+        Assert.Equal("TS-777", result.AssetCode);
+        Assert.Equal("Laptop HP", result.Name);
+    }
+
+    [Fact]
+    public async Task CreateAsync_CategoryDoesNotExist_ThrowsArgumentExceptionAndDoesNotAdd()
+    {
+        _repoMock.Setup(r => r.CategoryExistsAsync(It.IsAny<int>())).ReturnsAsync(false);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _sut.CreateAsync(ValidCreateDto(), "Admin IT", 1));
+
+        _repoMock.Verify(r => r.AddAsync(It.IsAny<Asset>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateAsync_DepartmentDoesNotExist_ThrowsArgumentException()
+    {
+        _repoMock.Setup(r => r.DepartmentExistsAsync(It.IsAny<int>())).ReturnsAsync(false);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _sut.CreateAsync(ValidCreateDto(), "Admin IT", 1));
+    }
+
+    [Fact]
+    public async Task CreateAsync_ManagerOutsideOwnDepartment_ThrowsDepartmentForbiddenAndDoesNotAdd()
+    {
+        var dto = ValidCreateDto(departmentId: 2);
+
+        await Assert.ThrowsAsync<DepartmentForbiddenException>(
+            () => _sut.CreateAsync(dto, currentUserRole: "Manager", currentUserDepartmentId: 1));
+
+        _repoMock.Verify(r => r.AddAsync(It.IsAny<Asset>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ManagerInsideOwnDepartment_Succeeds()
+    {
+        SetupAddAsyncReturnsCreatedAsset();
+        var dto = ValidCreateDto(departmentId: 1);
+
+        var result = await _sut.CreateAsync(dto, currentUserRole: "Manager", currentUserDepartmentId: 1);
+
+        Assert.Equal(1, result.DepartmentId);
+    }
+
+    [Fact]
+    public async Task CreateAsync_SaveChangesThrowsDbUpdateException_MapsToAssetCodeAlreadyExists()
+    {
+        // Race hiếm: 2 request cùng lúc vượt qua bước kiểm tra trùng mã ở tầng Service — unique index
+        // DB là chốt chặn cuối, phải ánh xạ về đúng 409 thân thiện thay vì để lỗi 500 lộ ra ngoài.
+        _repoMock.Setup(r => r.SaveChangesAsync()).ThrowsAsync(new DbUpdateException("duplicate key"));
+
+        await Assert.ThrowsAsync<AssetCodeAlreadyExistsException>(() => _sut.CreateAsync(ValidCreateDto(), "Admin IT", 1));
+    }
+
+    // ----- UpdateAsync -----
+
+    [Fact]
+    public async Task UpdateAsync_AssetNotFound_ThrowsAssetNotFoundException()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(It.IsAny<int>())).ReturnsAsync((Asset?)null);
+
+        await Assert.ThrowsAsync<AssetNotFoundException>(() => _sut.UpdateAsync(999, ValidUpdateDto(), "Admin IT", 1));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ManagerOutsideAssetCurrentDepartment_ThrowsDepartmentForbidden()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 2 });
+
+        await Assert.ThrowsAsync<DepartmentForbiddenException>(
+            () => _sut.UpdateAsync(1, ValidUpdateDto(departmentId: 2), currentUserRole: "Manager", currentUserDepartmentId: 1));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ManagerMovingAssetToAnotherDepartment_ThrowsDepartmentForbidden()
+    {
+        // Asset hiện đang ở phòng ban của Manager (1), nhưng dto muốn chuyển sang phòng khác (2) -> vẫn phải chặn.
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 1 });
+
+        await Assert.ThrowsAsync<DepartmentForbiddenException>(
+            () => _sut.UpdateAsync(1, ValidUpdateDto(departmentId: 2), currentUserRole: "Manager", currentUserDepartmentId: 1));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_InvalidStatus_ThrowsArgumentException()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 1 });
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _sut.UpdateAsync(1, ValidUpdateDto(status: "KhongTonTai"), "Admin IT", 1));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_NumericStatusString_ThrowsArgumentException()
+    {
+        // Enum.TryParse mặc định chấp nhận chuỗi số ("3" -> Disposed) — phải bị từ chối vì Status
+        // trong DTO chỉ được phép là tên trạng thái (xem UpdateAssetRequestDto.Status).
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 1 });
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _sut.UpdateAsync(1, ValidUpdateDto(status: "3"), "Admin IT", 1));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ManagerSetsStatusDisposed_ThrowsAssetDisposalNotAllowed()
+    {
+        // UC-07: chỉ Admin IT được chuyển tài sản sang Disposed — Manager không được lách qua Update.
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 1, Status = AssetStatus.InUse });
+
+        await Assert.ThrowsAsync<AssetDisposalNotAllowedException>(
+            () => _sut.UpdateAsync(1, ValidUpdateDto(status: "Disposed"), currentUserRole: "Manager", currentUserDepartmentId: 1));
+
+        _repoMock.Verify(r => r.SaveChangesAsync(), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_AdminSetsStatusDisposed_Succeeds()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 1, Status = AssetStatus.InUse });
+
+        var result = await _sut.UpdateAsync(1, ValidUpdateDto(status: "Disposed"), "Admin IT", 1);
+
+        Assert.Equal("Disposed", result.Status);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ManagerEditsAlreadyDisposedAsset_DoesNotThrow()
+    {
+        // Asset đã Disposed từ trước, Manager chỉ sửa các trường khác (status trong dto giữ nguyên
+        // "Disposed") -> không phải là một hành động chuyển trạng thái, không nên bị chặn.
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 1, Status = AssetStatus.Disposed });
+
+        var result = await _sut.UpdateAsync(1, ValidUpdateDto(status: "Disposed"), "Manager", 1);
+
+        Assert.Equal("Disposed", result.Status);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_AssetCodeUnchanged_DoesNotCheckDuplicate()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 1 });
+
+        await _sut.UpdateAsync(1, ValidUpdateDto(assetCode: "TS-001"), "Admin IT", 1);
+
+        _repoMock.Verify(r => r.GetByAssetCodeAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_AssetCodeChangedToDuplicate_ThrowsAssetCodeAlreadyExists()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 1 });
+        _repoMock.Setup(r => r.GetByAssetCodeAsync("TS-999"))
+            .ReturnsAsync(new Asset { Id = 2, AssetCode = "TS-999" });
+
+        await Assert.ThrowsAsync<AssetCodeAlreadyExistsException>(
+            () => _sut.UpdateAsync(1, ValidUpdateDto(assetCode: "TS-999"), "Admin IT", 1));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_AssetCodeChangedToUniqueValue_Succeeds()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 1 });
+        _repoMock.Setup(r => r.GetByAssetCodeAsync("TS-NEW")).ReturnsAsync((Asset?)null);
+
+        var result = await _sut.UpdateAsync(1, ValidUpdateDto(assetCode: "TS-NEW"), "Admin IT", 1);
+
+        Assert.Equal("TS-NEW", result.AssetCode);
+    }
+
+    // ----- DisposeAsync -----
+
+    [Fact]
+    public async Task DisposeAsync_NotFound_ThrowsAssetNotFoundException()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(It.IsAny<int>())).ReturnsAsync((Asset?)null);
+
+        await Assert.ThrowsAsync<AssetNotFoundException>(() => _sut.DisposeAsync(999));
+    }
+
+    [Fact]
+    public async Task DisposeAsync_Found_SetsStatusToDisposed()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", Status = AssetStatus.InUse });
+
+        var result = await _sut.DisposeAsync(1);
+
+        Assert.Equal("Disposed", result.Status);
+    }
+
+    // ----- GetByIdAsync / IsUnderWarranty -----
+
+    [Fact]
+    public async Task GetByIdAsync_WarrantyInFuture_IsUnderWarrantyTrue()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1)).ReturnsAsync(new Asset
+        {
+            Id = 1,
+            AssetCode = "TS-001",
+            WarrantyExpiry = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(10)),
+        });
+
+        var result = await _sut.GetByIdAsync(1);
+
+        Assert.True(result.IsUnderWarranty);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_WarrantyInPast_IsUnderWarrantyFalse()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1)).ReturnsAsync(new Asset
+        {
+            Id = 1,
+            AssetCode = "TS-001",
+            WarrantyExpiry = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-10)),
+        });
+
+        var result = await _sut.GetByIdAsync(1);
+
+        Assert.False(result.IsUnderWarranty);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_NoWarrantyExpiry_IsUnderWarrantyFalse()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", WarrantyExpiry = null });
+
+        var result = await _sut.GetByIdAsync(1);
+
+        Assert.False(result.IsUnderWarranty);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_NotFound_ThrowsAssetNotFoundException()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(It.IsAny<int>())).ReturnsAsync((Asset?)null);
+
+        await Assert.ThrowsAsync<AssetNotFoundException>(() => _sut.GetByIdAsync(999));
+    }
+
+    // ----- GetPagedAsync: UC-08 E2 giới hạn theo phòng ban -----
+
+    [Fact]
+    public async Task GetPagedAsync_InvalidStatus_ThrowsArgumentException()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _sut.GetPagedAsync(null, "KhongTonTai", 1, 20, "Admin IT", 1));
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_AdminIT_UsesRequestedDepartmentId()
+    {
+        _repoMock.Setup(r => r.GetPagedAsync(5, null, 1, 20)).ReturnsAsync((new List<Asset>(), 0));
+
+        await _sut.GetPagedAsync(5, null, 1, 20, "Admin IT", 1);
+
+        _repoMock.Verify(r => r.GetPagedAsync(5, null, 1, 20), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_Manager_IgnoresRequestedDepartmentId_UsesOwnDepartment()
+    {
+        _repoMock.Setup(r => r.GetPagedAsync(1, null, 1, 20)).ReturnsAsync((new List<Asset>(), 0));
+
+        // Manager gửi departmentId=5 (phòng khác) nhưng phải bị ghi đè bằng phòng ban của chính họ (1).
+        await _sut.GetPagedAsync(5, null, 1, 20, "Manager", 1);
+
+        _repoMock.Verify(r => r.GetPagedAsync(1, null, 1, 20), Times.Once);
+        _repoMock.Verify(r => r.GetPagedAsync(5, null, 1, 20), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_ManagerWithMissingDepartmentClaim_UsesSentinelToReturnNothing()
+    {
+        _repoMock.Setup(r => r.GetPagedAsync(-1, null, 1, 20)).ReturnsAsync((new List<Asset>(), 0));
+
+        // Claim DepartmentId thiếu/hỏng -> phải chặn hẳn (sentinel -1) thay vì mặc định mở toàn bộ dữ liệu.
+        await _sut.GetPagedAsync(null, null, 1, 20, "Manager", null);
+
+        _repoMock.Verify(r => r.GetPagedAsync(-1, null, 1, 20), Times.Once);
+    }
+
+    // ----- SearchAsync -----
+
+    [Fact]
+    public async Task SearchAsync_InvalidWarrantyStatus_ThrowsArgumentException()
+    {
+        var filter = new AssetSearchFilterDto { WarrantyStatus = "KhongHopLe" };
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _sut.SearchAsync(filter, "Admin IT", 1));
+    }
+
+    [Fact]
+    public async Task SearchAsync_WarrantyStatusValid_MapsToIsUnderWarrantyTrue()
+    {
+        _repoMock.Setup(r => r.SearchAsync(null, null, null, null, null, true, 1, 20))
+            .ReturnsAsync((new List<Asset>(), 0));
+
+        await _sut.SearchAsync(new AssetSearchFilterDto { WarrantyStatus = "Valid" }, "Admin IT", 1);
+
+        _repoMock.Verify(r => r.SearchAsync(null, null, null, null, null, true, 1, 20), Times.Once);
+    }
+
+    [Fact]
+    public async Task SearchAsync_Technician_IsScopedToOwnDepartment()
+    {
+        _repoMock.Setup(r => r.SearchAsync(null, 3, null, null, null, null, 1, 20))
+            .ReturnsAsync((new List<Asset>(), 0));
+
+        // Technician gửi departmentId=7 nhưng phải bị ghi đè bằng phòng ban của chính họ (3).
+        await _sut.SearchAsync(new AssetSearchFilterDto { DepartmentId = 7 }, "Technician", 3);
+
+        _repoMock.Verify(r => r.SearchAsync(null, 3, null, null, null, null, 1, 20), Times.Once);
+    }
+}

@@ -1,11 +1,18 @@
 using System.Text;
+using FluentValidation;
 using ITAM.API.Configurations;
 using ITAM.API.Data;
 using ITAM.API.Helpers;
 using ITAM.API.Middlewares.Authorization;
 using ITAM.API.Models.DTOs;
+using ITAM.API.Models.DTOs.AssetCategories;
+using ITAM.API.Models.DTOs.Assets;
+using ITAM.API.Models.DTOs.Departments;
+using ITAM.API.Repositories.Implementations;
+using ITAM.API.Repositories.Interfaces;
 using ITAM.API.Services.Implementations;
 using ITAM.API.Services.Interfaces;
+using ITAM.API.Validators;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -67,6 +74,32 @@ builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSet
 builder.Services.AddSingleton<JwtHelper>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 
+// Module Quản lý tài sản CNTT (Assets) — Tuần 3-4, Lâm Toàn.
+builder.Services.AddScoped<IAssetRepository, AssetRepository>();
+builder.Services.AddScoped<IAssetService, AssetService>();
+builder.Services.AddScoped<IValidator<CreateAssetRequestDto>, CreateAssetRequestValidator>();
+builder.Services.AddScoped<IValidator<UpdateAssetRequestDto>, UpdateAssetRequestValidator>();
+
+// UC-04: danh mục dùng chung (loại tài sản, phòng ban) — prerequisite của module Assets.
+builder.Services.AddScoped<IAssetCategoryRepository, AssetCategoryRepository>();
+builder.Services.AddScoped<IAssetCategoryService, AssetCategoryService>();
+builder.Services.AddScoped<IValidator<CreateAssetCategoryRequestDto>, CreateAssetCategoryRequestValidator>();
+builder.Services.AddScoped<IValidator<UpdateAssetCategoryRequestDto>, UpdateAssetCategoryRequestValidator>();
+
+builder.Services.AddScoped<IDepartmentRepository, DepartmentRepository>();
+builder.Services.AddScoped<IDepartmentService, DepartmentService>();
+builder.Services.AddScoped<IValidator<CreateDepartmentRequestDto>, CreateDepartmentRequestValidator>();
+
+// Cho phép frontend (chạy ở origin khác — Live Server/static server) gọi API qua fetch().
+// Danh sách origin cấu hình trong appsettings (Development): Cors:AllowedOrigins.
+const string FrontendCorsPolicy = "FrontendCorsPolicy";
+var corsAllowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(FrontendCorsPolicy, policy =>
+        policy.WithOrigins(corsAllowedOrigins).AllowAnyHeader().AllowAnyMethod());
+});
+
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()
     ?? throw new InvalidOperationException("Thiếu cấu hình JwtSettings trong appsettings.");
 
@@ -108,6 +141,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseCors(FrontendCorsPolicy);
 
 app.UseAuthentication();
 app.UseAuthorization();

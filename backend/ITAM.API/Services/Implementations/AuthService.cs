@@ -76,6 +76,14 @@ public class AuthService : IAuthService
             throw new InvalidCredentialsException();
         }
 
+        // Kiểm tra sau khi xác thực mật khẩu thành công, để không lộ trạng thái tài khoản
+        // cho người chưa biết đúng mật khẩu. Thiếu bước này thì tài khoản bị Admin khoá
+        // (UC-02) vẫn đăng nhập được bình thường và dùng được mọi API.
+        if (!user.IsActive)
+        {
+            throw new AccountLockedException();
+        }
+
         _logger.LogInformation("User {Email} logged in successfully", user.Email);
 
         return BuildAuthResponse(user);

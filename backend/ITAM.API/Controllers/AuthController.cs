@@ -49,6 +49,10 @@ public class AuthController : ControllerBase
         {
             return Unauthorized(ApiResponse<object>.Fail(ex.Message));
         }
+        catch (AccountLockedException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Fail(ex.Message));
+        }
     }
 
     [Authorize]

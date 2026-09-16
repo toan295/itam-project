@@ -13,3 +13,10 @@ public class InvalidCredentialsException : Exception
     {
     }
 }
+
+public class AccountLockedException : Exception
+{
+    public AccountLockedException() : base("Tài khoản đã bị khoá. Vui lòng liên hệ Admin IT.")
+    {
+    }
+}
