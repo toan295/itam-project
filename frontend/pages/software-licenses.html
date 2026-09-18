@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quản lý Software License</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f5f6f8; color: #222; }
+    main { max-width: 1180px; margin: 32px auto; padding: 0 20px; }
+    .card { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 18px; margin-bottom: 18px; }
+    .warning-banner { background: #fff4ce; border: 1px solid #e5b700; padding: 12px; border-radius: 8px; display: none; }
+    .error-banner { background: #fde7e9; border: 1px solid #d13438; padding: 12px; border-radius: 8px; display: none; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; }
+    label { display: flex; flex-direction: column; gap: 6px; flex: 1 1 180px; }
+    input, textarea, button { font: inherit; }
+    input, textarea { padding: 9px; border: 1px solid #bbb; border-radius: 6px; }
+    button { padding: 8px 12px; border: 1px solid #888; border-radius: 6px; background: #fff; cursor: pointer; }
+    button.primary { background: #0f6cbd; color: white; border-color: #0f6cbd; }
+    table { width: 100%; border-collapse: collapse; background: white; }
+    th, td { border-bottom: 1px solid #ddd; padding: 10px; text-align: left; vertical-align: top; }
+    th { background: #f0f2f5; }
+    tr.expired { background: #fde7e9; }
+    tr.warning { background: #fff4ce; }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .toolbar { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+    .toolbar label { max-width: 360px; }
+    .muted { color: #666; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Quản lý Software License</h1>
+  <p class="muted">Chỉ tài khoản có role Admin IT mới gọi được các API của module này.</p>
+
+  <section class="card">
+    <div class="toolbar">
+      <label>API Base URL
+        <input id="apiBaseUrl" value="https://localhost:7070/api/v1">
+      </label>
+      <label>JWT token
+        <input id="jwtToken" type="password" placeholder="Dán token Admin IT">
+      </label>
+      <button id="saveConfig">Lưu cấu hình</button>
+      <button id="reloadData" class="primary">Tải lại</button>
+    </div>
+  </section>
+
+  <div id="warningBanner" class="warning-banner"></div>
+  <div id="errorBanner" class="error-banner"></div>
+
+  <section class="card">
+    <h2>Thêm license</h2>
+    <form id="createForm">
+      <div class="row">
+        <label>Tên phần mềm<input id="softwareName" required maxlength="150"></label>
+        <label>License Key<input id="licenseKey" required maxlength="255"></label>
+        <label>Ngày hết hạn<input id="expiryDate" type="date" required></label>
+        <label>Max Usage<input id="maxUsage" type="number" min="1" required></label>
+      </div>
+      <label>Ghi chú<textarea id="notes" maxlength="500"></textarea></label>
+      <p><button type="submit" class="primary">Thêm license</button></p>
+    </form>
+  </section>
+
+  <section class="card">
+    <div class="toolbar">
+      <label>Tìm kiếm
+        <input id="searchText" placeholder="Tên phần mềm hoặc LicenseKey">
+      </label>
+      <button id="searchButton">Tìm</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <table>
+      <thead>
+      <tr>
+        <th>ID</th>
+        <th>Phần mềm</th>
+        <th>License Key</th>
+        <th>Hết hạn</th>
+        <th>Sử dụng</th>
+        <th>Trạng thái</th>
+        <th>Thao tác</th>
+      </tr>
+      </thead>
+      <tbody id="licenseRows"></tbody>
+    </table>
+  </section>
+</main>
+<script src="../assets/js/software-licenses.js"></script>
+</body>
+</html>

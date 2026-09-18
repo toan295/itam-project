@@ -8,6 +8,7 @@ using ITAM.API.Models.DTOs;
 using ITAM.API.Models.DTOs.AssetCategories;
 using ITAM.API.Models.DTOs.Assets;
 using ITAM.API.Models.DTOs.Departments;
+using ITAM.API.Models.DTOs.SoftwareLicenses;
 using ITAM.API.Repositories.Implementations;
 using ITAM.API.Repositories.Interfaces;
 using ITAM.API.Services.Implementations;
@@ -89,6 +90,13 @@ builder.Services.AddScoped<IValidator<UpdateAssetCategoryRequestDto>, UpdateAsse
 builder.Services.AddScoped<IDepartmentRepository, DepartmentRepository>();
 builder.Services.AddScoped<IDepartmentService, DepartmentService>();
 builder.Services.AddScoped<IValidator<CreateDepartmentRequestDto>, CreateDepartmentRequestValidator>();
+
+// Module Phần mềm & giấy phép (SoftwareLicenses) — Tuần 3-4, Hoàng Đức Tú.
+builder.Services.AddScoped<ISoftwareLicenseRepository, SoftwareLicenseRepository>();
+builder.Services.AddScoped<ISoftwareLicenseService, SoftwareLicenseService>();
+builder.Services.AddScoped<IValidator<CreateSoftwareLicenseDto>, CreateSoftwareLicenseValidator>();
+builder.Services.AddScoped<IValidator<UpdateSoftwareLicenseDto>, UpdateSoftwareLicenseValidator>();
+builder.Services.AddScoped<IValidator<AssignSoftwareLicenseDto>, AssignSoftwareLicenseValidator>();
 
 // Cho phép frontend (chạy ở origin khác — Live Server/static server) gọi API qua fetch().
 // Danh sách origin cấu hình trong appsettings (Development): Cors:AllowedOrigins.
