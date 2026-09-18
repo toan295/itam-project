@@ -36,6 +36,7 @@ public class AppDbContext : DbContext
         {
             entity.Property(e => e.Name).HasMaxLength(100);
             entity.Property(e => e.Description).HasMaxLength(255);
+            entity.HasIndex(e => e.Name).IsUnique();
         });
 
         modelBuilder.Entity<User>(entity =>
@@ -107,10 +108,14 @@ public class AppDbContext : DbContext
                 .HasForeignKey(e => e.AssetId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            // Restrict (không Cascade): xoá License đang được gán cho tài sản phải bị chặn tường
+            // minh ở tầng Service (SoftwareLicenseService.DeleteAsync ném lỗi 409 rõ ràng) thay vì
+            // để DB âm thầm xoá luôn lịch sử gán — Admin IT phải Gỡ hết trước khi Xoá, giống hệt quy
+            // tắc "không xoá AssetCategory đang được tài sản dùng" đã áp dụng cho module Assets.
             entity.HasOne(e => e.License)
                 .WithMany(l => l.AssetSoftwareLicenses)
                 .HasForeignKey(e => e.LicenseId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<MaintenanceTicket>(entity =>

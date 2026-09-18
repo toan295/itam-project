@@ -20,3 +20,10 @@ public class AccountLockedException : Exception
     {
     }
 }
+
+public class InvalidResetTokenException : Exception
+{
+    public InvalidResetTokenException(string message) : base(message)
+    {
+    }
+}

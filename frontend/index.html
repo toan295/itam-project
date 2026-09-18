@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Trang chủ - EAIMS</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="shared/theme.css" rel="stylesheet">
+</head>
+<body>
+  <div class="eaims-shell">
+    <div id="appNav"></div>
+
+    <main class="eaims-main">
+      <div class="page-header">
+        <div>
+          <h1 id="welcomeName">Chào mừng trở lại</h1>
+          <p>Hệ thống Quản lý & Tối ưu Hạ tầng CNTT Doanh nghiệp (EAIMS)</p>
+        </div>
+      </div>
+
+      <div class="row g-3 mb-4">
+        <div class="col-6 col-lg-3">
+          <div class="stat-card">
+            <div class="icon-box tint-primary"><i class="bi bi-laptop"></i></div>
+            <div><div class="value" id="statAssets">–</div><div class="label">Tổng số tài sản</div></div>
+          </div>
+        </div>
+        <div class="col-6 col-lg-3">
+          <div class="stat-card">
+            <div class="icon-box tint-slate"><i class="bi bi-tags"></i></div>
+            <div><div class="value" id="statCategories">–</div><div class="label">Loại tài sản</div></div>
+          </div>
+        </div>
+        <div class="col-6 col-lg-3">
+          <div class="stat-card">
+            <div class="icon-box tint-info"><i class="bi bi-key"></i></div>
+            <div><div class="value" id="statLicenses">–</div><div class="label">Giấy phép phần mềm</div></div>
+          </div>
+        </div>
+        <div class="col-6 col-lg-3">
+          <div class="stat-card">
+            <div class="icon-box tint-warning"><i class="bi bi-exclamation-triangle"></i></div>
+            <div><div class="value" id="statExpiring">–</div><div class="label">License sắp hết hạn (30 ngày)</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-3 mb-4">
+        <div class="col-lg-5">
+          <div class="eaims-card h-100">
+            <div class="card-body">
+              <h6 class="fw-bold mb-3">Phân bố trạng thái tài sản</h6>
+              <div id="statusChartEmpty" class="empty-state d-none py-4">
+                <i class="bi bi-pie-chart"></i>
+                <div class="title">Chưa có tài sản nào</div>
+              </div>
+              <canvas id="statusChart" height="210"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-7">
+          <div class="eaims-card h-100">
+            <div class="card-body">
+              <h6 class="fw-bold mb-3">License sắp hết hạn / gần giới hạn</h6>
+              <div id="expiringList"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h6 class="fw-bold mb-3">Truy cập nhanh</h6>
+      <div class="row g-3">
+        <div class="col-md-6 col-lg-3">
+          <a href="pages/assets.html" class="nav-card">
+            <div class="icon-box tint-primary"><i class="bi bi-laptop"></i></div>
+            <h5>Quản lý tài sản</h5>
+            <p>Danh sách, tìm kiếm/lọc nâng cao, thêm/sửa/thanh lý tài sản CNTT.</p>
+          </a>
+        </div>
+        <div class="col-md-6 col-lg-3">
+          <a href="pages/asset-categories.html" class="nav-card">
+            <div class="icon-box tint-slate"><i class="bi bi-tags"></i></div>
+            <h5>Loại tài sản</h5>
+            <p>Quản lý danh mục loại tài sản dùng chung.</p>
+          </a>
+        </div>
+        <div class="col-md-6 col-lg-3">
+          <a href="pages/departments.html" class="nav-card">
+            <div class="icon-box tint-success"><i class="bi bi-building"></i></div>
+            <h5>Phòng ban</h5>
+            <p>Danh sách phòng ban, thêm phòng ban mới.</p>
+          </a>
+        </div>
+        <div class="col-md-6 col-lg-3">
+          <a href="pages/software-licenses.html" class="nav-card">
+            <div class="icon-box tint-info"><i class="bi bi-key"></i></div>
+            <h5>Phần mềm & Giấy phép</h5>
+            <p>Quản lý license, gán/gỡ cho tài sản, cảnh báo sắp hết hạn.</p>
+          </a>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="shared/api-client.js"></script>
+  <script src="shared/nav.js"></script>
+  <script>
+    const session = requireAuth("pages/login.html");
+    if (session) {
+      renderNav({ active: "home", basePath: "" });
+      document.getElementById("welcomeName").textContent = `Chào mừng trở lại, ${session.fullName} 👋`;
+
+      const STATUS_LABELS = { InUse: "Đang dùng", Maintenance: "Bảo trì", Broken: "Hỏng", Disposed: "Đã thanh lý" };
+      const STATUS_COLORS = { InUse: "#15803d", Maintenance: "#b45309", Broken: "#b91c1c", Disposed: "#64748b" };
+
+      api.get("/assets/search?page=1&pageSize=200").then((r) => {
+        document.getElementById("statAssets").textContent = r.totalItems;
+        renderStatusChart(r.items);
+      }).catch(() => { document.getElementById("statAssets").textContent = "–"; });
+
+      api.get("/asset-categories").then((r) => document.getElementById("statCategories").textContent = r.length).catch(() => {});
+
+      if (session.role === "Admin IT") {
+        api.get("/software-licenses?page=1&pageSize=1").then((r) => document.getElementById("statLicenses").textContent = r.totalItems).catch(() => {});
+        api.get("/software-licenses/expiring-soon?days=30").then((items) => {
+          document.getElementById("statExpiring").textContent = items.length;
+          renderExpiringList(items);
+        }).catch(() => {});
+      } else {
+        document.getElementById("statLicenses").textContent = "🔒";
+        document.getElementById("statExpiring").textContent = "🔒";
+        document.getElementById("expiringList").innerHTML =
+          '<div class="empty-state py-4"><i class="bi bi-lock"></i><div class="title">Chỉ Admin IT xem được mục này</div></div>';
+      }
+
+      function renderStatusChart(items) {
+        if (items.length === 0) {
+          document.getElementById("statusChartEmpty").classList.remove("d-none");
+          document.getElementById("statusChart").classList.add("d-none");
+          return;
+        }
+        const counts = {};
+        items.forEach((a) => { counts[a.status] = (counts[a.status] || 0) + 1; });
+        const labels = Object.keys(counts);
+        new Chart(document.getElementById("statusChart"), {
+          type: "doughnut",
+          data: {
+            labels: labels.map((s) => STATUS_LABELS[s] || s),
+            datasets: [{
+              data: labels.map((s) => counts[s]),
+              backgroundColor: labels.map((s) => STATUS_COLORS[s] || "#94a3b8"),
+              borderWidth: 0,
+            }],
+          },
+          options: {
+            plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 12 } } } },
+            cutout: "68%",
+          },
+        });
+      }
+
+      function renderExpiringList(items) {
+        const el = document.getElementById("expiringList");
+        if (items.length === 0) {
+          el.innerHTML = '<div class="empty-state py-4"><i class="bi bi-check-circle"></i><div class="title">Không có license nào sắp hết hạn</div></div>';
+          return;
+        }
+        const today = new Date();
+        el.innerHTML = items.slice(0, 6).map((item) => {
+          const daysLeft = Math.ceil((new Date(item.expiryDate) - today) / 86400000);
+          const badge = item.isExpired
+            ? '<span class="badge-soft danger"><i class="bi bi-x-circle"></i> Đã hết hạn</span>'
+            : `<span class="badge-soft warning"><i class="bi bi-clock"></i> Còn ${daysLeft} ngày</span>`;
+          return `
+            <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+              <div>
+                <div class="fw-semibold">${escapeHtml(item.softwareName)}</div>
+                <div class="text-muted small">${escapeHtml(item.licenseKey)} · Hết hạn ${item.expiryDate}</div>
+              </div>
+              ${badge}
+            </div>`;
+        }).join("");
+      }
+    }
+  </script>
+</body>
+</html>

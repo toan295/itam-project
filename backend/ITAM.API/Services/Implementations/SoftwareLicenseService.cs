@@ -108,6 +108,16 @@ public class SoftwareLicenseService : ISoftwareLicenseService
         var license = await _repository.GetEntityByIdAsync(id)
             ?? throw new KeyNotFoundException($"Không tìm thấy license có Id = {id}.");
 
+        // Không xoá License đang được gán cho tài sản — FK giờ là Restrict (không còn Cascade), nên
+        // nếu bỏ qua bước kiểm tra này thì lỗi khoá ngoại từ MySQL sẽ lộ ra ngoài dưới dạng 500 thay
+        // vì 409 thân thiện. Admin IT phải Gỡ hết rồi mới Xoá được, tránh mất lịch sử gán ngoài ý muốn.
+        var currentUsage = await _repository.GetCurrentUsageAsync(id);
+        if (currentUsage > 0)
+        {
+            throw new InvalidOperationException(
+                $"Không thể xoá license đang được gán cho {currentUsage} tài sản. Hãy gỡ hết trước khi xoá.");
+        }
+
         await _repository.DeleteAsync(license);
         _logger.LogInformation("Deleted software license {LicenseId}", id);
     }

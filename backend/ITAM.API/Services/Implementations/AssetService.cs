@@ -144,10 +144,20 @@ public class AssetService : IAssetService
         return MapToDto(asset);
     }
 
-    public async Task<AssetResponseDto> GetByIdAsync(int id)
+    public async Task<AssetResponseDto> GetByIdAsync(int id, string? currentUserRole, int? currentUserDepartmentId)
     {
         var asset = await _repo.GetByIdWithDetailsAsync(id)
             ?? throw new AssetNotFoundException(id);
+
+        // Cùng quy tắc phạm vi phòng ban với danh sách/tìm kiếm (UC-08 E2) — nếu không kiểm tra ở
+        // đây, Manager/Technician có thể "lách" việc bị lọc khỏi danh sách bằng cách đoán id trực
+        // tiếp qua GET /assets/{id}. Trả 404 (như thể không tồn tại) thay vì 403, để không lộ việc
+        // asset đó có thực sự tồn tại hay không cho người ngoài phòng ban.
+        if (IsOutsideDepartmentScope(currentUserRole, currentUserDepartmentId, asset.DepartmentId))
+        {
+            throw new AssetNotFoundException(id);
+        }
+
         return MapToDto(asset);
     }
 
@@ -287,6 +297,13 @@ public class AssetService : IAssetService
     private static bool IsManagerOutsideDepartment(
         string? currentUserRole, int? currentUserDepartmentId, int targetDepartmentId) =>
         string.Equals(currentUserRole, ManagerRoleName, StringComparison.Ordinal)
+        && currentUserDepartmentId != targetDepartmentId;
+
+    // Dùng cho các thao tác chỉ-đọc (GetById): cả Manager lẫn Technician đều bị giới hạn theo
+    // phòng ban (khác Create/Update, nơi chỉ Manager được phép thao tác nên chỉ cần kiểm tra Manager).
+    private static bool IsOutsideDepartmentScope(
+        string? currentUserRole, int? currentUserDepartmentId, int targetDepartmentId) =>
+        DepartmentScopedRoles.Contains(currentUserRole)
         && currentUserDepartmentId != targetDepartmentId;
 
     private static AssetResponseDto MapToDto(Asset a) => new()

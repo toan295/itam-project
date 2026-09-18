@@ -1,4 +1,15 @@
+const session = requireAuth("login.html");
+renderNav({ active: "assets", basePath: "../" });
+
+const canCreateOrEdit = session.role === "Admin IT" || session.role === "Manager";
+const canDispose = session.role === "Admin IT";
+
 let currentPage = 1;
+let assetModal;
+// Danh sách tài sản đang hiển thị — tra cứu lại theo id khi Sửa, thay vì nhúng thẳng JSON.stringify(a)
+// vào thuộc tính onclick='...' (dữ liệu tự do như Tên/Serial/Thông số chứa dấu nháy đơn sẽ phá vỡ
+// thuộc tính HTML và cho phép chèn script — XSS lưu trữ). Xem cùng cách sửa ở users.js/asset-categories.js/software-licenses.js.
+let currentItems = [];
 
 const STATUS_LABELS = {
   InUse: "Đang dùng",
@@ -8,10 +19,17 @@ const STATUS_LABELS = {
 };
 
 const STATUS_BADGE_CLASSES = {
-  InUse: "bg-success",
-  Maintenance: "bg-warning text-dark",
-  Broken: "bg-danger",
-  Disposed: "bg-secondary",
+  InUse: "success",
+  Maintenance: "warning",
+  Broken: "danger",
+  Disposed: "slate",
+};
+
+const STATUS_ICONS = {
+  InUse: "bi-check-circle",
+  Maintenance: "bi-tools",
+  Broken: "bi-exclamation-triangle",
+  Disposed: "bi-archive",
 };
 
 function showError(message) {
@@ -24,6 +42,16 @@ function clearError() {
   document.getElementById("errorAlert").classList.add("d-none");
 }
 
+function showModalError(message) {
+  const el = document.getElementById("modalError");
+  el.textContent = message;
+  el.classList.remove("d-none");
+}
+
+function clearModalError() {
+  document.getElementById("modalError").classList.add("d-none");
+}
+
 async function loadFilterOptions() {
   try {
     const [departments, categories] = await Promise.all([
@@ -32,15 +60,25 @@ async function loadFilterOptions() {
     ]);
     fillSelect("departmentId", departments, "-- Phòng ban --");
     fillSelect("categoryId", categories, "-- Loại tài sản --");
+    fillSelect("formDepartmentId", departments, null);
+    fillSelect("formCategoryId", categories, null);
+
+    // Manager chỉ được tạo/sửa tài sản trong đúng phòng ban của mình (UC-05 E3 / UC-06 E2) —
+    // khoá sẵn lựa chọn để tránh submit rồi mới nhận 403 gây khó hiểu.
+    if (session.role === "Manager") {
+      document.getElementById("formDepartmentId").value = String(session.departmentId);
+      document.getElementById("formDepartmentId").disabled = true;
+    }
   } catch {
-    // Chưa có token hợp lệ hoặc API chưa sẵn sàng — giữ nguyên option mặc định, không chặn trang chạy tiếp.
+    // Chưa có quyền hoặc API chưa sẵn sàng — giữ nguyên option mặc định, không chặn trang chạy tiếp.
   }
 }
 
 function fillSelect(elementId, items, placeholder) {
   const select = document.getElementById(elementId);
   const previousValue = select.value;
-  select.innerHTML = `<option value="">${placeholder}</option>` +
+  const placeholderHtml = placeholder !== null ? `<option value="">${placeholder}</option>` : "";
+  select.innerHTML = placeholderHtml +
     items.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join("");
   select.value = previousValue;
 }
@@ -74,24 +112,26 @@ async function loadAssets(page = 1) {
 }
 
 function renderTable(items) {
+  currentItems = items;
   const tbody = document.getElementById("assetTableBody");
   if (items.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">Không có tài sản phù hợp.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><i class="bi bi-inbox"></i><div class="title">Không có tài sản phù hợp</div>Thử điều chỉnh bộ lọc hoặc thêm tài sản mới.</div></td></tr>`;
     return;
   }
 
   tbody.innerHTML = items.map((a) => `
     <tr>
-      <td>${escapeHtml(a.assetCode)}</td>
+      <td class="fw-semibold">${escapeHtml(a.assetCode)}</td>
       <td>${escapeHtml(a.name)}</td>
       <td>${escapeHtml(a.categoryName)}</td>
       <td>${escapeHtml(a.departmentName)}</td>
-      <td><span class="badge ${STATUS_BADGE_CLASSES[a.status] || "bg-secondary"}">${STATUS_LABELS[a.status] || a.status}</span></td>
-      <td>${a.warrantyExpiry ? (a.isUnderWarranty ? '<span class="badge bg-success">Còn hạn</span>' : '<span class="badge bg-secondary">Hết hạn</span>') : '<span class="text-muted">-</span>'}</td>
-      <td>
-        ${a.status === "Disposed"
-          ? '<span class="text-muted small">Đã thanh lý</span>'
-          : `<button class="btn btn-sm btn-danger" onclick="disposeAsset(${a.id})">Thanh lý</button>`}
+      <td><span class="badge-soft ${STATUS_BADGE_CLASSES[a.status] || "slate"}"><i class="bi ${STATUS_ICONS[a.status] || "bi-question-circle"}"></i> ${STATUS_LABELS[a.status] || a.status}</span></td>
+      <td>${a.warrantyExpiry ? (a.isUnderWarranty ? '<span class="badge-soft success"><i class="bi bi-shield-check"></i> Còn hạn</span>' : '<span class="badge-soft slate"><i class="bi bi-shield-x"></i> Hết hạn</span>') : '<span class="text-muted">-</span>'}</td>
+      <td class="text-end">
+        ${canCreateOrEdit ? `<button class="btn btn-sm btn-outline-primary me-1" onclick="openEditModal(${a.id})"><i class="bi bi-pencil"></i> Sửa</button>` : ""}
+        ${canDispose && a.status !== "Disposed"
+          ? `<button class="btn btn-sm btn-outline-danger" onclick="disposeAsset(${a.id})"><i class="bi bi-archive"></i> Thanh lý</button>`
+          : ""}
       </td>
     </tr>`).join("");
 }
@@ -116,11 +156,75 @@ async function disposeAsset(id) {
   }
 }
 
-function escapeHtml(value) {
-  const div = document.createElement("div");
-  div.textContent = value ?? "";
-  return div.innerHTML;
+function openCreateModal() {
+  document.getElementById("assetForm").reset();
+  document.getElementById("assetId").value = "";
+  document.getElementById("assetModalTitle").textContent = "Thêm tài sản";
+  document.getElementById("formStatusWrapper").style.display = "none";
+  if (session.role === "Manager") {
+    document.getElementById("formDepartmentId").value = String(session.departmentId);
+  }
+  clearModalError();
+  assetModal.show();
 }
+
+function openEditModal(id) {
+  const asset = currentItems.find((x) => x.id === id);
+  if (!asset) return;
+
+  document.getElementById("assetForm").reset();
+  document.getElementById("assetId").value = asset.id;
+  document.getElementById("assetModalTitle").textContent = `Sửa tài sản ${asset.assetCode}`;
+  document.getElementById("assetCode").value = asset.assetCode;
+  document.getElementById("assetName").value = asset.name;
+  document.getElementById("formCategoryId").value = asset.categoryId;
+  document.getElementById("formDepartmentId").value = asset.departmentId;
+  document.getElementById("serialNumber").value = asset.serialNumber || "";
+  document.getElementById("specification").value = asset.specification || "";
+  document.getElementById("operatingSystem").value = asset.operatingSystem || "";
+  document.getElementById("purchaseDate").value = asset.purchaseDate || "";
+  document.getElementById("warrantyExpiry").value = asset.warrantyExpiry || "";
+  document.getElementById("formStatusWrapper").style.display = "block";
+  document.getElementById("formStatus").value = asset.status;
+  clearModalError();
+  assetModal.show();
+}
+
+document.getElementById("openCreateBtn").addEventListener("click", openCreateModal);
+if (!canCreateOrEdit) {
+  document.getElementById("openCreateBtn").style.display = "none";
+}
+
+document.getElementById("assetForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  clearModalError();
+
+  const id = document.getElementById("assetId").value;
+  const payload = {
+    assetCode: document.getElementById("assetCode").value.trim(),
+    name: document.getElementById("assetName").value.trim(),
+    categoryId: Number(document.getElementById("formCategoryId").value),
+    departmentId: Number(document.getElementById("formDepartmentId").value),
+    serialNumber: document.getElementById("serialNumber").value.trim() || null,
+    specification: document.getElementById("specification").value.trim() || null,
+    operatingSystem: document.getElementById("operatingSystem").value.trim() || null,
+    purchaseDate: document.getElementById("purchaseDate").value || null,
+    warrantyExpiry: document.getElementById("warrantyExpiry").value || null,
+  };
+
+  try {
+    if (id) {
+      payload.status = document.getElementById("formStatus").value;
+      await api.put(`/assets/${id}`, payload);
+    } else {
+      await api.post("/assets", payload);
+    }
+    assetModal.hide();
+    loadAssets(currentPage);
+  } catch (err) {
+    showModalError(err.message);
+  }
+});
 
 document.getElementById("filterForm").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -132,12 +236,6 @@ document.getElementById("resetFilterBtn").addEventListener("click", () => {
   loadAssets(1);
 });
 
-document.getElementById("tokenInput").value = getToken() || "";
-document.getElementById("saveTokenBtn").addEventListener("click", () => {
-  setToken(document.getElementById("tokenInput").value.trim());
-  loadFilterOptions();
-  loadAssets(1);
-});
-
+assetModal = new bootstrap.Modal(document.getElementById("assetModal"));
 loadFilterOptions();
 loadAssets();

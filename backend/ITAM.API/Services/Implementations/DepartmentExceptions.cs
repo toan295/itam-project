@@ -7,3 +7,11 @@ public class DepartmentNotFoundException : Exception
     {
     }
 }
+
+public class DepartmentNameAlreadyExistsException : Exception
+{
+    public DepartmentNameAlreadyExistsException(string name)
+        : base($"Phòng ban '{name}' đã tồn tại.")
+    {
+    }
+}

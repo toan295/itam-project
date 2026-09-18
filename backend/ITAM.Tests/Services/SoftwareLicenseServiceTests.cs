@@ -71,6 +71,30 @@ public class SoftwareLicenseServiceTests
         Assert.Equal(1, result.CurrentUsage);
     }
 
+    [Fact]
+    public async Task DeleteAsync_WhenLicenseIsAssignedToAssets_ThrowsInvalidOperationException()
+    {
+        var repository = new FakeSoftwareLicenseRepository();
+        repository.SeedLicense(CreateLicense(id: 1, licenseKey: "KEY-001", maxUsage: 5));
+        repository.SeedAsset(10);
+        repository.SeedAssignment(1, 10);
+        var service = CreateService(repository);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteAsync(1));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenLicenseHasNoAssignments_DeletesSuccessfully()
+    {
+        var repository = new FakeSoftwareLicenseRepository();
+        repository.SeedLicense(CreateLicense(id: 1, licenseKey: "KEY-001", maxUsage: 5));
+        var service = CreateService(repository);
+
+        await service.DeleteAsync(1);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => service.GetByIdAsync(1));
+    }
+
     private static SoftwareLicenseService CreateService(ISoftwareLicenseRepository repository)
     {
         return new SoftwareLicenseService(

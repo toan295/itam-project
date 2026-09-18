@@ -50,7 +50,7 @@ public class AssetsController : ControllerBase
     {
         try
         {
-            var result = await _assetService.GetByIdAsync(id);
+            var result = await _assetService.GetByIdAsync(id, GetCurrentUserRole(), GetCurrentUserDepartmentId());
             return Ok(ApiResponse<object>.Ok(result));
         }
         catch (AssetNotFoundException ex)

@@ -7,6 +7,8 @@ public class UpdateAssetCategoryRequestValidator : AbstractValidator<UpdateAsset
 {
     public UpdateAssetCategoryRequestValidator()
     {
-        RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
+        RuleFor(x => x.Name)
+            .NotEmpty().WithMessage("Tên loại tài sản không được để trống.")
+            .MaximumLength(100).WithMessage("Tên loại tài sản không được vượt quá 100 ký tự.");
     }
 }

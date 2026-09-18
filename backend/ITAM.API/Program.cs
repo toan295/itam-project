@@ -1,14 +1,17 @@
+using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
+using System.Threading.RateLimiting;
 using FluentValidation;
 using ITAM.API.Configurations;
 using ITAM.API.Data;
 using ITAM.API.Helpers;
-using ITAM.API.Middlewares.Authorization;
 using ITAM.API.Models.DTOs;
 using ITAM.API.Models.DTOs.AssetCategories;
 using ITAM.API.Models.DTOs.Assets;
 using ITAM.API.Models.DTOs.Departments;
 using ITAM.API.Models.DTOs.SoftwareLicenses;
+using ITAM.API.Models.DTOs.Users;
 using ITAM.API.Repositories.Implementations;
 using ITAM.API.Repositories.Interfaces;
 using ITAM.API.Services.Implementations;
@@ -73,6 +76,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
 builder.Services.AddSingleton<JwtHelper>();
+builder.Services.AddSingleton<PasswordResetTokenHelper>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 
 // Module Quản lý tài sản CNTT (Assets) — Tuần 3-4, Lâm Toàn.
@@ -90,6 +94,15 @@ builder.Services.AddScoped<IValidator<UpdateAssetCategoryRequestDto>, UpdateAsse
 builder.Services.AddScoped<IDepartmentRepository, DepartmentRepository>();
 builder.Services.AddScoped<IDepartmentService, DepartmentService>();
 builder.Services.AddScoped<IValidator<CreateDepartmentRequestDto>, CreateDepartmentRequestValidator>();
+
+builder.Services.AddScoped<IRoleRepository, RoleRepository>();
+builder.Services.AddScoped<IRoleService, RoleService>();
+
+// UC-03: Quản lý người dùng & phân quyền — Admin IT.
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IValidator<CreateUserRequestDto>, CreateUserRequestValidator>();
+builder.Services.AddScoped<IValidator<UpdateUserRequestDto>, UpdateUserRequestValidator>();
 
 // Module Phần mềm & giấy phép (SoftwareLicenses) — Tuần 3-4, Hoàng Đức Tú.
 builder.Services.AddScoped<ISoftwareLicenseRepository, SoftwareLicenseRepository>();
@@ -127,17 +140,29 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-// Role authorization still uses [Authorize(Roles = "...")].
-// Department authorization is implemented with a policy + handler.
-builder.Services.AddSingleton<IAuthorizationHandler, DepartmentAuthorizationHandler>();
-builder.Services.AddAuthorization(options =>
+// Giới hạn tốc độ gọi cho các endpoint xác thực nhạy cảm (đăng nhập, đăng ký, quên/đặt lại mật khẩu)
+// — đều là endpoint anonymous, không có JWT nào chặn được việc dò brute-force mật khẩu hay spam sinh
+// token. Giới hạn theo IP: tối đa 10 request/phút, vượt quá trả 429 thay vì tiếp tục xử lý.
+builder.Services.AddRateLimiter(options =>
 {
-    options.AddPolicy("SameDepartmentOnly", policy =>
-    {
-        policy.RequireAuthenticatedUser();
-        policy.AddRequirements(new DepartmentRequirement());
-    });
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("AuthPolicy", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
 });
+
+// Role authorization dùng [Authorize(Roles = "...")]. Phân quyền theo phòng ban cho từng module
+// thật (Assets, ...) được xử lý bằng business logic riêng trong Service (vd AssetService), không
+// dùng policy chung — policy "SameDepartmentOnly" (Tuần 2, chỉ phục vụ AuthorizationTestController
+// minh hoạ) đã được gỡ bỏ cùng handler/requirement liên quan, xác nhận với Hoàng Đức Tú không còn
+// module nào cần.
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
@@ -152,7 +177,42 @@ app.UseHttpsRedirection();
 
 app.UseCors(FrontendCorsPolicy);
 
+app.UseRateLimiter();
+
 app.UseAuthentication();
+
+// JWT là stateless — token đã phát hành vẫn hợp lệ tới khi hết hạn tự nhiên (mặc định 60 phút) dù
+// tài khoản vừa bị Admin IT khoá (UC-03). Middleware này kiểm tra lại IsActive của user trong token
+// trên MỌI request đã xác thực (1 lượt SELECT theo khoá chính, rất rẻ), để việc khoá tài khoản có
+// hiệu lực ngay lập tức thay vì phải chờ token tự hết hạn — đúng kỳ vọng nghiệp vụ "khoá là khoá ngay".
+app.Use(async (context, next) =>
+{
+    if (context.User.Identity?.IsAuthenticated == true)
+    {
+        var userIdClaim = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (int.TryParse(userIdClaim, out var userId))
+        {
+            var dbContext = context.RequestServices.GetRequiredService<AppDbContext>();
+            var isActive = await dbContext.Users.AsNoTracking()
+                .Where(u => u.Id == userId)
+                .Select(u => (bool?)u.IsActive)
+                .FirstOrDefaultAsync();
+
+            if (isActive != true)
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync(JsonSerializer.Serialize(
+                    ApiResponse<object>.Fail("Tài khoản đã bị khoá hoặc không còn tồn tại. Vui lòng đăng nhập lại."),
+                    new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+                return;
+            }
+        }
+    }
+
+    await next();
+});
+
 app.UseAuthorization();
 
 app.MapControllers();

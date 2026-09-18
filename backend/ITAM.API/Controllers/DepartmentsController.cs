@@ -57,8 +57,15 @@ public class DepartmentsController : ControllerBase
                 "Dữ liệu không hợp lệ.", validation.Errors.Select(e => e.ErrorMessage).ToList()));
         }
 
-        var result = await _departmentService.CreateAsync(dto);
-        return CreatedAtAction(nameof(GetById), new { id = result.Id },
-            ApiResponse<object>.Ok(result, "Thêm phòng ban thành công."));
+        try
+        {
+            var result = await _departmentService.CreateAsync(dto);
+            return CreatedAtAction(nameof(GetById), new { id = result.Id },
+                ApiResponse<object>.Ok(result, "Thêm phòng ban thành công."));
+        }
+        catch (DepartmentNameAlreadyExistsException ex)
+        {
+            return Conflict(ApiResponse<object>.Fail(ex.Message));
+        }
     }
 }

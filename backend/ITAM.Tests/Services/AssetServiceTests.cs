@@ -297,7 +297,7 @@ public class AssetServiceTests
             WarrantyExpiry = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(10)),
         });
 
-        var result = await _sut.GetByIdAsync(1);
+        var result = await _sut.GetByIdAsync(1, "Admin IT", null);
 
         Assert.True(result.IsUnderWarranty);
     }
@@ -312,7 +312,7 @@ public class AssetServiceTests
             WarrantyExpiry = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-10)),
         });
 
-        var result = await _sut.GetByIdAsync(1);
+        var result = await _sut.GetByIdAsync(1, "Admin IT", null);
 
         Assert.False(result.IsUnderWarranty);
     }
@@ -323,7 +323,7 @@ public class AssetServiceTests
         _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
             .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", WarrantyExpiry = null });
 
-        var result = await _sut.GetByIdAsync(1);
+        var result = await _sut.GetByIdAsync(1, "Admin IT", null);
 
         Assert.False(result.IsUnderWarranty);
     }
@@ -333,7 +333,48 @@ public class AssetServiceTests
     {
         _repoMock.Setup(r => r.GetByIdWithDetailsAsync(It.IsAny<int>())).ReturnsAsync((Asset?)null);
 
-        await Assert.ThrowsAsync<AssetNotFoundException>(() => _sut.GetByIdAsync(999));
+        await Assert.ThrowsAsync<AssetNotFoundException>(() => _sut.GetByIdAsync(999, "Admin IT", null));
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_ManagerOutsideDepartment_ThrowsAssetNotFoundException()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 2 });
+
+        // Không lộ 403 (mới biết asset tồn tại) — phải là 404 y như khi asset thật sự không tồn tại.
+        await Assert.ThrowsAsync<AssetNotFoundException>(() => _sut.GetByIdAsync(1, "Manager", 1));
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_TechnicianOutsideDepartment_ThrowsAssetNotFoundException()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 2 });
+
+        await Assert.ThrowsAsync<AssetNotFoundException>(() => _sut.GetByIdAsync(1, "Technician", 1));
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_ManagerInsideDepartment_ReturnsAsset()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 1 });
+
+        var result = await _sut.GetByIdAsync(1, "Manager", 1);
+
+        Assert.Equal(1, result.Id);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_AdminOutsideAnyDepartment_ReturnsAsset()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 2 });
+
+        var result = await _sut.GetByIdAsync(1, "Admin IT", 1);
+
+        Assert.Equal(1, result.Id);
     }
 
     // ----- GetPagedAsync: UC-08 E2 giới hạn theo phòng ban -----

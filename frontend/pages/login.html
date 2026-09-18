@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Đăng nhập - EAIMS</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="../shared/theme.css" rel="stylesheet">
+  <style>
+    body { background: var(--eaims-bg); }
+    .login-shell { min-height: 100vh; display: flex; }
+    .login-hero {
+      flex: 1.1;
+      background: radial-gradient(circle at 20% 20%, #6366f1 0%, #4338ca 45%, #1e1b4b 100%);
+      color: #fff; padding: 60px; display: flex; flex-direction: column; justify-content: space-between;
+      position: relative; overflow: hidden;
+    }
+    .login-hero::after {
+      content: ""; position: absolute; width: 480px; height: 480px; border-radius: 50%;
+      background: rgba(255,255,255,0.06); right: -160px; bottom: -160px;
+    }
+    .login-hero .brand { display: flex; align-items: center; gap: 12px; font-size: 1.4rem; font-weight: 800; }
+    .login-hero .logo-dot { width: 42px; height: 42px; border-radius: 12px; background: rgba(255,255,255,0.15); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; }
+    .login-hero .headline { font-size: 2.1rem; font-weight: 800; line-height: 1.25; max-width: 460px; position: relative; z-index: 1; }
+    .login-hero .sub { color: rgba(255,255,255,0.75); font-size: 0.95rem; margin-top: 14px; max-width: 420px; position: relative; z-index: 1; }
+    .login-hero .feature-list { list-style: none; padding: 0; margin: 28px 0 0; position: relative; z-index: 1; }
+    .login-hero .feature-list li { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 12px; color: rgba(255,255,255,0.9); font-size: 0.9rem; }
+    .login-hero .feature-list i { color: #a5b4fc; margin-top: 2px; }
+    .login-hero .foot { color: rgba(255,255,255,0.55); font-size: 0.8rem; position: relative; z-index: 1; }
+    .login-form-panel { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px 24px; }
+    .login-form-panel .form-wrap { width: 100%; max-width: 380px; }
+    .input-icon-group { position: relative; }
+    .input-icon-group i { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--eaims-text-muted); }
+    .input-icon-group .form-control { padding-left: 38px; }
+    @media (max-width: 900px) { .login-hero { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="login-shell">
+    <div class="login-hero">
+      <div class="brand"><span class="logo-dot">🖧</span> EAIMS</div>
+      <div>
+        <div class="headline">Quản lý & Tối ưu Hạ tầng CNTT Doanh nghiệp</div>
+        <div class="sub">Theo dõi tài sản, giấy phép phần mềm và vòng đời thiết bị trong một nền tảng duy nhất.</div>
+        <ul class="feature-list">
+          <li><i class="bi bi-check-circle-fill"></i> Quản lý tài sản CNTT theo phòng ban, phân quyền theo vai trò</li>
+          <li><i class="bi bi-check-circle-fill"></i> Theo dõi giấy phép phần mềm, cảnh báo sắp hết hạn</li>
+          <li><i class="bi bi-check-circle-fill"></i> Tìm kiếm, lọc nâng cao và báo cáo trực quan</li>
+        </ul>
+      </div>
+      <div class="foot">© 2026 EAIMS — Enterprise Asset & Infrastructure Management System</div>
+    </div>
+
+    <div class="login-form-panel">
+      <div class="form-wrap">
+        <div class="mb-4">
+          <h3 class="fw-bold mb-1">Chào mừng trở lại</h3>
+          <p class="text-muted mb-0">Đăng nhập để tiếp tục vào hệ thống EAIMS.</p>
+        </div>
+
+        <ul class="nav nav-pills mb-4 gap-2" role="tablist" id="authTabs">
+          <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#loginTab" type="button">Đăng nhập</button></li>
+          <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#registerTab" type="button">Đăng ký</button></li>
+        </ul>
+
+        <div id="formError" class="alert alert-danger d-none py-2"></div>
+
+        <div class="tab-content">
+          <div class="tab-pane fade show active" id="loginTab">
+            <form id="loginForm">
+              <div class="mb-3">
+                <label class="form-label">Email</label>
+                <div class="input-icon-group">
+                  <i class="bi bi-envelope"></i>
+                  <input type="email" class="form-control" id="loginEmail" required>
+                </div>
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Mật khẩu</label>
+                <div class="input-icon-group">
+                  <i class="bi bi-lock"></i>
+                  <input type="password" class="form-control" id="loginPassword" required>
+                </div>
+              </div>
+              <div class="text-end mb-3">
+                <a href="#" class="small" id="forgotPasswordLink">Quên mật khẩu?</a>
+              </div>
+              <button type="submit" class="btn btn-primary w-100 py-2">Đăng nhập <i class="bi bi-arrow-right ms-1"></i></button>
+            </form>
+          </div>
+
+          <div class="tab-pane fade" id="forgotTab">
+            <p class="text-muted small">Nhập email tài khoản — hệ thống sẽ tạo liên kết đặt lại mật khẩu.</p>
+            <form id="forgotForm">
+              <div class="mb-3">
+                <label class="form-label">Email</label>
+                <div class="input-icon-group">
+                  <i class="bi bi-envelope"></i>
+                  <input type="email" class="form-control" id="forgotEmail" required>
+                </div>
+              </div>
+              <button type="submit" class="btn btn-primary w-100 py-2">Gửi yêu cầu <i class="bi bi-send ms-1"></i></button>
+            </form>
+            <div id="forgotResult" class="d-none mt-3"></div>
+            <div class="text-center mt-3">
+              <a href="#" class="small" id="backToLoginLink"><i class="bi bi-arrow-left"></i> Quay lại đăng nhập</a>
+            </div>
+          </div>
+
+          <div class="tab-pane fade" id="registerTab">
+            <form id="registerForm">
+              <div class="mb-3">
+                <label class="form-label">Họ tên</label>
+                <div class="input-icon-group">
+                  <i class="bi bi-person"></i>
+                  <input type="text" class="form-control" id="registerFullName" required maxlength="100">
+                </div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Email</label>
+                <div class="input-icon-group">
+                  <i class="bi bi-envelope"></i>
+                  <input type="email" class="form-control" id="registerEmail" required maxlength="150">
+                </div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Mật khẩu</label>
+                <div class="input-icon-group">
+                  <i class="bi bi-lock"></i>
+                  <input type="password" class="form-control" id="registerPassword" required minlength="6" maxlength="100">
+                </div>
+              </div>
+              <div class="mb-4">
+                <label class="form-label">Phòng ban</label>
+                <select class="form-select" id="registerDepartmentId" required></select>
+              </div>
+              <button type="submit" class="btn btn-primary w-100 py-2">Tạo tài khoản <i class="bi bi-arrow-right ms-1"></i></button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="../shared/api-client.js"></script>
+  <script src="../assets/js/login.js"></script>
+</body>
+</html>

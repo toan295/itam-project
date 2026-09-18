@@ -1,93 +1,128 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="vi">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Quản lý Software License</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 0; background: #f5f6f8; color: #222; }
-    main { max-width: 1180px; margin: 32px auto; padding: 0 20px; }
-    .card { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 18px; margin-bottom: 18px; }
-    .warning-banner { background: #fff4ce; border: 1px solid #e5b700; padding: 12px; border-radius: 8px; display: none; }
-    .error-banner { background: #fde7e9; border: 1px solid #d13438; padding: 12px; border-radius: 8px; display: none; }
-    .row { display: flex; gap: 12px; flex-wrap: wrap; }
-    label { display: flex; flex-direction: column; gap: 6px; flex: 1 1 180px; }
-    input, textarea, button { font: inherit; }
-    input, textarea { padding: 9px; border: 1px solid #bbb; border-radius: 6px; }
-    button { padding: 8px 12px; border: 1px solid #888; border-radius: 6px; background: #fff; cursor: pointer; }
-    button.primary { background: #0f6cbd; color: white; border-color: #0f6cbd; }
-    table { width: 100%; border-collapse: collapse; background: white; }
-    th, td { border-bottom: 1px solid #ddd; padding: 10px; text-align: left; vertical-align: top; }
-    th { background: #f0f2f5; }
-    tr.expired { background: #fde7e9; }
-    tr.warning { background: #fff4ce; }
-    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
-    .toolbar { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
-    .toolbar label { max-width: 360px; }
-    .muted { color: #666; font-size: 0.9rem; }
-  </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Phần mềm & Giấy phép - EAIMS</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="../shared/theme.css" rel="stylesheet">
 </head>
 <body>
-<main>
-  <h1>Quản lý Software License</h1>
-  <p class="muted">Chỉ tài khoản có role Admin IT mới gọi được các API của module này.</p>
+  <div class="eaims-shell">
+    <div id="appNav"></div>
 
-  <section class="card">
-    <div class="toolbar">
-      <label>API Base URL
-        <input id="apiBaseUrl" value="https://localhost:7070/api/v1">
-      </label>
-      <label>JWT token
-        <input id="jwtToken" type="password" placeholder="Dán token Admin IT">
-      </label>
-      <button id="saveConfig">Lưu cấu hình</button>
-      <button id="reloadData" class="primary">Tải lại</button>
-    </div>
-  </section>
-
-  <div id="warningBanner" class="warning-banner"></div>
-  <div id="errorBanner" class="error-banner"></div>
-
-  <section class="card">
-    <h2>Thêm license</h2>
-    <form id="createForm">
-      <div class="row">
-        <label>Tên phần mềm<input id="softwareName" required maxlength="150"></label>
-        <label>License Key<input id="licenseKey" required maxlength="255"></label>
-        <label>Ngày hết hạn<input id="expiryDate" type="date" required></label>
-        <label>Max Usage<input id="maxUsage" type="number" min="1" required></label>
+    <main class="eaims-main">
+      <div class="page-header">
+        <div>
+          <h1>Phần mềm & Giấy phép</h1>
+          <p>Chỉ tài khoản role Admin IT được truy cập module này.</p>
+        </div>
+        <button class="btn btn-primary" id="openCreateBtn"><i class="bi bi-plus-lg"></i> Thêm license</button>
       </div>
-      <label>Ghi chú<textarea id="notes" maxlength="500"></textarea></label>
-      <p><button type="submit" class="primary">Thêm license</button></p>
-    </form>
-  </section>
 
-  <section class="card">
-    <div class="toolbar">
-      <label>Tìm kiếm
-        <input id="searchText" placeholder="Tên phần mềm hoặc LicenseKey">
-      </label>
-      <button id="searchButton">Tìm</button>
+      <div id="forbiddenAlert" class="alert alert-warning d-none"></div>
+      <div id="warningBanner" class="alert alert-warning d-none"></div>
+      <div id="errorAlert" class="alert alert-danger d-none"></div>
+
+      <div id="licenseContent">
+        <div class="eaims-card mb-3">
+          <div class="card-body py-3">
+            <form id="searchForm" class="row g-2 align-items-end">
+              <div class="col-auto">
+                <label class="form-label">Tìm kiếm</label>
+                <input class="form-control" id="searchText" placeholder="Tên phần mềm hoặc LicenseKey" style="width: 260px">
+              </div>
+              <div class="col-auto"><button class="btn btn-primary" type="submit"><i class="bi bi-search"></i> Tìm</button></div>
+            </form>
+          </div>
+        </div>
+
+        <div class="eaims-table-wrap">
+          <div class="table-responsive">
+            <table class="eaims-table">
+              <thead><tr>
+                <th>Phần mềm</th><th>License Key</th><th>Hết hạn</th><th>Sử dụng</th><th>Trạng thái</th><th class="text-end">Thao tác</th>
+              </tr></thead>
+              <tbody id="licenseTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal Tạo / Sửa license -->
+  <div class="modal fade" id="licenseModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <form id="licenseForm">
+          <div class="modal-header">
+            <h5 class="modal-title" id="licenseModalTitle">Thêm license</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="licenseModalError" class="alert alert-danger d-none py-2"></div>
+            <input type="hidden" id="licenseId">
+            <div class="mb-2">
+              <label class="form-label">Tên phần mềm</label>
+              <input class="form-control" id="softwareName" required maxlength="150">
+            </div>
+            <div class="mb-2">
+              <label class="form-label">License Key</label>
+              <input class="form-control" id="licenseKey" required maxlength="255">
+            </div>
+            <div class="row">
+              <div class="col mb-2">
+                <label class="form-label">Ngày hết hạn</label>
+                <input type="date" class="form-control" id="expiryDate" required>
+              </div>
+              <div class="col mb-2">
+                <label class="form-label">Số lượng tối đa (MaxUsage)</label>
+                <input type="number" min="1" class="form-control" id="maxUsage" required>
+              </div>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">Ghi chú</label>
+              <textarea class="form-control" id="notes" maxlength="500"></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huỷ</button>
+            <button type="submit" class="btn btn-primary">Lưu</button>
+          </div>
+        </form>
+      </div>
     </div>
-  </section>
+  </div>
 
-  <section class="card">
-    <table>
-      <thead>
-      <tr>
-        <th>ID</th>
-        <th>Phần mềm</th>
-        <th>License Key</th>
-        <th>Hết hạn</th>
-        <th>Sử dụng</th>
-        <th>Trạng thái</th>
-        <th>Thao tác</th>
-      </tr>
-      </thead>
-      <tbody id="licenseRows"></tbody>
-    </table>
-  </section>
-</main>
-<script src="../assets/js/software-licenses.js"></script>
+  <!-- Modal Gán / Gỡ license cho tài sản -->
+  <div class="modal fade" id="assignModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <form id="assignForm">
+          <div class="modal-header">
+            <h5 class="modal-title" id="assignModalTitle">Gán license cho tài sản</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="assignModalError" class="alert alert-danger d-none py-2"></div>
+            <p class="text-muted small" id="assignHelpText"></p>
+            <label class="form-label">Tài sản</label>
+            <select class="form-select" id="assignAssetId" required></select>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huỷ</button>
+            <button type="submit" class="btn btn-primary" id="assignSubmitBtn">Gán</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="../shared/api-client.js"></script>
+  <script src="../shared/nav.js"></script>
+  <script src="../assets/js/software-licenses.js"></script>
 </body>
 </html>

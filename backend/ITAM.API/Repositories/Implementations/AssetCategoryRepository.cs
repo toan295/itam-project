@@ -15,13 +15,15 @@ public class AssetCategoryRepository : IAssetCategoryRepository
     }
 
     public Task<List<AssetCategory>> GetAllAsync() =>
-        _db.AssetCategories.OrderBy(c => c.Name).ToListAsync();
+        _db.AssetCategories.AsNoTracking().OrderBy(c => c.Name).ToListAsync();
 
+    // AsNoTracking an toàn dù kết quả có thể bị sửa/xoá rồi lưu lại (UpdateAsync/DeleteAsync) —
+    // Update()/Remove() bên dưới luôn gọi tường minh, không phụ thuộc change-tracking ngầm.
     public Task<AssetCategory?> GetByIdAsync(int id) =>
-        _db.AssetCategories.FirstOrDefaultAsync(c => c.Id == id);
+        _db.AssetCategories.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id);
 
     public Task<AssetCategory?> GetByNameAsync(string name) =>
-        _db.AssetCategories.FirstOrDefaultAsync(c => c.Name == name);
+        _db.AssetCategories.AsNoTracking().FirstOrDefaultAsync(c => c.Name == name);
 
     public async Task AddAsync(AssetCategory category) => await _db.AssetCategories.AddAsync(category);
 

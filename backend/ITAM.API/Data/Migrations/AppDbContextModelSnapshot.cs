@@ -268,6 +268,9 @@ namespace ITAM.API.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Name")
+                        .IsUnique();
+
                     b.ToTable("Departments");
                 });
 
@@ -511,7 +514,7 @@ namespace ITAM.API.Data.Migrations
                     b.HasOne("ITAM.API.Models.Entities.SoftwareLicense", "License")
                         .WithMany("AssetSoftwareLicenses")
                         .HasForeignKey("LicenseId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Asset");

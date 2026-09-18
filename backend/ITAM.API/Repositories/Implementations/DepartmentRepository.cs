@@ -15,10 +15,13 @@ public class DepartmentRepository : IDepartmentRepository
     }
 
     public Task<List<Department>> GetAllAsync() =>
-        _db.Departments.OrderBy(d => d.Name).ToListAsync();
+        _db.Departments.AsNoTracking().OrderBy(d => d.Name).ToListAsync();
 
     public Task<Department?> GetByIdAsync(int id) =>
-        _db.Departments.FirstOrDefaultAsync(d => d.Id == id);
+        _db.Departments.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id);
+
+    public Task<Department?> GetByNameAsync(string name) =>
+        _db.Departments.AsNoTracking().FirstOrDefaultAsync(d => d.Name == name);
 
     public async Task AddAsync(Department department) => await _db.Departments.AddAsync(department);
 

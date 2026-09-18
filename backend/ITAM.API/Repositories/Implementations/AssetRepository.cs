@@ -15,14 +15,18 @@ public class AssetRepository : IAssetRepository
         _db = db;
     }
 
+    // AsNoTracking an toàn ở đây dù kết quả có thể bị sửa rồi lưu lại (UpdateAsync/DisposeAsync):
+    // Update(asset) bên dưới luôn gọi _db.Assets.Update(asset) tường minh, tự attach + đánh dấu
+    // Modified bất kể entity có đang được track hay không — không phụ thuộc change-tracking ngầm.
     public Task<Asset?> GetByIdWithDetailsAsync(int id) =>
         _db.Assets
+            .AsNoTracking()
             .Include(a => a.Category)
             .Include(a => a.Department)
             .FirstOrDefaultAsync(a => a.Id == id);
 
     public Task<Asset?> GetByAssetCodeAsync(string assetCode) =>
-        _db.Assets.FirstOrDefaultAsync(a => a.AssetCode == assetCode);
+        _db.Assets.AsNoTracking().FirstOrDefaultAsync(a => a.AssetCode == assetCode);
 
     public async Task AddAsync(Asset asset) => await _db.Assets.AddAsync(asset);
 
@@ -39,7 +43,7 @@ public class AssetRepository : IAssetRepository
     public async Task<(List<Asset> Items, int TotalItems)> GetPagedAsync(
         int? departmentId, AssetStatus? status, int page, int pageSize)
     {
-        var query = _db.Assets.Include(a => a.Category).Include(a => a.Department).AsQueryable();
+        var query = _db.Assets.AsNoTracking().Include(a => a.Category).Include(a => a.Department).AsQueryable();
 
         if (departmentId.HasValue)
         {
@@ -71,7 +75,7 @@ public class AssetRepository : IAssetRepository
         int page,
         int pageSize)
     {
-        var query = _db.Assets.Include(a => a.Category).Include(a => a.Department).AsQueryable();
+        var query = _db.Assets.AsNoTracking().Include(a => a.Category).Include(a => a.Department).AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(keyword))
         {
