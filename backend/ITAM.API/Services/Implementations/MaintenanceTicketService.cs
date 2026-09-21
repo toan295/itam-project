@@ -214,6 +214,55 @@ public class MaintenanceTicketService : IMaintenanceTicketService
         };
     }
 
+    public async Task<MaintenanceStatsDto> GetStatsAsync(
+        int? departmentId, int? assetId, DateOnly? fromDate, DateOnly? toDate,
+        string? currentUserRole, int? currentUserDepartmentId)
+    {
+        if (fromDate.HasValue && toDate.HasValue && fromDate > toDate)
+        {
+            throw new ArgumentException("fromDate không được lớn hơn toDate.");
+        }
+
+        var scopedDepartmentId = ResolveDepartmentScope(departmentId, currentUserRole, currentUserDepartmentId);
+
+        var rows = await _repo.GetStatRowsAsync(
+            scopedDepartmentId, assetId,
+            fromDate?.ToDateTime(TimeOnly.MinValue),
+            toDate?.AddDays(1).ToDateTime(TimeOnly.MinValue));
+
+        // Không có dữ liệu -> đủ khoá với giá trị 0 / mảng rỗng / trung bình null, không phải lỗi (UC-13).
+        var countByStatus = Enum.GetValues<TicketStatus>().ToDictionary(s => s.ToString(), _ => 0);
+        foreach (var row in rows)
+        {
+            countByStatus[row.Status.ToString()]++;
+        }
+
+        var closedHours = rows
+            .Where(r => r.Status != TicketStatus.Pending && r.ResolvedDate.HasValue)
+            .Select(r => (r.ResolvedDate!.Value - r.ReportedDate).TotalHours)
+            .ToList();
+
+        var byAssetPerYear = rows
+            .GroupBy(r => new { r.AssetId, r.AssetCode, r.ReportedDate.Year })
+            .Select(g => new AssetMaintenanceYearlyCountDto
+            {
+                AssetId = g.Key.AssetId,
+                AssetCode = g.Key.AssetCode,
+                Year = g.Key.Year,
+                TicketCount = g.Count(),
+            })
+            .OrderBy(x => x.AssetCode, StringComparer.Ordinal)
+            .ThenBy(x => x.Year)
+            .ToList();
+
+        return new MaintenanceStatsDto
+        {
+            CountByStatus = countByStatus,
+            AverageResolutionHours = closedHours.Count > 0 ? closedHours.Average() : null,
+            ByAssetPerYear = byAssetPerYear,
+        };
+    }
+
     private async Task EnsureTechnicianValidAsync(int technicianId)
     {
         if (!await _repo.TechnicianExistsAsync(technicianId))

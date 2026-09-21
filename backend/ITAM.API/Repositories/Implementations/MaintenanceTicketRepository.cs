@@ -2,6 +2,7 @@ using ITAM.API.Data;
 using ITAM.API.Models.Entities;
 using ITAM.API.Models.Enums;
 using ITAM.API.Repositories.Interfaces;
+using ITAM.API.Repositories.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace ITAM.API.Repositories.Implementations;
@@ -94,5 +95,42 @@ public class MaintenanceTicketRepository : IMaintenanceTicketRepository
             .ToListAsync();
 
         return (items, total);
+    }
+
+    public Task<List<MaintenanceTicketStatRow>> GetStatRowsAsync(
+        int? departmentId, int? assetId, DateTime? fromDate, DateTime? toDate)
+    {
+        var query = _db.MaintenanceTickets.AsNoTracking().AsQueryable();
+
+        if (departmentId.HasValue)
+        {
+            query = query.Where(t => t.Asset.DepartmentId == departmentId.Value);
+        }
+
+        if (assetId.HasValue)
+        {
+            query = query.Where(t => t.AssetId == assetId.Value);
+        }
+
+        if (fromDate.HasValue)
+        {
+            query = query.Where(t => t.ReportedDate >= fromDate.Value);
+        }
+
+        if (toDate.HasValue)
+        {
+            query = query.Where(t => t.ReportedDate < toDate.Value);
+        }
+
+        return query
+            .Select(t => new MaintenanceTicketStatRow
+            {
+                AssetId = t.AssetId,
+                AssetCode = t.Asset.AssetCode,
+                Status = t.Status,
+                ReportedDate = t.ReportedDate,
+                ResolvedDate = t.ResolvedDate,
+            })
+            .ToListAsync();
     }
 }

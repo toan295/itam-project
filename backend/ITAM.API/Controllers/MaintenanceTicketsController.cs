@@ -50,6 +50,24 @@ public class MaintenanceTicketsController : ControllerBase
         }
     }
 
+    [HttpGet("stats")] // UC-13: tác nhân chỉ gồm Admin IT, Manager (Manager bị giới hạn phòng ban trong Service).
+    [Authorize(Roles = "Admin IT,Manager")]
+    public async Task<IActionResult> GetStats(
+        [FromQuery] int? departmentId, [FromQuery] int? assetId,
+        [FromQuery] DateOnly? fromDate, [FromQuery] DateOnly? toDate)
+    {
+        try
+        {
+            var result = await _ticketService.GetStatsAsync(
+                departmentId, assetId, fromDate, toDate, GetCurrentUserRole(), GetCurrentUserDepartmentId());
+            return Ok(ApiResponse<object>.Ok(result));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<object>.Fail(ex.Message));
+        }
+    }
+
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetById(int id)
     {
