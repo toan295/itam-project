@@ -11,6 +11,7 @@ function renderNav({ active, basePath }) {
     { key: "categories", label: "Loại tài sản", icon: "bi-tags", href: `${basePath}pages/asset-categories.html` },
     { key: "departments", label: "Phòng ban", icon: "bi-building", href: `${basePath}pages/departments.html` },
     { key: "licenses", label: "Phần mềm & Giấy phép", icon: "bi-key", href: `${basePath}pages/software-licenses.html` },
+    { key: "maintenance", label: "Bảo trì", icon: "bi-tools", href: `${basePath}pages/maintenance.html` },
     { key: "users", label: "Người dùng", icon: "bi-people", href: `${basePath}pages/users.html` },
   ];
 

@@ -1,5 +1,6 @@
 using ITAM.API.Models.Entities;
 using ITAM.API.Models.Enums;
+using ITAM.API.Repositories.Models;
 
 namespace ITAM.API.Repositories.Interfaces;
 
@@ -19,4 +20,9 @@ public interface IMaintenanceTicketRepository
     Task<(List<MaintenanceTicket> Items, int TotalItems)> GetPagedAsync(
         int? departmentId, int? assetId, TicketStatus? status, DateTime? fromDate, DateTime? toDate,
         int? orAssignedTechnicianId, int page, int pageSize);
+
+    // UC-13: các dòng rút gọn đã lọc; Service tự tổng hợp (đếm theo Status, trung bình, theo tài sản-năm).
+    // departmentId lọc theo phòng ban của tài sản; toDate là cận trên loại trừ.
+    Task<List<MaintenanceTicketStatRow>> GetStatRowsAsync(
+        int? departmentId, int? assetId, DateTime? fromDate, DateTime? toDate);
 }

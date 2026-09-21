@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bảo trì & hỗ trợ kỹ thuật - EAIMS</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="../shared/theme.css" rel="stylesheet">
+</head>
+<body>
+  <div class="eaims-shell">
+    <div id="appNav"></div>
+
+    <main class="eaims-main">
+      <div class="page-header">
+        <div>
+          <h1>Bảo trì & hỗ trợ kỹ thuật</h1>
+          <p>Tạo phiếu báo lỗi, nhận xử lý, cập nhật kết quả và xem thống kê bảo trì.</p>
+        </div>
+        <button class="btn btn-primary" id="openCreateBtn"><i class="bi bi-plus-lg"></i> Tạo phiếu</button>
+      </div>
+
+      <div class="eaims-card mb-3">
+        <div class="card-body py-3">
+          <form id="filterForm" class="row g-2 align-items-end">
+            <div class="col-auto">
+              <label class="form-label">Trạng thái</label>
+              <select class="form-select" id="status">
+                <option value="">-- Tất cả --</option>
+                <option value="Pending">Chờ xử lý</option>
+                <option value="Resolved">Đã xử lý</option>
+                <option value="Failed">Không xử lý được</option>
+              </select>
+            </div>
+            <div class="col-auto" id="departmentFilterWrapper">
+              <label class="form-label">Phòng ban</label>
+              <select class="form-select" id="departmentId" style="width: 170px">
+                <option value="">-- Tất cả --</option>
+              </select>
+            </div>
+            <div class="col-auto">
+              <label class="form-label">Từ ngày</label>
+              <input type="date" class="form-control" id="fromDate">
+            </div>
+            <div class="col-auto">
+              <label class="form-label">Đến ngày</label>
+              <input type="date" class="form-control" id="toDate">
+            </div>
+            <div class="col-auto"><button class="btn btn-primary" type="submit"><i class="bi bi-search"></i> Lọc</button></div>
+            <div class="col-auto"><button class="btn btn-outline-secondary" type="button" id="resetFilterBtn">Xoá lọc</button></div>
+          </form>
+        </div>
+      </div>
+
+      <div id="errorAlert" class="alert alert-danger d-none" role="alert"></div>
+
+      <!-- Thống kê (UC-13) — chỉ Admin IT / Manager; dùng chung bộ lọc phòng ban + khoảng ngày ở trên. -->
+      <section id="statsSection" class="mb-4 d-none">
+        <h2 class="h5 mb-3">Thống kê bảo trì</h2>
+        <div class="row g-3 mb-3" id="statsCards"></div>
+        <div class="eaims-table-wrap">
+          <div class="table-responsive">
+            <table class="eaims-table">
+              <thead><tr><th>Mã tài sản</th><th>Năm</th><th class="text-end">Số phiếu</th></tr></thead>
+              <tbody id="statsByAssetBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <div class="eaims-table-wrap">
+        <div class="table-responsive">
+          <table class="eaims-table">
+            <thead><tr>
+              <th>Mã tài sản</th><th>Mô tả lỗi</th><th>Trạng thái</th><th>Kỹ thuật viên</th>
+              <th>Ngày báo</th><th>Ngày xử lý</th><th></th>
+            </tr></thead>
+            <tbody id="ticketTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="d-flex justify-content-between align-items-center mt-3">
+        <span class="text-muted small" id="totalItemsLabel"></span>
+        <nav><ul class="pagination mb-0" id="pagination"></ul></nav>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal Tạo phiếu -->
+  <div class="modal fade" id="ticketModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <form id="ticketForm">
+          <div class="modal-header">
+            <h5 class="modal-title">Tạo phiếu bảo trì</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="ticketModalError" class="alert alert-danger d-none py-2"></div>
+            <div class="mb-2">
+              <label class="form-label">Tìm tài sản (tên hoặc mã)</label>
+              <input class="form-control" id="assetKeyword" placeholder="Nhập để tìm..." autocomplete="off">
+              <select class="form-select mt-2" id="assetSelect" size="5" required></select>
+              <div class="form-text">Chỉ tài sản đang dùng hoặc hỏng mới tạo được phiếu.</div>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">Mô tả lỗi</label>
+              <textarea class="form-control" id="issueDescription" rows="3" required maxlength="1000"></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huỷ</button>
+            <button type="submit" class="btn btn-primary">Tạo phiếu</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Cập nhật kết quả xử lý -->
+  <div class="modal fade" id="statusModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <form id="statusForm">
+          <div class="modal-header">
+            <h5 class="modal-title" id="statusModalTitle">Cập nhật kết quả</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="statusModalError" class="alert alert-danger d-none py-2"></div>
+            <input type="hidden" id="statusTicketId">
+            <div class="mb-2">
+              <label class="form-label">Kết quả</label>
+              <select class="form-select" id="newStatus" required>
+                <option value="Resolved">Đã xử lý (Resolved)</option>
+                <option value="Failed">Không xử lý được (Failed)</option>
+              </select>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">Ghi chú xử lý</label>
+              <textarea class="form-control" id="statusNotes" rows="3" maxlength="1000"></textarea>
+            </div>
+            <div class="alert alert-warning py-2 small mb-0">
+              Phiếu đã đóng (Resolved/Failed) sẽ không thể đổi lại trạng thái.
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huỷ</button>
+            <button type="submit" class="btn btn-primary">Xác nhận</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Gán kỹ thuật viên (Admin IT) -->
+  <div class="modal fade" id="assignModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <form id="assignForm">
+          <div class="modal-header">
+            <h5 class="modal-title">Gán kỹ thuật viên</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="assignModalError" class="alert alert-danger d-none py-2"></div>
+            <input type="hidden" id="assignTicketId">
+            <label class="form-label">Kỹ thuật viên</label>
+            <select class="form-select" id="assignTechnicianId" required></select>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huỷ</button>
+            <button type="submit" class="btn btn-primary">Gán</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="../shared/api-client.js"></script>
+  <script src="../shared/nav.js"></script>
+  <script src="../assets/js/maintenance.js"></script>
+</body>
+</html>

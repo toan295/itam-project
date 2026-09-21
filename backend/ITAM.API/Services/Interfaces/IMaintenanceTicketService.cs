@@ -20,4 +20,9 @@ public interface IMaintenanceTicketService
     Task<PagedResultDto<MaintenanceTicketResponseDto>> GetPagedAsync(
         int? departmentId, int? assetId, string? status, DateOnly? fromDate, DateOnly? toDate,
         int page, int pageSize, string? currentUserRole, int? currentUserDepartmentId, int? currentUserId);
+
+    // UC-13: Manager tự động bị giới hạn theo phòng ban mình.
+    Task<MaintenanceStatsDto> GetStatsAsync(
+        int? departmentId, int? assetId, DateOnly? fromDate, DateOnly? toDate,
+        string? currentUserRole, int? currentUserDepartmentId);
 }

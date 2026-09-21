@@ -102,5 +102,6 @@ const api = {
   get: (path) => apiRequest(path, { method: "GET" }),
   post: (path, data) => apiRequest(path, { method: "POST", body: JSON.stringify(data) }),
   put: (path, data) => apiRequest(path, { method: "PUT", body: JSON.stringify(data) }),
+  patch: (path, data) => apiRequest(path, { method: "PATCH", body: JSON.stringify(data) }),
   del: (path) => apiRequest(path, { method: "DELETE" }),
 };
