@@ -382,9 +382,23 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/maintenance-tickets",
+              "raw": "{{baseUrl}}/maintenance-tickets?page=1&pageSize=20&status=Pending",
               "host": [
-                "{{baseUrl}}/maintenance-tickets"
+                "{{baseUrl}}/maintenance-tickets?page=1&pageSize=20&status=Pending"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Maintenance Ticket By Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/maintenance-tickets/1",
+              "host": [
+                "{{baseUrl}}/maintenance-tickets/1"
               ]
             }
           },
@@ -394,12 +408,54 @@
           "name": "Create Maintenance Ticket",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/maintenance-tickets",
               "host": [
                 "{{baseUrl}}/maintenance-tickets"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assetId\": 1,\n  \"issueDescription\": \"Máy không lên nguồn\",\n  \"technicianId\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Assign Technician",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/maintenance-tickets/1/assign",
+              "host": [
+                "{{baseUrl}}/maintenance-tickets/1/assign"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"technicianId\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           },
           "response": []
@@ -408,12 +464,26 @@
           "name": "Update Ticket Status",
           "request": {
             "method": "PATCH",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
-              "raw": "{{baseUrl}}/maintenance-tickets/{id}/status",
+              "raw": "{{baseUrl}}/maintenance-tickets/1/status",
               "host": [
-                "{{baseUrl}}/maintenance-tickets/{id}/status"
+                "{{baseUrl}}/maintenance-tickets/1/status"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"Resolved\",\n  \"notes\": \"Đã thay nguồn\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           },
           "response": []
@@ -424,9 +494,9 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/maintenance-tickets/stats",
+              "raw": "{{baseUrl}}/maintenance-tickets/stats?departmentId=&assetId=&fromDate=2026-01-01&toDate=2026-12-31",
               "host": [
-                "{{baseUrl}}/maintenance-tickets/stats"
+                "{{baseUrl}}/maintenance-tickets/stats?departmentId=&assetId=&fromDate=2026-01-01&toDate=2026-12-31"
               ]
             }
           },
