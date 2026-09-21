@@ -10,6 +10,7 @@ using ITAM.API.Models.DTOs;
 using ITAM.API.Models.DTOs.AssetCategories;
 using ITAM.API.Models.DTOs.Assets;
 using ITAM.API.Models.DTOs.Departments;
+using ITAM.API.Models.DTOs.MaintenanceTickets;
 using ITAM.API.Models.DTOs.SoftwareLicenses;
 using ITAM.API.Models.DTOs.Users;
 using ITAM.API.Repositories.Implementations;
@@ -110,6 +111,13 @@ builder.Services.AddScoped<ISoftwareLicenseService, SoftwareLicenseService>();
 builder.Services.AddScoped<IValidator<CreateSoftwareLicenseDto>, CreateSoftwareLicenseValidator>();
 builder.Services.AddScoped<IValidator<UpdateSoftwareLicenseDto>, UpdateSoftwareLicenseValidator>();
 builder.Services.AddScoped<IValidator<AssignSoftwareLicenseDto>, AssignSoftwareLicenseValidator>();
+
+// Module Bảo trì & hỗ trợ kỹ thuật (MaintenanceTickets) — Tuần 5-6, Lâm Toàn.
+builder.Services.AddScoped<IMaintenanceTicketRepository, MaintenanceTicketRepository>();
+builder.Services.AddScoped<IMaintenanceTicketService, MaintenanceTicketService>();
+builder.Services.AddScoped<IValidator<CreateMaintenanceTicketRequestDto>, CreateMaintenanceTicketRequestValidator>();
+builder.Services.AddScoped<IValidator<AssignTechnicianRequestDto>, AssignTechnicianRequestValidator>();
+builder.Services.AddScoped<IValidator<UpdateTicketStatusRequestDto>, UpdateTicketStatusRequestValidator>();
 
 // Cho phép frontend (chạy ở origin khác — Live Server/static server) gọi API qua fetch().
 // Danh sách origin cấu hình trong appsettings (Development): Cors:AllowedOrigins.
