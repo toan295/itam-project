@@ -98,6 +98,10 @@ public class AssetAllocationService : IAssetAllocationService
         string? currentUserRole,
         int? currentUserDepartmentId)
     {
+        // Tracked + Include(Asset): allocation và asset của nó cùng nằm trong 1 AppDbContext, cho phép
+        // sửa cả 2 rồi ghi bằng đúng 1 SaveChangesAsync — đúng quy tắc UC-15 "phải nằm trong cùng 1
+        // transaction" (không tách thành 2 lần SaveChangesAsync riêng biệt, vì lần thứ 2 có thể lỗi
+        // giữa chừng và để lại allocation đã "Returned" nhưng Asset chưa chuyển Broken).
         var allocation = await _allocationRepository.GetEntityByIdAsync(id)
             ?? throw new AllocationNotFoundException(id);
 
@@ -116,29 +120,32 @@ public class AssetAllocationService : IAssetAllocationService
             throw new ArgumentException("Ngày thu hồi không được trước ngày phân bổ.");
         }
 
+        // dto.Condition đã được validator chặn chỉ còn "Good"/"Damaged" — Enum.Parse ở đây không thể ném lỗi.
+        var condition = Enum.Parse<AssetReturnCondition>(dto.Condition);
+
         allocation.ReturnedDate = dto.ReturnedDate;
-        allocation.ReturnCondition = dto.Condition;
+        allocation.ReturnCondition = condition;
         allocation.ReturnNote = string.IsNullOrWhiteSpace(dto.ReturnNote) ? null : dto.ReturnNote.Trim();
         allocation.Status = AllocationStatus.Returned;
 
-        await _allocationRepository.SaveChangesAsync();
-
         // UC-15 bước 4: tài sản nhận lại ở tình trạng Damaged phải chuyển sang Broken.
-        // Good giữ nguyên trạng thái hiện tại của Asset.
-        if (dto.Condition == "Damaged")
+        // Good giữ nguyên trạng thái hiện tại của Asset. allocation.Asset đã được Include ở trên nên
+        // không cần truy vấn lại — Update() chỉ đánh dấu Modified trên entity đã tracked sẵn.
+        if (condition == AssetReturnCondition.Damaged)
         {
-            var asset = await _assetRepository.GetByIdWithDetailsAsync(allocation.AssetId)
-                ?? throw new AssetNotFoundException(allocation.AssetId);
-            asset.Status = AssetStatus.Broken;
-            _assetRepository.Update(asset);
-            await _assetRepository.SaveChangesAsync();
+            allocation.Asset.Status = AssetStatus.Broken;
+            _assetRepository.Update(allocation.Asset);
         }
+
+        // Một lần SaveChangesAsync duy nhất cho cả allocation lẫn asset (nếu có) — cả 2 repository dùng
+        // chung 1 AppDbContext (Scoped) nên đây là 1 transaction ngầm duy nhất của EF Core.
+        await _allocationRepository.SaveChangesAsync();
 
         _logger.LogInformation(
             "Đã thu hồi AllocationId={AllocationId}, AssetId={AssetId}, Condition={Condition}.",
             allocation.Id,
             allocation.AssetId,
-            dto.Condition);
+            condition);
 
         var returned = await _allocationRepository.GetByIdWithDetailsAsync(id)
             ?? throw new AllocationNotFoundException(id);
@@ -194,7 +201,7 @@ public class AssetAllocationService : IAssetAllocationService
         return MapToDto(allocation);
     }
 
-    public Task<IReadOnlyList<OverdueAllocationDto>> GetOverdueAsync(
+    public async Task<IReadOnlyList<OverdueAllocationDto>> GetOverdueAsync(
         int thresholdDays,
         string? currentUserRole,
         int? currentUserDepartmentId)
@@ -205,10 +212,39 @@ public class AssetAllocationService : IAssetAllocationService
             currentUserRole,
             currentUserDepartmentId);
 
-        return _allocationRepository.GetOverdueAsync(
-            DateOnly.FromDateTime(DateTime.UtcNow),
-            thresholdDays,
-            scopedDepartmentId);
+        var candidates = await _allocationRepository.GetOpenAllocationCandidatesAsync(scopedDepartmentId);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        var result = new List<OverdueAllocationDto>();
+        foreach (var candidate in candidates)
+        {
+            var lastMaintenanceDate = candidate.LastMaintenanceDate.HasValue
+                ? DateOnly.FromDateTime(candidate.LastMaintenanceDate.Value)
+                : (DateOnly?)null;
+
+            // Chưa từng có phiếu bảo trì -> dùng PurchaseDate; nếu cũng không có -> dùng AllocatedDate
+            // (Mục B2, "cảnh báo quá hạn bảo trì": đề xuất cụ thể hoá, chưa có UC riêng mô tả chi tiết).
+            var comparisonDate = lastMaintenanceDate ?? candidate.AssetPurchaseDate ?? candidate.AllocatedDate;
+            var daysSinceLastMaintenance = today.DayNumber - comparisonDate.DayNumber;
+            if (daysSinceLastMaintenance <= thresholdDays)
+            {
+                continue;
+            }
+
+            result.Add(new OverdueAllocationDto
+            {
+                AllocationId = candidate.AllocationId,
+                AssetId = candidate.AssetId,
+                AssetCode = candidate.AssetCode,
+                AssetName = candidate.AssetName,
+                DepartmentName = candidate.DepartmentName,
+                RecipientName = candidate.RecipientName,
+                LastMaintenanceDate = lastMaintenanceDate,
+                DaysSinceLastMaintenance = daysSinceLastMaintenance,
+            });
+        }
+
+        return result.OrderByDescending(x => x.DaysSinceLastMaintenance).ToList();
     }
 
     private static AllocationStatus? ParseStatusOrThrow(string? status)
@@ -266,7 +302,7 @@ public class AssetAllocationService : IAssetAllocationService
         AllocatedDate = allocation.AllocatedDate,
         ReturnedDate = allocation.ReturnedDate,
         HandoverNote = allocation.HandoverNote,
-        ReturnCondition = allocation.ReturnCondition,
+        ReturnCondition = allocation.ReturnCondition?.ToString(),
         ReturnNote = allocation.ReturnNote,
         Status = allocation.Status.ToString(),
     };

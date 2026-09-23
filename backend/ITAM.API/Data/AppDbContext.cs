@@ -142,7 +142,7 @@ public class AppDbContext : DbContext
         {
             entity.Property(e => e.RecipientName).HasMaxLength(100);
             entity.Property(e => e.HandoverNote).HasMaxLength(500);
-            entity.Property(e => e.ReturnCondition).HasMaxLength(20);
+            entity.Property(e => e.ReturnCondition).HasConversion<byte>();
             entity.Property(e => e.ReturnNote).HasMaxLength(500);
             entity.Property(e => e.Status).HasConversion<byte>();
             entity.HasIndex(e => e.AssetId);
