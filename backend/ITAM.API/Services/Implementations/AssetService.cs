@@ -20,9 +20,14 @@ public class AssetService : IAssetService
 
     private readonly IAssetRepository _repo;
 
-    public AssetService(IAssetRepository repo)
+    // A4 (Tuần 5-6): chỉ dùng để gọi HasOpenAllocationAsync trong DisposeAsync — interface do Hoàng Đức
+    // Tú sở hữu (PHẦN B), không tự thêm/sửa method nào trên đó từ phía module Assets.
+    private readonly IAssetAllocationRepository _allocationRepo;
+
+    public AssetService(IAssetRepository repo, IAssetAllocationRepository allocationRepo)
     {
         _repo = repo;
+        _allocationRepo = allocationRepo;
     }
 
     public async Task<AssetResponseDto> CreateAsync(
@@ -136,8 +141,13 @@ public class AssetService : IAssetService
         var asset = await _repo.GetByIdWithDetailsAsync(id)
             ?? throw new AssetNotFoundException(id);
 
-        // TODO: bổ sung điều kiện kiểm tra "không có AssetAllocation đang mở" (UC-07) khi
-        // module Phân bổ - thu hồi tài sản sẵn sàng (Tuần 5-6, Hoàng Đức Tú phụ trách).
+        // UC-07 E1: chặn thanh lý khi tài sản còn AssetAllocation đang mở (chưa thu hồi) — phải thu hồi
+        // (UC-15) trước. HasOpenAllocationAsync là hợp đồng của PHẦN B (Hoàng Đức Tú, Tuần 5-6).
+        if (await _allocationRepo.HasOpenAllocationAsync(id))
+        {
+            throw new AssetHasOpenAllocationException(id);
+        }
+
         asset.Status = AssetStatus.Disposed;
         _repo.Update(asset);
         await _repo.SaveChangesAsync();

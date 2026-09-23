@@ -11,16 +11,19 @@ namespace ITAM.Tests.Services;
 public class AssetServiceTests
 {
     private readonly Mock<IAssetRepository> _repoMock = new();
+    private readonly Mock<IAssetAllocationRepository> _allocationRepoMock = new();
     private readonly AssetService _sut;
 
     public AssetServiceTests()
     {
-        _sut = new AssetService(_repoMock.Object);
+        _sut = new AssetService(_repoMock.Object, _allocationRepoMock.Object);
 
-        // Mặc định: CategoryId/DepartmentId hợp lệ, chưa có AssetCode nào trùng — từng test override khi cần.
+        // Mặc định: CategoryId/DepartmentId hợp lệ, chưa có AssetCode nào trùng, chưa có allocation nào
+        // đang mở — từng test override khi cần.
         _repoMock.Setup(r => r.CategoryExistsAsync(It.IsAny<int>())).ReturnsAsync(true);
         _repoMock.Setup(r => r.DepartmentExistsAsync(It.IsAny<int>())).ReturnsAsync(true);
         _repoMock.Setup(r => r.GetByAssetCodeAsync(It.IsAny<string>())).ReturnsAsync((Asset?)null);
+        _allocationRepoMock.Setup(r => r.HasOpenAllocationAsync(It.IsAny<int>())).ReturnsAsync(false);
     }
 
     private static CreateAssetRequestDto ValidCreateDto(string assetCode = "TS-001", int departmentId = 1) => new()
@@ -279,6 +282,32 @@ public class AssetServiceTests
     {
         _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
             .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", Status = AssetStatus.InUse });
+
+        var result = await _sut.DisposeAsync(1);
+
+        Assert.Equal("Disposed", result.Status);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_AssetHasOpenAllocation_ThrowsAssetHasOpenAllocationException()
+    {
+        // A4: đóng nợ kỹ thuật UC-07 của Tuần 3-4 — không cho thanh lý khi còn AssetAllocation chưa thu hồi.
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", Status = AssetStatus.InUse });
+        _allocationRepoMock.Setup(r => r.HasOpenAllocationAsync(1)).ReturnsAsync(true);
+
+        await Assert.ThrowsAsync<AssetHasOpenAllocationException>(() => _sut.DisposeAsync(1));
+
+        _repoMock.Verify(r => r.Update(It.IsAny<Asset>()), Times.Never);
+        _repoMock.Verify(r => r.SaveChangesAsync(), Times.Never);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_AssetHasNoOpenAllocation_Succeeds()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", Status = AssetStatus.InUse });
+        _allocationRepoMock.Setup(r => r.HasOpenAllocationAsync(1)).ReturnsAsync(false);
 
         var result = await _sut.DisposeAsync(1);
 
