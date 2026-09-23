@@ -34,3 +34,15 @@ public class AssetDisposalNotAllowedException : Exception
     {
     }
 }
+
+// UC-07 E1: không cho thanh lý tài sản khi còn AssetAllocation đang mở (chưa thu hồi) — phải thu hồi
+// trước (UC-15). Tách riêng khỏi AssetDisposalNotAllowedException: lý do khác hẳn (409 - xung đột
+// trạng thái, không phải 403 - thiếu quyền), dùng chung sẽ hiển thị nhầm thông báo "chỉ Admin IT..."
+// cho một lỗi hoàn toàn không liên quan tới quyền hạn.
+public class AssetHasOpenAllocationException : Exception
+{
+    public AssetHasOpenAllocationException(int assetId)
+        : base($"Tài sản Id={assetId} đang có một phân bổ chưa thu hồi. Vui lòng thu hồi trước khi thanh lý.")
+    {
+    }
+}

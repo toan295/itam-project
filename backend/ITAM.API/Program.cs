@@ -81,6 +81,9 @@ builder.Services.AddSingleton<PasswordResetTokenHelper>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 
 // Module Quản lý tài sản CNTT (Assets) — Tuần 3-4, Lâm Toàn.
+// A4 (Tuần 5-6): AssetService giờ inject thêm IAssetAllocationRepository (đăng ký ở khối "Phân bổ &
+// thu hồi tài sản" bên dưới) để DisposeAsync gọi HasOpenAllocationAsync — thứ tự đăng ký DI không quan
+// trọng (ASP.NET Core resolve lazy theo request), chỉ ghi chú ở đây để không bất ngờ khi đọc code.
 builder.Services.AddScoped<IAssetRepository, AssetRepository>();
 builder.Services.AddScoped<IAssetService, AssetService>();
 builder.Services.AddScoped<IValidator<CreateAssetRequestDto>, CreateAssetRequestValidator>();
