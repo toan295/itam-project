@@ -109,6 +109,8 @@ Table AssetAllocations {
   AllocatedDate date [not null]
   ReturnedDate date [note: 'null = con dang cap phat']
   HandoverNote varchar(500)
+  ReturnCondition varchar(20) [note: 'Good | Damaged, null khi chưa thu hồi']
+  ReturnNote varchar(500) [note: 'Ghi chú khi nhận lại tài sản']
   Status tinyint [not null, note: '0=Allocated,1=Returned']
 
   indexes {

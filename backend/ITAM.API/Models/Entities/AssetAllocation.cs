@@ -11,6 +11,8 @@ public class AssetAllocation
     public DateOnly AllocatedDate { get; set; }
     public DateOnly? ReturnedDate { get; set; }
     public string? HandoverNote { get; set; }
+    public string? ReturnCondition { get; set; }
+    public string? ReturnNote { get; set; }
     public AllocationStatus Status { get; set; }
 
     public Asset Asset { get; set; } = null!;

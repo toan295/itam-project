@@ -110,6 +110,14 @@ namespace ITAM.API.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
 
+                    b.Property<string>("ReturnCondition")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("ReturnNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
                     b.Property<DateOnly?>("ReturnedDate")
                         .HasColumnType("date");
 
