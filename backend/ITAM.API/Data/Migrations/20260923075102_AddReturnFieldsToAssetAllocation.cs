@@ -10,13 +10,11 @@ namespace ITAM.API.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<string>(
+            migrationBuilder.AddColumn<byte>(
                 name: "ReturnCondition",
                 table: "AssetAllocations",
-                type: "varchar(20)",
-                maxLength: 20,
-                nullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4");
+                type: "tinyint unsigned",
+                nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "ReturnNote",

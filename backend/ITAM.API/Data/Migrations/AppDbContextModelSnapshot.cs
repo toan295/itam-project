@@ -110,9 +110,8 @@ namespace ITAM.API.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
 
-                    b.Property<string>("ReturnCondition")
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
+                    b.Property<byte?>("ReturnCondition")
+                        .HasColumnType("tinyint unsigned");
 
                     b.Property<string>("ReturnNote")
                         .HasMaxLength(500)
