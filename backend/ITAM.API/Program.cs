@@ -8,6 +8,7 @@ using ITAM.API.Data;
 using ITAM.API.Helpers;
 using ITAM.API.Models.DTOs;
 using ITAM.API.Models.DTOs.AssetCategories;
+using ITAM.API.Models.DTOs.AssetAllocations;
 using ITAM.API.Models.DTOs.Assets;
 using ITAM.API.Models.DTOs.Departments;
 using ITAM.API.Models.DTOs.SoftwareLicenses;
@@ -111,6 +112,12 @@ builder.Services.AddScoped<IValidator<CreateSoftwareLicenseDto>, CreateSoftwareL
 builder.Services.AddScoped<IValidator<UpdateSoftwareLicenseDto>, UpdateSoftwareLicenseValidator>();
 builder.Services.AddScoped<IValidator<AssignSoftwareLicenseDto>, AssignSoftwareLicenseValidator>();
 
+// Module Phân bổ & thu hồi tài sản (AssetAllocations) — Tuần 5, Hoàng Đức Tú.
+builder.Services.AddScoped<IAssetAllocationRepository, AssetAllocationRepository>();
+builder.Services.AddScoped<IAssetAllocationService, AssetAllocationService>();
+builder.Services.AddScoped<IValidator<CreateAssetAllocationDto>, CreateAssetAllocationValidator>();
+builder.Services.AddScoped<IValidator<ReturnAssetAllocationDto>, ReturnAssetAllocationValidator>();
+
 // Cho phép frontend (chạy ở origin khác — Live Server/static server) gọi API qua fetch().
 // Danh sách origin cấu hình trong appsettings (Development): Cors:AllowedOrigins.
 const string FrontendCorsPolicy = "FrontendCorsPolicy";
@@ -164,6 +171,20 @@ builder.Services.AddRateLimiter(options =>
 // module nào cần.
 builder.Services.AddAuthorization();
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("FrontendDev", policy =>
+    {
+        policy
+            .WithOrigins(
+                "http://127.0.0.1:5500",
+                "http://localhost:5500"
+            )
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
+
 var app = builder.Build();
 
 // Swagger UI is exposed only in Development.
@@ -174,6 +195,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseCors("FrontendDev");
 
 app.UseCors(FrontendCorsPolicy);
 
