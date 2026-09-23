@@ -155,6 +155,10 @@ public class AssetsController : ControllerBase
         {
             return NotFound(ApiResponse<object>.Fail(ex.Message));
         }
+        catch (AssetHasOpenAllocationException ex)
+        {
+            return Conflict(ApiResponse<object>.Fail(ex.Message));
+        }
     }
 
     private string? GetCurrentUserRole() => User.FindFirstValue(ClaimTypes.Role);
