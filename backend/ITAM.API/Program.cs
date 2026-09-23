@@ -8,6 +8,7 @@ using ITAM.API.Data;
 using ITAM.API.Helpers;
 using ITAM.API.Models.DTOs;
 using ITAM.API.Models.DTOs.AssetCategories;
+using ITAM.API.Models.DTOs.AssetAllocations;
 using ITAM.API.Models.DTOs.Assets;
 using ITAM.API.Models.DTOs.Departments;
 using ITAM.API.Models.DTOs.MaintenanceTickets;
@@ -118,6 +119,12 @@ builder.Services.AddScoped<IMaintenanceTicketService, MaintenanceTicketService>(
 builder.Services.AddScoped<IValidator<CreateMaintenanceTicketRequestDto>, CreateMaintenanceTicketRequestValidator>();
 builder.Services.AddScoped<IValidator<AssignTechnicianRequestDto>, AssignTechnicianRequestValidator>();
 builder.Services.AddScoped<IValidator<UpdateTicketStatusRequestDto>, UpdateTicketStatusRequestValidator>();
+
+// Module Phân bổ & thu hồi tài sản (AssetAllocations) — Tuần 5, Hoàng Đức Tú.
+builder.Services.AddScoped<IAssetAllocationRepository, AssetAllocationRepository>();
+builder.Services.AddScoped<IAssetAllocationService, AssetAllocationService>();
+builder.Services.AddScoped<IValidator<CreateAssetAllocationDto>, CreateAssetAllocationValidator>();
+builder.Services.AddScoped<IValidator<ReturnAssetAllocationDto>, ReturnAssetAllocationValidator>();
 
 // Cho phép frontend (chạy ở origin khác — Live Server/static server) gọi API qua fetch().
 // Danh sách origin cấu hình trong appsettings (Development): Cors:AllowedOrigins.
