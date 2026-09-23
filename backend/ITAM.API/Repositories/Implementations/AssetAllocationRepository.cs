@@ -1,8 +1,8 @@
 using ITAM.API.Data;
-using ITAM.API.Models.DTOs.AssetAllocations;
 using ITAM.API.Models.Entities;
 using ITAM.API.Models.Enums;
 using ITAM.API.Repositories.Interfaces;
+using ITAM.API.Repositories.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace ITAM.API.Repositories.Implementations;
@@ -23,8 +23,10 @@ public class AssetAllocationRepository : IAssetAllocationRepository
             .Include(x => x.Department)
             .FirstOrDefaultAsync(x => x.Id == id);
 
+    // Tracked (không AsNoTracking) + Include(Asset) — xem giải thích trong interface.
     public Task<AssetAllocation?> GetEntityByIdAsync(int id) =>
         _context.AssetAllocations
+            .Include(x => x.Asset)
             .FirstOrDefaultAsync(x => x.Id == id);
 
     public Task<bool> HasOpenAllocationAsync(int assetId) =>
@@ -73,10 +75,9 @@ public class AssetAllocationRepository : IAssetAllocationRepository
         return (items, totalItems);
     }
 
-    public async Task<IReadOnlyList<OverdueAllocationDto>> GetOverdueAsync(
-        DateOnly today,
-        int thresholdDays,
-        int? departmentId)
+    // Chỉ đọc dữ liệu thô (allocation đang mở + ngày bảo trì gần nhất) — quyết định "quá hạn hay chưa"
+    // (so sánh với thresholdDays) thuộc về Service, đúng quy ước "Repository không chứa nghiệp vụ".
+    public async Task<List<AllocationOverdueCandidateRow>> GetOpenAllocationCandidatesAsync(int? departmentId)
     {
         var allocationQuery = _context.AssetAllocations
             .AsNoTracking()
@@ -92,7 +93,7 @@ public class AssetAllocationRepository : IAssetAllocationRepository
         var allocations = await allocationQuery.ToListAsync();
         if (allocations.Count == 0)
         {
-            return Array.Empty<OverdueAllocationDto>();
+            return new List<AllocationOverdueCandidateRow>();
         }
 
         // Tách truy vấn MAX bảo trì thành bước riêng để LINQ dịch ổn định sang MySQL,
@@ -109,25 +110,10 @@ public class AssetAllocationRepository : IAssetAllocationRepository
             })
             .ToDictionaryAsync(x => x.AssetId, x => x.LastMaintenanceDate);
 
-        var result = new List<OverdueAllocationDto>();
-        foreach (var allocation in allocations)
+        return allocations.Select(allocation =>
         {
-            maintenanceDates.TryGetValue(allocation.AssetId, out var lastMaintenanceDateTime);
-            var lastMaintenanceDate = lastMaintenanceDateTime.HasValue
-                ? DateOnly.FromDateTime(lastMaintenanceDateTime.Value)
-                : (DateOnly?)null;
-
-            var comparisonDate = lastMaintenanceDate
-                ?? allocation.Asset.PurchaseDate
-                ?? allocation.AllocatedDate;
-
-            var daysSinceLastMaintenance = today.DayNumber - comparisonDate.DayNumber;
-            if (daysSinceLastMaintenance <= thresholdDays)
-            {
-                continue;
-            }
-
-            result.Add(new OverdueAllocationDto
+            maintenanceDates.TryGetValue(allocation.AssetId, out var lastMaintenanceDate);
+            return new AllocationOverdueCandidateRow
             {
                 AllocationId = allocation.Id,
                 AssetId = allocation.AssetId,
@@ -135,14 +121,11 @@ public class AssetAllocationRepository : IAssetAllocationRepository
                 AssetName = allocation.Asset.Name,
                 DepartmentName = allocation.Department.Name,
                 RecipientName = allocation.RecipientName,
+                AllocatedDate = allocation.AllocatedDate,
+                AssetPurchaseDate = allocation.Asset.PurchaseDate,
                 LastMaintenanceDate = lastMaintenanceDate,
-                DaysSinceLastMaintenance = daysSinceLastMaintenance,
-            });
-        }
-
-        return result
-            .OrderByDescending(x => x.DaysSinceLastMaintenance)
-            .ToList();
+            };
+        }).ToList();
     }
 
     public async Task AddAsync(AssetAllocation allocation) =>

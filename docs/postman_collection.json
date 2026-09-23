@@ -508,15 +508,57 @@
       "name": "Asset Allocations",
       "item": [
         {
+          "name": "Get Allocations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/allocations?page=1&pageSize=20&status=Allocated&departmentId=",
+              "host": [
+                "{{baseUrl}}/allocations?page=1&pageSize=20&status=Allocated&departmentId="
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Allocation By Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/allocations/1",
+              "host": [
+                "{{baseUrl}}/allocations/1"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
           "name": "Create Allocation",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/allocations",
               "host": [
                 "{{baseUrl}}/allocations"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assetId\": 1,\n  \"departmentId\": 1,\n  \"recipientName\": \"Nguyen Van A\",\n  \"allocatedDate\": \"2026-09-23\",\n  \"handoverNote\": \"Ban giao day du phu kien\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           },
           "response": []
@@ -525,12 +567,26 @@
           "name": "Return Allocation",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
-              "raw": "{{baseUrl}}/allocations/{id}/return",
+              "raw": "{{baseUrl}}/allocations/1/return",
               "host": [
-                "{{baseUrl}}/allocations/{id}/return"
+                "{{baseUrl}}/allocations/1/return"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"returnedDate\": \"2026-09-23\",\n  \"condition\": \"Good\",\n  \"returnNote\": \"Da kiem tra khi nhan lai\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           },
           "response": []
@@ -541,9 +597,9 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/allocations/overdue",
+              "raw": "{{baseUrl}}/allocations/overdue?thresholdDays=180",
               "host": [
-                "{{baseUrl}}/allocations/overdue"
+                "{{baseUrl}}/allocations/overdue?thresholdDays=180"
               ]
             }
           },
