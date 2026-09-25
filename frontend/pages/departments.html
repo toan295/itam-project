@@ -16,7 +16,7 @@
       <div class="page-header">
         <div>
           <h1>Phòng ban</h1>
-          <p>Danh mục dùng chung cho toàn hệ thống. Chỉ Admin IT được thêm phòng ban.</p>
+          <p>Danh mục dùng chung cho toàn hệ thống. Chỉ Admin IT được thêm/sửa/xoá phòng ban; không xoá được phòng ban đang có người dùng hoặc tài sản.</p>
         </div>
         <button class="btn btn-primary" id="openCreateBtn"><i class="bi bi-plus-lg"></i> Thêm phòng ban</button>
       </div>
@@ -26,7 +26,7 @@
       <div class="eaims-table-wrap">
         <div class="table-responsive">
           <table class="eaims-table">
-            <thead><tr><th style="width:80px">Id</th><th>Tên phòng ban</th><th>Mô tả</th></tr></thead>
+            <thead><tr><th style="width:80px">Id</th><th>Tên phòng ban</th><th>Mô tả</th><th class="text-end">Thao tác</th></tr></thead>
             <tbody id="departmentTableBody"></tbody>
           </table>
         </div>
@@ -39,11 +39,12 @@
       <div class="modal-content">
         <form id="departmentForm">
           <div class="modal-header">
-            <h5 class="modal-title">Thêm phòng ban</h5>
+            <h5 class="modal-title" id="departmentModalTitle">Thêm phòng ban</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
             <div id="modalError" class="alert alert-danger d-none py-2"></div>
+            <input type="hidden" id="departmentId">
             <div class="mb-2">
               <label class="form-label">Tên phòng ban</label>
               <input class="form-control" id="departmentName" required maxlength="100">
