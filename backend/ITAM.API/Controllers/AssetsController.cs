@@ -36,7 +36,8 @@ public class AssetsController : ControllerBase
         try
         {
             var result = await _assetService.GetPagedAsync(
-                departmentId, status, page, pageSize, GetCurrentUserRole(), GetCurrentUserDepartmentId());
+                departmentId, status, page, pageSize,
+                GetCurrentUserRole(), GetCurrentUserDepartmentId(), GetCurrentUserId());
             return Ok(ApiResponse<object>.Ok(result));
         }
         catch (ArgumentException ex)
@@ -50,7 +51,8 @@ public class AssetsController : ControllerBase
     {
         try
         {
-            var result = await _assetService.GetByIdAsync(id, GetCurrentUserRole(), GetCurrentUserDepartmentId());
+            var result = await _assetService.GetByIdAsync(
+                id, GetCurrentUserRole(), GetCurrentUserDepartmentId(), GetCurrentUserId());
             return Ok(ApiResponse<object>.Ok(result));
         }
         catch (AssetNotFoundException ex)
@@ -64,7 +66,8 @@ public class AssetsController : ControllerBase
     {
         try
         {
-            var result = await _assetService.SearchAsync(filter, GetCurrentUserRole(), GetCurrentUserDepartmentId());
+            var result = await _assetService.SearchAsync(
+                filter, GetCurrentUserRole(), GetCurrentUserDepartmentId(), GetCurrentUserId());
             return Ok(ApiResponse<object>.Ok(result));
         }
         catch (ArgumentException ex)
@@ -132,6 +135,10 @@ public class AssetsController : ControllerBase
         {
             return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Fail(ex.Message));
         }
+        catch (AssetReactivationNotAllowedException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Fail(ex.Message));
+        }
         catch (AssetCodeAlreadyExistsException ex)
         {
             return Conflict(ApiResponse<object>.Fail(ex.Message));
@@ -165,4 +172,7 @@ public class AssetsController : ControllerBase
 
     private int? GetCurrentUserDepartmentId() =>
         int.TryParse(User.FindFirstValue("DepartmentId"), out var departmentId) ? departmentId : null;
+
+    private int? GetCurrentUserId() =>
+        int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) ? userId : null;
 }

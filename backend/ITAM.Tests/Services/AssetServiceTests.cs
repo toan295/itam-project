@@ -314,6 +314,90 @@ public class AssetServiceTests
         Assert.Equal("Disposed", result.Status);
     }
 
+
+    // ----- Regression: quyền theo vai trò (rà soát Tuần 5-6) -----
+
+    [Fact]
+    public async Task UpdateAsync_ManagerReactivatesDisposedAsset_ThrowsReactivationNotAllowed()
+    {
+        // Manager không được "hồi sinh" tài sản Admin IT đã thanh lý qua PUT.
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 1, Status = AssetStatus.Disposed });
+
+        await Assert.ThrowsAsync<AssetReactivationNotAllowedException>(
+            () => _sut.UpdateAsync(1, ValidUpdateDto(status: "InUse"), "Manager", 1));
+
+        _repoMock.Verify(r => r.SaveChangesAsync(), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_AdminReactivatesDisposedAsset_Succeeds()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 1, Status = AssetStatus.Disposed });
+
+        var result = await _sut.UpdateAsync(1, ValidUpdateDto(status: "InUse"), "Admin IT", 1);
+
+        Assert.Equal("InUse", result.Status);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_TechnicianOutsideDepartmentButAssignedActiveTicket_ReturnsAsset()
+    {
+        // UC-08 E2: Technician thấy tài sản của phiếu bảo trì đang chờ xử lý được giao cho mình, dù khác phòng ban.
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 2 });
+        _repoMock.Setup(r => r.HasActiveTicketAssignedToAsync(1, 7)).ReturnsAsync(true);
+
+        var result = await _sut.GetByIdAsync(1, "Technician", 1, 7);
+
+        Assert.Equal(1, result.Id);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_TechnicianOutsideDepartmentWithoutTicket_ThrowsNotFound()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 2 });
+        _repoMock.Setup(r => r.HasActiveTicketAssignedToAsync(It.IsAny<int>(), It.IsAny<int>())).ReturnsAsync(false);
+
+        await Assert.ThrowsAsync<AssetNotFoundException>(() => _sut.GetByIdAsync(1, "Technician", 1, 7));
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_ManagerNeverGetsAssignedTicketExemption()
+    {
+        // Ngoại lệ "phiếu được giao" chỉ dành cho Technician, không áp dụng cho Manager.
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 2 });
+        _repoMock.Setup(r => r.HasActiveTicketAssignedToAsync(It.IsAny<int>(), It.IsAny<int>())).ReturnsAsync(true);
+
+        await Assert.ThrowsAsync<AssetNotFoundException>(() => _sut.GetByIdAsync(1, "Manager", 1, 7));
+    }
+
+    [Fact]
+    public async Task SearchAsync_Technician_PassesOwnUserIdAsAssignedTechnicianScope()
+    {
+        _repoMock.Setup(r => r.SearchAsync(null, 3, null, null, null, null, 9, 1, 20))
+            .ReturnsAsync((new List<Asset>(), 0));
+
+        await _sut.SearchAsync(new AssetSearchFilterDto(), "Technician", 3, 9);
+
+        _repoMock.Verify(r => r.SearchAsync(null, 3, null, null, null, null, 9, 1, 20), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("Manager")]
+    [InlineData("Admin IT")]
+    public async Task GetPagedAsync_NonTechnician_DoesNotPassAssignedTechnicianScope(string role)
+    {
+        _repoMock.Setup(r => r.GetPagedAsync(It.IsAny<int?>(), null, null, 1, 20)).ReturnsAsync((new List<Asset>(), 0));
+
+        await _sut.GetPagedAsync(null, null, 1, 20, role, 1, 9);
+
+        _repoMock.Verify(r => r.GetPagedAsync(It.IsAny<int?>(), null, null, 1, 20), Times.Once);
+    }
+
     // ----- GetByIdAsync / IsUnderWarranty -----
 
     [Fact]
@@ -326,7 +410,7 @@ public class AssetServiceTests
             WarrantyExpiry = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(10)),
         });
 
-        var result = await _sut.GetByIdAsync(1, "Admin IT", null);
+        var result = await _sut.GetByIdAsync(1, "Admin IT", null, null);
 
         Assert.True(result.IsUnderWarranty);
     }
@@ -341,7 +425,7 @@ public class AssetServiceTests
             WarrantyExpiry = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-10)),
         });
 
-        var result = await _sut.GetByIdAsync(1, "Admin IT", null);
+        var result = await _sut.GetByIdAsync(1, "Admin IT", null, null);
 
         Assert.False(result.IsUnderWarranty);
     }
@@ -352,7 +436,7 @@ public class AssetServiceTests
         _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
             .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", WarrantyExpiry = null });
 
-        var result = await _sut.GetByIdAsync(1, "Admin IT", null);
+        var result = await _sut.GetByIdAsync(1, "Admin IT", null, null);
 
         Assert.False(result.IsUnderWarranty);
     }
@@ -362,7 +446,7 @@ public class AssetServiceTests
     {
         _repoMock.Setup(r => r.GetByIdWithDetailsAsync(It.IsAny<int>())).ReturnsAsync((Asset?)null);
 
-        await Assert.ThrowsAsync<AssetNotFoundException>(() => _sut.GetByIdAsync(999, "Admin IT", null));
+        await Assert.ThrowsAsync<AssetNotFoundException>(() => _sut.GetByIdAsync(999, "Admin IT", null, null));
     }
 
     [Fact]
@@ -372,7 +456,7 @@ public class AssetServiceTests
             .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 2 });
 
         // Không lộ 403 (mới biết asset tồn tại) — phải là 404 y như khi asset thật sự không tồn tại.
-        await Assert.ThrowsAsync<AssetNotFoundException>(() => _sut.GetByIdAsync(1, "Manager", 1));
+        await Assert.ThrowsAsync<AssetNotFoundException>(() => _sut.GetByIdAsync(1, "Manager", 1, null));
     }
 
     [Fact]
@@ -381,7 +465,7 @@ public class AssetServiceTests
         _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
             .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 2 });
 
-        await Assert.ThrowsAsync<AssetNotFoundException>(() => _sut.GetByIdAsync(1, "Technician", 1));
+        await Assert.ThrowsAsync<AssetNotFoundException>(() => _sut.GetByIdAsync(1, "Technician", 1, null));
     }
 
     [Fact]
@@ -390,7 +474,7 @@ public class AssetServiceTests
         _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
             .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 1 });
 
-        var result = await _sut.GetByIdAsync(1, "Manager", 1);
+        var result = await _sut.GetByIdAsync(1, "Manager", 1, null);
 
         Assert.Equal(1, result.Id);
     }
@@ -401,7 +485,7 @@ public class AssetServiceTests
         _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
             .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 2 });
 
-        var result = await _sut.GetByIdAsync(1, "Admin IT", 1);
+        var result = await _sut.GetByIdAsync(1, "Admin IT", 1, null);
 
         Assert.Equal(1, result.Id);
     }
@@ -412,40 +496,40 @@ public class AssetServiceTests
     public async Task GetPagedAsync_InvalidStatus_ThrowsArgumentException()
     {
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _sut.GetPagedAsync(null, "KhongTonTai", 1, 20, "Admin IT", 1));
+            () => _sut.GetPagedAsync(null, "KhongTonTai", 1, 20, "Admin IT", 1, null));
     }
 
     [Fact]
     public async Task GetPagedAsync_AdminIT_UsesRequestedDepartmentId()
     {
-        _repoMock.Setup(r => r.GetPagedAsync(5, null, 1, 20)).ReturnsAsync((new List<Asset>(), 0));
+        _repoMock.Setup(r => r.GetPagedAsync(5, null, null, 1, 20)).ReturnsAsync((new List<Asset>(), 0));
 
-        await _sut.GetPagedAsync(5, null, 1, 20, "Admin IT", 1);
+        await _sut.GetPagedAsync(5, null, 1, 20, "Admin IT", 1, null);
 
-        _repoMock.Verify(r => r.GetPagedAsync(5, null, 1, 20), Times.Once);
+        _repoMock.Verify(r => r.GetPagedAsync(5, null, null, 1, 20), Times.Once);
     }
 
     [Fact]
     public async Task GetPagedAsync_Manager_IgnoresRequestedDepartmentId_UsesOwnDepartment()
     {
-        _repoMock.Setup(r => r.GetPagedAsync(1, null, 1, 20)).ReturnsAsync((new List<Asset>(), 0));
+        _repoMock.Setup(r => r.GetPagedAsync(1, null, null, 1, 20)).ReturnsAsync((new List<Asset>(), 0));
 
         // Manager gửi departmentId=5 (phòng khác) nhưng phải bị ghi đè bằng phòng ban của chính họ (1).
-        await _sut.GetPagedAsync(5, null, 1, 20, "Manager", 1);
+        await _sut.GetPagedAsync(5, null, 1, 20, "Manager", 1, null);
 
-        _repoMock.Verify(r => r.GetPagedAsync(1, null, 1, 20), Times.Once);
-        _repoMock.Verify(r => r.GetPagedAsync(5, null, 1, 20), Times.Never);
+        _repoMock.Verify(r => r.GetPagedAsync(1, null, null, 1, 20), Times.Once);
+        _repoMock.Verify(r => r.GetPagedAsync(5, null, null, 1, 20), Times.Never);
     }
 
     [Fact]
     public async Task GetPagedAsync_ManagerWithMissingDepartmentClaim_UsesSentinelToReturnNothing()
     {
-        _repoMock.Setup(r => r.GetPagedAsync(-1, null, 1, 20)).ReturnsAsync((new List<Asset>(), 0));
+        _repoMock.Setup(r => r.GetPagedAsync(-1, null, null, 1, 20)).ReturnsAsync((new List<Asset>(), 0));
 
         // Claim DepartmentId thiếu/hỏng -> phải chặn hẳn (sentinel -1) thay vì mặc định mở toàn bộ dữ liệu.
-        await _sut.GetPagedAsync(null, null, 1, 20, "Manager", null);
+        await _sut.GetPagedAsync(null, null, 1, 20, "Manager", null, null);
 
-        _repoMock.Verify(r => r.GetPagedAsync(-1, null, 1, 20), Times.Once);
+        _repoMock.Verify(r => r.GetPagedAsync(-1, null, null, 1, 20), Times.Once);
     }
 
     // ----- SearchAsync -----
@@ -455,29 +539,29 @@ public class AssetServiceTests
     {
         var filter = new AssetSearchFilterDto { WarrantyStatus = "KhongHopLe" };
 
-        await Assert.ThrowsAsync<ArgumentException>(() => _sut.SearchAsync(filter, "Admin IT", 1));
+        await Assert.ThrowsAsync<ArgumentException>(() => _sut.SearchAsync(filter, "Admin IT", 1, null));
     }
 
     [Fact]
     public async Task SearchAsync_WarrantyStatusValid_MapsToIsUnderWarrantyTrue()
     {
-        _repoMock.Setup(r => r.SearchAsync(null, null, null, null, null, true, 1, 20))
+        _repoMock.Setup(r => r.SearchAsync(null, null, null, null, null, true, null, 1, 20))
             .ReturnsAsync((new List<Asset>(), 0));
 
-        await _sut.SearchAsync(new AssetSearchFilterDto { WarrantyStatus = "Valid" }, "Admin IT", 1);
+        await _sut.SearchAsync(new AssetSearchFilterDto { WarrantyStatus = "Valid" }, "Admin IT", 1, null);
 
-        _repoMock.Verify(r => r.SearchAsync(null, null, null, null, null, true, 1, 20), Times.Once);
+        _repoMock.Verify(r => r.SearchAsync(null, null, null, null, null, true, null, 1, 20), Times.Once);
     }
 
     [Fact]
     public async Task SearchAsync_Technician_IsScopedToOwnDepartment()
     {
-        _repoMock.Setup(r => r.SearchAsync(null, 3, null, null, null, null, 1, 20))
+        _repoMock.Setup(r => r.SearchAsync(null, 3, null, null, null, null, null, 1, 20))
             .ReturnsAsync((new List<Asset>(), 0));
 
         // Technician gửi departmentId=7 nhưng phải bị ghi đè bằng phòng ban của chính họ (3).
-        await _sut.SearchAsync(new AssetSearchFilterDto { DepartmentId = 7 }, "Technician", 3);
+        await _sut.SearchAsync(new AssetSearchFilterDto { DepartmentId = 7 }, "Technician", 3, null);
 
-        _repoMock.Verify(r => r.SearchAsync(null, 3, null, null, null, null, 1, 20), Times.Once);
+        _repoMock.Verify(r => r.SearchAsync(null, 3, null, null, null, null, null, 1, 20), Times.Once);
     }
 }

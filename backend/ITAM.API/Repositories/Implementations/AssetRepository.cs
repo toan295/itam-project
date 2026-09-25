@@ -40,15 +40,31 @@ public class AssetRepository : IAssetRepository
     public Task<bool> DepartmentExistsAsync(int departmentId) =>
         _db.Departments.AnyAsync(d => d.Id == departmentId);
 
+    public Task<bool> HasActiveTicketAssignedToAsync(int assetId, int technicianId) =>
+        _db.MaintenanceTickets.AnyAsync(t =>
+            t.AssetId == assetId && t.TechnicianId == technicianId && t.Status == TicketStatus.Pending);
+
+    // Phạm vi phòng ban; riêng Technician được mở rộng thêm các tài sản có phiếu Pending được giao cho mình.
+    private static IQueryable<Asset> ApplyDepartmentScope(
+        IQueryable<Asset> query, int? departmentId, int? orAssignedTechnicianId)
+    {
+        if (departmentId.HasValue && orAssignedTechnicianId.HasValue)
+        {
+            var technicianId = orAssignedTechnicianId.Value;
+            var scopedDepartmentId = departmentId.Value;
+            return query.Where(a => a.DepartmentId == scopedDepartmentId
+                || a.MaintenanceTickets.Any(t => t.TechnicianId == technicianId && t.Status == TicketStatus.Pending));
+        }
+
+        return departmentId.HasValue ? query.Where(a => a.DepartmentId == departmentId.Value) : query;
+    }
+
     public async Task<(List<Asset> Items, int TotalItems)> GetPagedAsync(
-        int? departmentId, AssetStatus? status, int page, int pageSize)
+        int? departmentId, AssetStatus? status, int? orAssignedTechnicianId, int page, int pageSize)
     {
         var query = _db.Assets.AsNoTracking().Include(a => a.Category).Include(a => a.Department).AsQueryable();
 
-        if (departmentId.HasValue)
-        {
-            query = query.Where(a => a.DepartmentId == departmentId.Value);
-        }
+        query = ApplyDepartmentScope(query, departmentId, orAssignedTechnicianId);
 
         if (status.HasValue)
         {
@@ -56,8 +72,9 @@ public class AssetRepository : IAssetRepository
         }
 
         var total = await query.CountAsync();
+        // Sắp xếp theo Mã tài sản (unique) để danh sách có thứ tự ổn định, dễ tra cứu.
         var items = await query
-            .OrderByDescending(a => a.CreatedAt)
+            .OrderBy(a => a.AssetCode)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
@@ -72,6 +89,7 @@ public class AssetRepository : IAssetRepository
         AssetStatus? status,
         int? purchaseYear,
         bool? isUnderWarranty,
+        int? orAssignedTechnicianId,
         int page,
         int pageSize)
     {
@@ -82,10 +100,7 @@ public class AssetRepository : IAssetRepository
             query = query.Where(a => a.Name.Contains(keyword) || a.AssetCode.Contains(keyword));
         }
 
-        if (departmentId.HasValue)
-        {
-            query = query.Where(a => a.DepartmentId == departmentId.Value);
-        }
+        query = ApplyDepartmentScope(query, departmentId, orAssignedTechnicianId);
 
         if (categoryId.HasValue)
         {
@@ -114,7 +129,7 @@ public class AssetRepository : IAssetRepository
 
         var total = await query.CountAsync();
         var items = await query
-            .OrderByDescending(a => a.PurchaseDate)
+            .OrderBy(a => a.AssetCode)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
