@@ -15,13 +15,14 @@ public interface IAssetService
 
     // UC-08 E2: cùng phạm vi phòng ban với GetPagedAsync/SearchAsync — Manager/Technician không
     // được xem chi tiết tài sản ngoài phòng ban chỉ bằng cách đoán Id (tránh IDOR).
-    Task<AssetResponseDto> GetByIdAsync(int id, string? currentUserRole, int? currentUserDepartmentId);
+    Task<AssetResponseDto> GetByIdAsync(
+        int id, string? currentUserRole, int? currentUserDepartmentId, int? currentUserId);
 
     // UC-08 E2: Manager/Technician tự động bị giới hạn theo phòng ban mình phụ trách.
     Task<PagedResultDto<AssetResponseDto>> GetPagedAsync(
         int? departmentId, string? status, int page, int pageSize,
-        string? currentUserRole, int? currentUserDepartmentId);
+        string? currentUserRole, int? currentUserDepartmentId, int? currentUserId);
 
     Task<PagedResultDto<AssetResponseDto>> SearchAsync(
-        AssetSearchFilterDto filter, string? currentUserRole, int? currentUserDepartmentId);
+        AssetSearchFilterDto filter, string? currentUserRole, int? currentUserDepartmentId, int? currentUserId);
 }

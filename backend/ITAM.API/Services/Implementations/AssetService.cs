@@ -104,6 +104,15 @@ public class AssetService : IAssetService
             throw new AssetDisposalNotAllowedException();
         }
 
+        // Chiều ngược lại của UC-07: tài sản đã thanh lý (do Admin IT) chỉ Admin IT mới được khôi phục —
+        // nếu không, Manager có thể "hồi sinh" tài sản qua PUT và vô hiệu hoá quyết định thanh lý.
+        if (asset.Status == AssetStatus.Disposed
+            && status != AssetStatus.Disposed
+            && !string.Equals(currentUserRole, AdminRoleName, StringComparison.Ordinal))
+        {
+            throw new AssetReactivationNotAllowedException();
+        }
+
         await EnsureCategoryAndDepartmentExistAsync(dto.CategoryId, dto.DepartmentId);
 
         var assetCode = dto.AssetCode.Trim();
@@ -154,7 +163,8 @@ public class AssetService : IAssetService
         return MapToDto(asset);
     }
 
-    public async Task<AssetResponseDto> GetByIdAsync(int id, string? currentUserRole, int? currentUserDepartmentId)
+    public async Task<AssetResponseDto> GetByIdAsync(
+        int id, string? currentUserRole, int? currentUserDepartmentId, int? currentUserId)
     {
         var asset = await _repo.GetByIdWithDetailsAsync(id)
             ?? throw new AssetNotFoundException(id);
@@ -163,7 +173,8 @@ public class AssetService : IAssetService
         // đây, Manager/Technician có thể "lách" việc bị lọc khỏi danh sách bằng cách đoán id trực
         // tiếp qua GET /assets/{id}. Trả 404 (như thể không tồn tại) thay vì 403, để không lộ việc
         // asset đó có thực sự tồn tại hay không cho người ngoài phòng ban.
-        if (IsOutsideDepartmentScope(currentUserRole, currentUserDepartmentId, asset.DepartmentId))
+        if (IsOutsideDepartmentScope(currentUserRole, currentUserDepartmentId, asset.DepartmentId)
+            && !await HasAssignedTicketOnAssetAsync(currentUserRole, currentUserId, id))
         {
             throw new AssetNotFoundException(id);
         }
@@ -173,7 +184,7 @@ public class AssetService : IAssetService
 
     public async Task<PagedResultDto<AssetResponseDto>> GetPagedAsync(
         int? departmentId, string? status, int page, int pageSize,
-        string? currentUserRole, int? currentUserDepartmentId)
+        string? currentUserRole, int? currentUserDepartmentId, int? currentUserId)
     {
         var parsedStatus = ParseStatusOrThrow(status);
         var scopedDepartmentId = ResolveDepartmentScope(departmentId, currentUserRole, currentUserDepartmentId);
@@ -181,7 +192,8 @@ public class AssetService : IAssetService
         page = page < 1 ? 1 : page;
         pageSize = pageSize is < 1 or > MaxPageSize ? DefaultPageSize : pageSize;
 
-        var (items, total) = await _repo.GetPagedAsync(scopedDepartmentId, parsedStatus, page, pageSize);
+        var (items, total) = await _repo.GetPagedAsync(
+            scopedDepartmentId, parsedStatus, AssignedTechnicianScope(currentUserRole, currentUserId), page, pageSize);
         return new PagedResultDto<AssetResponseDto>
         {
             Items = items.Select(MapToDto).ToList(),
@@ -192,7 +204,7 @@ public class AssetService : IAssetService
     }
 
     public async Task<PagedResultDto<AssetResponseDto>> SearchAsync(
-        AssetSearchFilterDto filter, string? currentUserRole, int? currentUserDepartmentId)
+        AssetSearchFilterDto filter, string? currentUserRole, int? currentUserDepartmentId, int? currentUserId)
     {
         var parsedStatus = ParseStatusOrThrow(filter.Status);
         var isUnderWarranty = ParseWarrantyStatusOrThrow(filter.WarrantyStatus);
@@ -203,7 +215,8 @@ public class AssetService : IAssetService
 
         var (items, total) = await _repo.SearchAsync(
             filter.Keyword, scopedDepartmentId, filter.CategoryId, parsedStatus,
-            filter.PurchaseYear, isUnderWarranty, page, pageSize);
+            filter.PurchaseYear, isUnderWarranty, AssignedTechnicianScope(currentUserRole, currentUserId),
+            page, pageSize);
 
         return new PagedResultDto<AssetResponseDto>
         {
@@ -213,6 +226,14 @@ public class AssetService : IAssetService
             TotalItems = total,
         };
     }
+
+    // UC-08 E2: ngoài phòng ban mình, Technician còn thấy các tài sản có phiếu bảo trì đang chờ xử lý được giao cho mình.
+    private static int? AssignedTechnicianScope(string? currentUserRole, int? currentUserId) =>
+        string.Equals(currentUserRole, TechnicianRoleName, StringComparison.Ordinal) ? currentUserId : null;
+
+    private async Task<bool> HasAssignedTicketOnAssetAsync(string? currentUserRole, int? currentUserId, int assetId) =>
+        AssignedTechnicianScope(currentUserRole, currentUserId) is { } technicianId
+        && await _repo.HasActiveTicketAssignedToAsync(assetId, technicianId);
 
     private static AssetStatus? ParseStatusOrThrow(string? status)
     {

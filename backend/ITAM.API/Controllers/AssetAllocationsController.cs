@@ -119,6 +119,7 @@ public class AssetAllocationsController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Roles = "Admin IT,Manager")] // UC-14/UC-15: tác nhân chỉ gồm Admin IT, Manager.
     public async Task<IActionResult> GetList(
         [FromQuery] int? departmentId,
         [FromQuery] string? status,
@@ -144,6 +145,7 @@ public class AssetAllocationsController : ControllerBase
     }
 
     [HttpGet("{id:int}")]
+    [Authorize(Roles = "Admin IT,Manager")]
     public async Task<IActionResult> GetById(int id)
     {
         try

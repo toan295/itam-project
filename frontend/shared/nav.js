@@ -5,16 +5,30 @@ function renderNav({ active, basePath }) {
   const el = document.getElementById("appNav");
   if (!el || !session) return;
 
-  const links = [
+  // roles: vai trò được thấy mục này (không khai báo = mọi vai trò). Khớp đúng phân quyền backend:
+  // - Loại tài sản / Phòng ban / Phần mềm & Giấy phép / Người dùng: chỉ Admin IT (UC-03, UC-04, UC-09, UC-10).
+  // - Phân bổ – thu hồi: Admin IT, Manager (UC-14, UC-15). - Bảo trì, Tài sản: mọi vai trò (đã giới hạn theo phòng ban ở API).
+  const ADMIN = ["Admin IT"];
+  const ADMIN_MANAGER = ["Admin IT", "Manager"];
+  const allLinks = [
     { key: "home", label: "Trang chủ", icon: "bi-grid-1x2", href: `${basePath}index.html` },
     { key: "assets", label: "Tài sản", icon: "bi-laptop", href: `${basePath}pages/assets.html` },
-    { key: "categories", label: "Loại tài sản", icon: "bi-tags", href: `${basePath}pages/asset-categories.html` },
-    { key: "departments", label: "Phòng ban", icon: "bi-building", href: `${basePath}pages/departments.html` },
-    { key: "licenses", label: "Phần mềm & Giấy phép", icon: "bi-key", href: `${basePath}pages/software-licenses.html` },
+    { key: "categories", label: "Loại tài sản", icon: "bi-tags", href: `${basePath}pages/asset-categories.html`, roles: ADMIN },
+    { key: "departments", label: "Phòng ban", icon: "bi-building", href: `${basePath}pages/departments.html`, roles: ADMIN },
+    { key: "licenses", label: "Phần mềm & Giấy phép", icon: "bi-key", href: `${basePath}pages/software-licenses.html`, roles: ADMIN },
     { key: "maintenance", label: "Bảo trì", icon: "bi-tools", href: `${basePath}pages/maintenance.html` },
-    { key: "allocations", label: "Phân bổ", icon: "bi-box-arrow-up-right", href: `${basePath}pages/allocations.html` },
-    { key: "users", label: "Người dùng", icon: "bi-people", href: `${basePath}pages/users.html` },
+    { key: "allocations", label: "Phân bổ", icon: "bi-box-arrow-up-right", href: `${basePath}pages/allocations.html`, roles: ADMIN_MANAGER },
+    { key: "users", label: "Người dùng", icon: "bi-people", href: `${basePath}pages/users.html`, roles: ADMIN },
   ];
+  const canSee = (l) => !l.roles || l.roles.includes(session.role);
+  const links = allLinks.filter(canSee);
+
+  // Vào thẳng URL của trang không có quyền (gõ tay/bookmark) -> về Trang chủ thay vì hiện trang lỗi 403.
+  const activeLink = allLinks.find((l) => l.key === active);
+  if (activeLink && !canSee(activeLink)) {
+    window.location.href = allLinks[0].href;
+    return;
+  }
 
   const initials = (session.fullName || "?")
     .split(" ")

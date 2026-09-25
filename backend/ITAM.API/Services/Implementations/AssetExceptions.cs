@@ -46,3 +46,12 @@ public class AssetHasOpenAllocationException : Exception
     {
     }
 }
+
+// Chiều ngược lại của UC-07: chỉ Admin IT được đưa tài sản đã thanh lý (Disposed) trở lại hoạt động.
+public class AssetReactivationNotAllowedException : Exception
+{
+    public AssetReactivationNotAllowedException()
+        : base("Tài sản đã thanh lý. Chỉ Admin IT được khôi phục trạng thái của tài sản này.")
+    {
+    }
+}

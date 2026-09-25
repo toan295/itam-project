@@ -130,7 +130,7 @@ function renderTable(items) {
       <td class="text-end">
         ${canCreateOrEdit ? `<button class="btn btn-sm btn-outline-primary me-1" onclick="openEditModal(${a.id})"><i class="bi bi-pencil"></i> Sửa</button>` : ""}
         ${canDispose && a.status !== "Disposed"
-          ? `<button class="btn btn-sm btn-outline-danger" onclick="disposeAsset(${a.id})"><i class="bi bi-archive"></i> Thanh lý</button>`
+          ? `<button class="btn btn-sm btn-outline-danger" onclick="disposeAsset(${a.id})" title="Thanh lý = ngừng sử dụng (chuyển sang trạng thái Đã thanh lý), KHÔNG xoá dữ liệu — vẫn giữ lịch sử bảo trì/phân bổ."><i class="bi bi-archive"></i> Thanh lý</button>`
           : ""}
       </td>
     </tr>`).join("");
@@ -146,14 +146,31 @@ function renderPagination(page, totalPages) {
   el.innerHTML = html;
 }
 
+// UC-07: "Thanh lý" KHÔNG phải xoá — chỉ đổi Status sang Disposed để giữ toàn vẹn lịch sử bảo trì/phân bổ.
+const THANHLY_CONFIRM =
+  "Thanh lý tài sản này?\n\n" +
+  "• Tài sản chuyển sang trạng thái \"Đã thanh lý\" (ngừng sử dụng), KHÔNG bị xoá khỏi hệ thống.\n" +
+  "• Lịch sử bảo trì, phân bổ và giấy phép liên quan vẫn được giữ để tra cứu.\n" +
+  "• Tài sản đang được phân bổ phải thu hồi trước.\n" +
+  "• Chỉ Admin IT được khôi phục lại sau khi thanh lý.";
+
 async function disposeAsset(id) {
-  if (!confirm("Chuyển tài sản này sang trạng thái Đã thanh lý?")) return;
+  if (!confirm(THANHLY_CONFIRM)) return;
   try {
     await api.del(`/assets/${id}`);
     loadAssets(currentPage);
   } catch (err) {
     showError(err.message);
   }
+}
+
+// Nghiệp vụ UC-07: chỉ Admin IT được chuyển tài sản sang "Đã thanh lý" (qua nút Thanh lý) và chỉ Admin IT được
+// khôi phục tài sản đã thanh lý — Manager sửa được các trường khác nhưng không đổi được trạng thái này.
+function applyStatusPermissions(currentStatus) {
+  const select = document.getElementById("formStatus");
+  const disposedOption = select.querySelector('option[value="Disposed"]');
+  if (disposedOption) disposedOption.disabled = !canDispose && currentStatus !== "Disposed";
+  select.disabled = !canDispose && currentStatus === "Disposed";
 }
 
 function openCreateModal() {
@@ -186,6 +203,7 @@ function openEditModal(id) {
   document.getElementById("warrantyExpiry").value = asset.warrantyExpiry || "";
   document.getElementById("formStatusWrapper").style.display = "block";
   document.getElementById("formStatus").value = asset.status;
+  applyStatusPermissions(asset.status);
   clearModalError();
   assetModal.show();
 }
