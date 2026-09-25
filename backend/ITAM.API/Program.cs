@@ -99,6 +99,7 @@ builder.Services.AddScoped<IValidator<UpdateAssetCategoryRequestDto>, UpdateAsse
 builder.Services.AddScoped<IDepartmentRepository, DepartmentRepository>();
 builder.Services.AddScoped<IDepartmentService, DepartmentService>();
 builder.Services.AddScoped<IValidator<CreateDepartmentRequestDto>, CreateDepartmentRequestValidator>();
+builder.Services.AddScoped<IValidator<UpdateDepartmentRequestDto>, UpdateDepartmentRequestValidator>();
 
 builder.Services.AddScoped<IRoleRepository, RoleRepository>();
 builder.Services.AddScoped<IRoleService, RoleService>();
