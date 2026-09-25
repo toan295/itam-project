@@ -6,6 +6,8 @@ const SEED_DEPARTMENTS = [
   { id: 2, name: "Phong Ke toan" },
   { id: 3, name: "Phong Nhan su" },
   { id: 4, name: "Phong Kinh doanh" },
+  { id: 5, name: "Phong Marketing" },
+  { id: 6, name: "Phong Hanh chinh" },
 ];
 
 // Nếu đã đăng nhập sẵn (session còn hạn), vào thẳng trang chủ thay vì bắt đăng nhập lại.
