@@ -13,7 +13,8 @@ function renderNav({ active, basePath }) {
     { key: "licenses", label: "Phần mềm & Giấy phép", icon: "bi-key", href: `${basePath}pages/software-licenses.html` },
     { key: "allocations", label: "Phân bổ", icon: "bi-box-arrow-up-right", href: `${basePath}pages/allocations.html` },
     { key: "users", label: "Người dùng", icon: "bi-people", href: `${basePath}pages/users.html` },
-  ];
+    { key: "auditLogs", label: "Nhật ký hệ thống", icon: "bi-journal-text", href: `${basePath}pages/audit-logs.html`, adminOnly: true },
+  ].filter((link) => !link.adminOnly || session.role === "Admin IT");
 
   const initials = (session.fullName || "?")
     .split(" ")

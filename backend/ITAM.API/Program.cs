@@ -112,6 +112,10 @@ builder.Services.AddScoped<IValidator<CreateSoftwareLicenseDto>, CreateSoftwareL
 builder.Services.AddScoped<IValidator<UpdateSoftwareLicenseDto>, UpdateSoftwareLicenseValidator>();
 builder.Services.AddScoped<IValidator<AssignSoftwareLicenseDto>, AssignSoftwareLicenseValidator>();
 
+// Module Nhật ký hệ thống (AuditLogs) — Tuần 6, Hoàng Đức Tú.
+builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
+builder.Services.AddScoped<IAuditLogService, AuditLogService>();
+
 // Module Phân bổ & thu hồi tài sản (AssetAllocations) — Tuần 5, Hoàng Đức Tú.
 builder.Services.AddScoped<IAssetAllocationRepository, AssetAllocationRepository>();
 builder.Services.AddScoped<IAssetAllocationService, AssetAllocationService>();
