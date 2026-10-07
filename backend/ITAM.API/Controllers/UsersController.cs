@@ -65,7 +65,7 @@ public class UsersController : ControllerBase
 
         try
         {
-            var result = await _userService.CreateAsync(dto);
+            var result = await _userService.CreateAsync(dto, GetCurrentUserId());
             RedactSetupTokenIfNotDevelopment(result);
             return CreatedAtAction(nameof(GetById), new { id = result.User.Id },
                 ApiResponse<object>.Ok(result, "Tạo người dùng thành công."));

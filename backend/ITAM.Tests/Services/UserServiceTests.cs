@@ -4,6 +4,7 @@ using ITAM.API.Models.DTOs.Users;
 using ITAM.API.Models.Entities;
 using ITAM.API.Repositories.Interfaces;
 using ITAM.API.Services.Implementations;
+using ITAM.API.Services.Interfaces;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -19,6 +20,7 @@ public class UserServiceTests
     private readonly Mock<IUserRepository> _userRepoMock = new();
     private readonly Mock<IRoleRepository> _roleRepoMock = new();
     private readonly Mock<IDepartmentRepository> _departmentRepoMock = new();
+    private readonly Mock<IAuditLogService> _auditLogServiceMock = new();
     private readonly UserService _sut;
 
     public UserServiceTests()
@@ -36,11 +38,21 @@ public class UserServiceTests
             _roleRepoMock.Object,
             _departmentRepoMock.Object,
             resetTokenHelper,
+            _auditLogServiceMock.Object,
             NullLogger<UserService>.Instance);
 
         _roleRepoMock.Setup(r => r.ExistsAsync(It.IsAny<int>())).ReturnsAsync(true);
         _departmentRepoMock.Setup(r => r.GetByIdAsync(It.IsAny<int>())).ReturnsAsync(new Department { Id = 1, Name = "Phong IT" });
         _userRepoMock.Setup(r => r.GetByEmailAsync(It.IsAny<string>())).ReturnsAsync((User?)null);
+        _auditLogServiceMock
+            .Setup(x => x.RecordAsync(
+                It.IsAny<int>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<object?>(),
+                It.IsAny<object?>()))
+            .Returns(Task.CompletedTask);
     }
 
     private static User CreateUser(int id, int roleId, string roleName, bool isActive = true, string email = "user@eaims.local") => new()
@@ -76,7 +88,7 @@ public class UserServiceTests
 
         var dto = new CreateUserRequestDto { FullName = "New User", Email = "existing@eaims.local", RoleId = TechnicianRoleId, DepartmentId = 1 };
 
-        await Assert.ThrowsAsync<EmailAlreadyExistsException>(() => _sut.CreateAsync(dto));
+        await Assert.ThrowsAsync<EmailAlreadyExistsException>(() => _sut.CreateAsync(dto, currentUserId: 1));
         _userRepoMock.Verify(r => r.AddAsync(It.IsAny<User>()), Times.Never);
     }
 
@@ -86,7 +98,7 @@ public class UserServiceTests
         _roleRepoMock.Setup(r => r.ExistsAsync(It.IsAny<int>())).ReturnsAsync(false);
         var dto = new CreateUserRequestDto { FullName = "New User", Email = "new@eaims.local", RoleId = 999, DepartmentId = 1 };
 
-        await Assert.ThrowsAsync<ArgumentException>(() => _sut.CreateAsync(dto));
+        await Assert.ThrowsAsync<ArgumentException>(() => _sut.CreateAsync(dto, currentUserId: 1));
     }
 
     [Fact]
@@ -95,7 +107,7 @@ public class UserServiceTests
         _departmentRepoMock.Setup(r => r.GetByIdAsync(It.IsAny<int>())).ReturnsAsync((Department?)null);
         var dto = new CreateUserRequestDto { FullName = "New User", Email = "new@eaims.local", RoleId = TechnicianRoleId, DepartmentId = 999 };
 
-        await Assert.ThrowsAsync<ArgumentException>(() => _sut.CreateAsync(dto));
+        await Assert.ThrowsAsync<ArgumentException>(() => _sut.CreateAsync(dto, currentUserId: 1));
     }
 
     [Fact]
@@ -108,7 +120,7 @@ public class UserServiceTests
         _userRepoMock.Setup(r => r.GetByIdWithDetailsAsync(10)).ReturnsAsync(() => saved);
 
         var dto = new CreateUserRequestDto { FullName = "New User", Email = "new@eaims.local", RoleId = TechnicianRoleId, DepartmentId = 1 };
-        var result = await _sut.CreateAsync(dto);
+        var result = await _sut.CreateAsync(dto, currentUserId: 1);
 
         Assert.NotNull(result.DevOnlySetupToken);
         Assert.Equal("new@eaims.local", result.User.Email);

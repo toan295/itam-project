@@ -153,6 +153,35 @@ namespace ITAM.API.Data.Migrations
                     b.ToTable("AssetCategories");
                 });
 
+            modelBuilder.Entity("ITAM.API.Models.Entities.AssetCategoryLifecyclePolicy", b =>
+                {
+                    b.Property<int>("CategoryId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxAgeYears")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxFailureCount")
+                        .HasColumnType("int");
+
+                    b.HasKey("CategoryId");
+
+                    b.ToTable("AssetCategoryLifecyclePolicies", (string)null);
+                });
+
+            modelBuilder.Entity("ITAM.API.Models.Entities.AssetCategoryReferencePrice", b =>
+                {
+                    b.Property<int>("CategoryId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("CategoryId");
+
+                    b.ToTable("AssetCategoryReferencePrices", (string)null);
+                });
+
             modelBuilder.Entity("ITAM.API.Models.Entities.AssetSoftwareLicense", b =>
                 {
                     b.Property<int>("Id")
@@ -230,6 +259,9 @@ namespace ITAM.API.Data.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("BreakdownJson")
+                        .HasColumnType("longtext");
+
                     b.Property<int>("DepartmentId")
                         .HasColumnType("int");
 
@@ -238,6 +270,9 @@ namespace ITAM.API.Data.Migrations
 
                     b.Property<int>("EstimatedReplacementCount")
                         .HasColumnType("int");
+
+                    b.Property<DateTime?>("GeneratedAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("Notes")
                         .HasMaxLength(500)
@@ -508,6 +543,28 @@ namespace ITAM.API.Data.Migrations
                     b.Navigation("Asset");
 
                     b.Navigation("Department");
+                });
+
+            modelBuilder.Entity("ITAM.API.Models.Entities.AssetCategoryLifecyclePolicy", b =>
+                {
+                    b.HasOne("ITAM.API.Models.Entities.AssetCategory", "Category")
+                        .WithOne()
+                        .HasForeignKey("ITAM.API.Models.Entities.AssetCategoryLifecyclePolicy", "CategoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("ITAM.API.Models.Entities.AssetCategoryReferencePrice", b =>
+                {
+                    b.HasOne("ITAM.API.Models.Entities.AssetCategory", "Category")
+                        .WithOne()
+                        .HasForeignKey("ITAM.API.Models.Entities.AssetCategoryReferencePrice", "CategoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Category");
                 });
 
             modelBuilder.Entity("ITAM.API.Models.Entities.AssetSoftwareLicense", b =>

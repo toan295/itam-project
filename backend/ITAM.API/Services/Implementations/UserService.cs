@@ -22,6 +22,7 @@ public class UserService : IUserService
     private readonly IRoleRepository _roleRepo;
     private readonly IDepartmentRepository _departmentRepo;
     private readonly PasswordResetTokenHelper _resetTokenHelper;
+    private readonly IAuditLogService _auditLogService;
     private readonly ILogger<UserService> _logger;
 
     public UserService(
@@ -29,12 +30,14 @@ public class UserService : IUserService
         IRoleRepository roleRepo,
         IDepartmentRepository departmentRepo,
         PasswordResetTokenHelper resetTokenHelper,
+        IAuditLogService auditLogService,
         ILogger<UserService> logger)
     {
         _userRepo = userRepo;
         _roleRepo = roleRepo;
         _departmentRepo = departmentRepo;
         _resetTokenHelper = resetTokenHelper;
+        _auditLogService = auditLogService;
         _logger = logger;
     }
 
@@ -59,7 +62,7 @@ public class UserService : IUserService
         return MapToDto(user);
     }
 
-    public async Task<UserSetupLinkResponseDto> CreateAsync(CreateUserRequestDto dto)
+    public async Task<UserSetupLinkResponseDto> CreateAsync(CreateUserRequestDto dto, int currentUserId)
     {
         var email = dto.Email.Trim();
 
@@ -92,12 +95,21 @@ public class UserService : IUserService
 
         _logger.LogInformation("User {Email} created by Admin IT, setup link issued", created.Email);
 
+        await _auditLogService.RecordAsync(
+            currentUserId,
+            "Create",
+            "User",
+            created.Id,
+            oldValue: null,
+            newValue: ToAuditSnapshot(created));
+
         return new UserSetupLinkResponseDto { User = MapToDto(created), DevOnlySetupToken = setupToken };
     }
 
     public async Task<UserResponseDto> UpdateAsync(int id, UpdateUserRequestDto dto, int currentUserId)
     {
         var user = await _userRepo.GetByIdWithDetailsAsync(id) ?? throw new UserNotFoundException(id);
+        var oldValue = ToAuditSnapshot(user);
 
         // UC-03 quy tắc nghiệp vụ: không được tự khoá tài khoản của chính mình.
         if (id == currentUserId && !dto.IsActive)
@@ -140,6 +152,15 @@ public class UserService : IUserService
         await SaveChangesGuardingEmailConflictAsync(email);
 
         var updated = await _userRepo.GetByIdWithDetailsAsync(id) ?? throw new UserNotFoundException(id);
+
+        await _auditLogService.RecordAsync(
+            currentUserId,
+            "Update",
+            "User",
+            updated.Id,
+            oldValue,
+            ToAuditSnapshot(updated));
+
         return MapToDto(updated);
     }
 
@@ -154,6 +175,14 @@ public class UserService : IUserService
 
         var token = _resetTokenHelper.GenerateToken(user, AdminIssuedLinkLifetime);
         _logger.LogInformation("Password reset link issued by Admin IT for user {Email}", user.Email);
+
+        await _auditLogService.RecordAsync(
+            currentUserId,
+            "ResetPassword",
+            "User",
+            user.Id,
+            oldValue: null,
+            newValue: new { ResetLinkIssued = true });
 
         return new UserSetupLinkResponseDto { User = MapToDto(user), DevOnlySetupToken = token };
     }
@@ -184,6 +213,20 @@ public class UserService : IUserService
             throw new EmailAlreadyExistsException(email);
         }
     }
+
+    private static UserAuditSnapshot ToAuditSnapshot(User user) => new(
+        user.FullName,
+        user.Email,
+        user.RoleId,
+        user.DepartmentId,
+        user.IsActive);
+
+    private sealed record UserAuditSnapshot(
+        string FullName,
+        string Email,
+        int RoleId,
+        int DepartmentId,
+        bool IsActive);
 
     private static UserResponseDto MapToDto(User u) => new()
     {
