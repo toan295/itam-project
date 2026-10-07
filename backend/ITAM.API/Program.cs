@@ -11,6 +11,7 @@ using ITAM.API.Models.DTOs.AssetCategories;
 using ITAM.API.Models.DTOs.AssetAllocations;
 using ITAM.API.Models.DTOs.Assets;
 using ITAM.API.Models.DTOs.Departments;
+using ITAM.API.Models.DTOs.Lifecycle;
 using ITAM.API.Models.DTOs.SoftwareLicenses;
 using ITAM.API.Models.DTOs.Users;
 using ITAM.API.Repositories.Implementations;
@@ -76,6 +77,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 36))));
 
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
+builder.Services.Configure<LifecycleOptions>(builder.Configuration.GetSection(LifecycleOptions.SectionName));
 builder.Services.AddSingleton<JwtHelper>();
 builder.Services.AddSingleton<PasswordResetTokenHelper>();
 builder.Services.AddScoped<IAuthService, AuthService>();
@@ -121,6 +123,11 @@ builder.Services.AddScoped<IAssetAllocationRepository, AssetAllocationRepository
 builder.Services.AddScoped<IAssetAllocationService, AssetAllocationService>();
 builder.Services.AddScoped<IValidator<CreateAssetAllocationDto>, CreateAssetAllocationValidator>();
 builder.Services.AddScoped<IValidator<ReturnAssetAllocationDto>, ReturnAssetAllocationValidator>();
+
+// Module Vòng đời tài sản (Lifecycle) — Tuần 7, Hoàng Đức Tú.
+builder.Services.AddScoped<ILifecycleRepository, LifecycleRepository>();
+builder.Services.AddScoped<ILifecycleAnalysisService, LifecycleAnalysisService>();
+builder.Services.AddScoped<IValidator<UpsertLifecyclePolicyRequestDto>, UpsertLifecyclePolicyRequestValidator>();
 
 // Cho phép frontend (chạy ở origin khác — Live Server/static server) gọi API qua fetch().
 // Danh sách origin cấu hình trong appsettings (Development): Cors:AllowedOrigins.

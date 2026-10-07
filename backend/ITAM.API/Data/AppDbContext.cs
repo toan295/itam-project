@@ -13,6 +13,7 @@ public class AppDbContext : DbContext
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<User> Users => Set<User>();
     public DbSet<AssetCategory> AssetCategories => Set<AssetCategory>();
+    public DbSet<AssetCategoryLifecyclePolicy> AssetCategoryLifecyclePolicies => Set<AssetCategoryLifecyclePolicy>();
     public DbSet<Asset> Assets => Set<Asset>();
     public DbSet<SoftwareLicense> SoftwareLicenses => Set<SoftwareLicense>();
     public DbSet<AssetSoftwareLicense> AssetSoftwareLicenses => Set<AssetSoftwareLicense>();
@@ -64,6 +65,16 @@ public class AppDbContext : DbContext
         {
             entity.Property(e => e.Name).HasMaxLength(100);
             entity.HasIndex(e => e.Name).IsUnique();
+        });
+
+        modelBuilder.Entity<AssetCategoryLifecyclePolicy>(entity =>
+        {
+            entity.HasIndex(e => e.CategoryId).IsUnique();
+
+            entity.HasOne(e => e.Category)
+                .WithMany()
+                .HasForeignKey(e => e.CategoryId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Asset>(entity =>

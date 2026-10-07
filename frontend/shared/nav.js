@@ -14,6 +14,7 @@ function renderNav({ active, basePath }) {
     { key: "allocations", label: "Phân bổ", icon: "bi-box-arrow-up-right", href: `${basePath}pages/allocations.html` },
     { key: "users", label: "Người dùng", icon: "bi-people", href: `${basePath}pages/users.html` },
     { key: "auditLogs", label: "Nhật ký hệ thống", icon: "bi-journal-text", href: `${basePath}pages/audit-logs.html`, adminOnly: true },
+    { key: "lifecycle", label: "Vòng đời tài sản", icon: "bi-hourglass-split", href: `${basePath}pages/lifecycle.html`, adminOnly: true },
   ].filter((link) => !link.adminOnly || session.role === "Admin IT");
 
   const initials = (session.fullName || "?")

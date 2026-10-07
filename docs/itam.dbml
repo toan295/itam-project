@@ -37,6 +37,15 @@ Table AssetCategories {
   Name varchar(100) [not null, unique, note: 'may tinh, man hinh, may in, switch/router, thiet bi luu tru...']
 }
 
+Table AssetCategoryLifecyclePolicies {
+  Id int [pk, increment]
+  CategoryId int [not null, unique]
+  MaxAgeYears int [not null, note: 'Nguong tuoi toi da theo loai tai san']
+  MaxFailureCount int [not null, note: 'Nguong so phieu bao tri Failed theo loai tai san']
+
+  Note: 'Chi luu nguong override. Loai khong co dong rieng se dung LifecycleOptions trong appsettings.json'
+}
+
 Table Assets {
   Id int [pk, increment]
   AssetCode varchar(50) [not null, unique]
@@ -164,6 +173,7 @@ Table ImportLogs {
 
 Ref: Users.RoleId > Roles.Id
 Ref: Users.DepartmentId > Departments.Id
+Ref: AssetCategoryLifecyclePolicies.CategoryId > AssetCategories.Id
 Ref: Assets.CategoryId > AssetCategories.Id
 Ref: Assets.DepartmentId > Departments.Id
 Ref: AssetSoftwareLicenses.AssetId > Assets.Id
