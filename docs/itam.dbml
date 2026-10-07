@@ -142,12 +142,29 @@ Table BudgetForecasts {
   EstimatedReplacementCount int [not null]
   EstimatedBudget decimal(18,2) [not null]
   Notes varchar(500)
+  BreakdownJson longtext [note: 'chi tiet theo loai tai san (JSON camelCase), nullable']
+  GeneratedAt datetime [note: 'lan tao/cap nhat du bao gan nhat (UTC), nullable']
 
   indexes {
     (Year, DepartmentId) [unique, note: 'moi phong ban chi co 1 du bao/nam']
   }
 
   Note: 'Uu tien Could - MoSCoW, co the cat giam'
+}
+
+Table AssetCategoryReferencePrices {
+  CategoryId int [pk, note: 'vua la PK vua la FK - moi loai toi da 1 don gia']
+  UnitPrice decimal(18,2) [not null, note: 'VND, > 0']
+
+  Note: 'Don gia tham khao theo loai tai san - dung uoc tinh ngan sach thay the (UC-17)'
+}
+
+Table AssetCategoryLifecyclePolicies {
+  CategoryId int [pk, note: 'vua la PK vua la FK - moi loai toi da 1 chinh sach rieng']
+  MaxAgeYears int [not null, note: '1-30']
+  MaxFailureCount int [not null, note: '1-100']
+
+  Note: 'Nguong vong doi rieng theo loai; loai khong co dong -> dung mac dinh tu appsettings (Lifecycle:*) (UC-16)'
 }
 
 Table ImportLogs {
@@ -174,4 +191,6 @@ Ref: AssetAllocations.AssetId > Assets.Id
 Ref: AssetAllocations.DepartmentId > Departments.Id
 Ref: AuditLogs.UserId > Users.Id
 Ref: BudgetForecasts.DepartmentId > Departments.Id
+Ref: AssetCategoryReferencePrices.CategoryId - AssetCategories.Id
+Ref: AssetCategoryLifecyclePolicies.CategoryId - AssetCategories.Id
 Ref: ImportLogs.ImportedBy > Users.Id

@@ -124,6 +124,10 @@ builder.Services.AddScoped<IValidator<CreateMaintenanceTicketRequestDto>, Create
 builder.Services.AddScoped<IValidator<AssignTechnicianRequestDto>, AssignTechnicianRequestValidator>();
 builder.Services.AddScoped<IValidator<UpdateTicketStatusRequestDto>, UpdateTicketStatusRequestValidator>();
 
+// Module Nhật ký hệ thống (AuditLogs) — Tuần 7, Hoàng Đức Tú.
+builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
+builder.Services.AddScoped<IAuditLogService, AuditLogService>();
+
 // Module Phân bổ & thu hồi tài sản (AssetAllocations) — Tuần 5, Hoàng Đức Tú.
 builder.Services.AddScoped<IAssetAllocationRepository, AssetAllocationRepository>();
 builder.Services.AddScoped<IAssetAllocationService, AssetAllocationService>();

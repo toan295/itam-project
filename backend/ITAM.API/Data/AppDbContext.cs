@@ -21,6 +21,8 @@ public class AppDbContext : DbContext
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<BudgetForecast> BudgetForecasts => Set<BudgetForecast>();
     public DbSet<ImportLog> ImportLogs => Set<ImportLog>();
+    public DbSet<AssetCategoryLifecyclePolicy> AssetCategoryLifecyclePolicies => Set<AssetCategoryLifecyclePolicy>();
+    public DbSet<AssetCategoryReferencePrice> AssetCategoryReferencePrices => Set<AssetCategoryReferencePrice>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -176,12 +178,38 @@ public class AppDbContext : DbContext
         {
             entity.Property(e => e.EstimatedBudget).HasColumnType("decimal(18,2)");
             entity.Property(e => e.Notes).HasMaxLength(500);
+            entity.Property(e => e.BreakdownJson).HasColumnType("longtext");
             entity.HasIndex(e => new { e.Year, e.DepartmentId }).IsUnique();
 
             entity.HasOne(e => e.Department)
                 .WithMany(d => d.BudgetForecasts)
                 .HasForeignKey(e => e.DepartmentId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Module Vòng đời tài sản — ngưỡng riêng theo loại (mỗi loại tối đa 1 dòng: PK cũng là FK).
+        modelBuilder.Entity<AssetCategoryLifecyclePolicy>(entity =>
+        {
+            entity.ToTable("AssetCategoryLifecyclePolicies");
+            entity.HasKey(e => e.CategoryId);
+
+            entity.HasOne(e => e.Category)
+                .WithOne()
+                .HasForeignKey<AssetCategoryLifecyclePolicy>(e => e.CategoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Module Dự báo ngân sách — đơn giá tham khảo theo loại (VND).
+        modelBuilder.Entity<AssetCategoryReferencePrice>(entity =>
+        {
+            entity.ToTable("AssetCategoryReferencePrices");
+            entity.HasKey(e => e.CategoryId);
+            entity.Property(e => e.UnitPrice).HasColumnType("decimal(18,2)");
+
+            entity.HasOne(e => e.Category)
+                .WithOne()
+                .HasForeignKey<AssetCategoryReferencePrice>(e => e.CategoryId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ImportLog>(entity =>

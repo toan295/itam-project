@@ -19,6 +19,7 @@ function renderNav({ active, basePath }) {
     { key: "maintenance", label: "Bảo trì", icon: "bi-tools", href: `${basePath}pages/maintenance.html` },
     { key: "allocations", label: "Phân bổ", icon: "bi-box-arrow-up-right", href: `${basePath}pages/allocations.html`, roles: ADMIN_MANAGER },
     { key: "users", label: "Người dùng", icon: "bi-people", href: `${basePath}pages/users.html`, roles: ADMIN },
+    { key: "auditLogs", label: "Nhật ký hệ thống", icon: "bi-journal-text", href: `${basePath}pages/audit-logs.html`, roles: ADMIN },
   ];
   const canSee = (l) => !l.roles || l.roles.includes(session.role);
   const links = allLinks.filter(canSee);
