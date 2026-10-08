@@ -8,4 +8,5 @@ public class UserProfileDto
     public string Role { get; set; } = null!;
     public int DepartmentId { get; set; }
     public bool IsActive { get; set; }
+    public bool MustChangePassword { get; set; }
 }

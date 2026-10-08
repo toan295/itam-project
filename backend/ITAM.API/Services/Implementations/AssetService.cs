@@ -1,4 +1,5 @@
 using ITAM.API.Models.DTOs.Assets;
+using ITAM.API.Helpers;
 using ITAM.API.Models.DTOs.Common;
 using ITAM.API.Models.Entities;
 using ITAM.API.Models.Enums;
@@ -12,17 +13,16 @@ public class AssetService : IAssetService
 {
     private const string AdminRoleName = "Admin IT";
     private const string ManagerRoleName = "Manager";
-    private const string TechnicianRoleName = "Technician";
-    private const int DefaultPageSize = 20;
-    private const int MaxPageSize = 100;
     private const int NoAccessSentinelDepartmentId = -1; // DepartmentId không tồn tại -> query luôn trả rỗng.
-    private static readonly string[] DepartmentScopedRoles = { ManagerRoleName, TechnicianRoleName };
+    private static readonly string[] DepartmentScopedRoles = { ManagerRoleName };
 
     private readonly IAssetRepository _repo;
+    private readonly IMaintenanceTicketRepository _ticketRepo;
 
-    public AssetService(IAssetRepository repo)
+    public AssetService(IAssetRepository repo, IMaintenanceTicketRepository ticketRepo)
     {
         _repo = repo;
+        _ticketRepo = ticketRepo;
     }
 
     public async Task<AssetResponseDto> CreateAsync(
@@ -45,12 +45,18 @@ public class AssetService : IAssetService
             throw new AssetCodeAlreadyExistsException(assetCode);
         }
 
+        var serialNumber = NormalizeSerialNumber(dto.SerialNumber);
+        if (serialNumber is not null && await _repo.SerialNumberExistsAsync(serialNumber))
+        {
+            throw new AssetSerialNumberAlreadyExistsException(serialNumber);
+        }
+
         var asset = new Asset
         {
             AssetCode = assetCode,
             Name = dto.Name.Trim(),
             CategoryId = dto.CategoryId,
-            SerialNumber = dto.SerialNumber,
+            SerialNumber = serialNumber,
             Specification = dto.Specification,
             OperatingSystem = dto.OperatingSystem,
             DepartmentId = dto.DepartmentId,
@@ -88,15 +94,22 @@ public class AssetService : IAssetService
                 $"Status không hợp lệ. Phải là một trong: {string.Join(", ", Enum.GetNames<AssetStatus>())}");
         }
 
-        // UC-07: chỉ Admin IT được thực hiện việc chuyển tài sản sang Disposed, và phải qua đúng
-        // chức năng "Ngừng sử dụng" (DisposeAsync/DELETE) — không cho Manager lách qua Update thường.
-        // Chỉ chặn khi đây thực sự là một hành động chuyển trạng thái (asset chưa Disposed trước đó),
-        // để không cản trở việc Admin/Manager sửa các trường khác của một tài sản đã Disposed từ trước.
-        if (status == AssetStatus.Disposed
-            && asset.Status != AssetStatus.Disposed
-            && !string.Equals(currentUserRole, AdminRoleName, StringComparison.Ordinal))
+        // Thanh lý phải đi qua quy trình riêng (Technician kiểm tra -> đề xuất -> Manager duyệt -> Admin IT
+        // thực hiện, xem DisposalRequestService) — không ai, kể cả Admin IT, được đặt Status = Disposed
+        // trực tiếp qua Update thường. Chỉ chặn khi đây là hành động chuyển trạng thái (asset chưa Disposed),
+        // để vẫn sửa được các trường khác của tài sản đã thanh lý từ trước.
+        if (status == AssetStatus.Disposed && asset.Status != AssetStatus.Disposed)
         {
             throw new AssetDisposalNotAllowedException();
+        }
+
+        // Chiều ngược lại của UC-07: tài sản đã thanh lý (do Admin IT) chỉ Admin IT mới được khôi phục —
+        // nếu không, Manager có thể "hồi sinh" tài sản qua PUT và vô hiệu hoá quyết định thanh lý.
+        if (asset.Status == AssetStatus.Disposed
+            && status != AssetStatus.Disposed
+            && !string.Equals(currentUserRole, AdminRoleName, StringComparison.Ordinal))
+        {
+            throw new AssetReactivationNotAllowedException();
         }
 
         await EnsureCategoryAndDepartmentExistAsync(dto.CategoryId, dto.DepartmentId);
@@ -114,10 +127,20 @@ public class AssetService : IAssetService
             }
         }
 
+        // Chỉ kiểm tra khi serial thực sự đổi, để dữ liệu cũ đã trùng không chặn việc sửa các trường khác.
+        var serialNumber = NormalizeSerialNumber(dto.SerialNumber);
+        var serialChanged = !string.Equals(serialNumber, asset.SerialNumber, StringComparison.OrdinalIgnoreCase);
+        if (serialChanged && serialNumber is not null && await _repo.SerialNumberExistsAsync(serialNumber, asset.Id))
+        {
+            throw new AssetSerialNumberAlreadyExistsException(serialNumber);
+        }
+
+        var previousStatus = asset.Status;
+
         asset.AssetCode = assetCode;
         asset.Name = dto.Name.Trim();
         asset.CategoryId = dto.CategoryId;
-        asset.SerialNumber = dto.SerialNumber;
+        asset.SerialNumber = serialNumber;
         asset.Specification = dto.Specification;
         asset.OperatingSystem = dto.OperatingSystem;
         asset.DepartmentId = dto.DepartmentId;
@@ -127,24 +150,48 @@ public class AssetService : IAssetService
         // TODO: ghi AuditLog (OldValue/NewValue) khi AuditLogService được xây dựng (chưa có ở Tuần 3-4).
 
         _repo.Update(asset);
+        await SyncMaintenanceTicketsAsync(asset.Id, previousStatus, status);
         await SaveChangesGuardingAssetCodeConflictAsync(assetCode);
-        return MapToDto(asset);
+
+        // Đọc lại để nạp đúng Category/Department mới (response cần tên loại/phòng ban sau khi đổi).
+        var updated = await _repo.GetByIdWithDetailsAsync(asset.Id) ?? throw new AssetNotFoundException(asset.Id);
+        return MapToDto(updated);
     }
 
-    public async Task<AssetResponseDto> DisposeAsync(int id)
+    // Giữ trang Bảo trì khớp với trạng thái tài sản khi người dùng đổi trạng thái tay:
+    //  - chuyển sang "Bảo trì": tài sản phải có phiếu chờ xử lý -> tự tạo nếu chưa có;
+    //  - rời khỏi "Bảo trì" (về Đang dùng/Hỏng): phiếu đang chờ không còn ý nghĩa -> tự đóng (Đang dùng = Đã xử lý, Hỏng = Không xử lý được).
+    // Mọi thay đổi nằm chung 1 DbContext với tài sản nên được lưu atomic cùng lần SaveChanges của UpdateAsync.
+    private async Task SyncMaintenanceTicketsAsync(int assetId, AssetStatus previous, AssetStatus next)
     {
-        var asset = await _repo.GetByIdWithDetailsAsync(id)
-            ?? throw new AssetNotFoundException(id);
-
-        // TODO: bổ sung điều kiện kiểm tra "không có AssetAllocation đang mở" (UC-07) khi
-        // module Phân bổ - thu hồi tài sản sẵn sàng (Tuần 5-6, Hoàng Đức Tú phụ trách).
-        asset.Status = AssetStatus.Disposed;
-        _repo.Update(asset);
-        await _repo.SaveChangesAsync();
-        return MapToDto(asset);
+        if (previous != AssetStatus.Maintenance && next == AssetStatus.Maintenance)
+        {
+            if (!await _ticketRepo.HasPendingTicketAsync(assetId))
+            {
+                await _ticketRepo.AddAsync(new MaintenanceTicket
+                {
+                    AssetId = assetId,
+                    IssueDescription = "Tài sản được chuyển sang trạng thái Bảo trì (phiếu tạo tự động từ trang Tài sản). Vui lòng cập nhật nội dung bảo trì.",
+                    Status = TicketStatus.Pending,
+                    Priority = TicketPriority.Normal,
+                    ReportedDate = DateTime.UtcNow,
+                });
+            }
+        }
+        else if (previous == AssetStatus.Maintenance && next != AssetStatus.Maintenance)
+        {
+            var closeAs = next == AssetStatus.Broken ? TicketStatus.Failed : TicketStatus.Resolved;
+            foreach (var ticket in await _ticketRepo.GetPendingByAssetAsync(assetId))
+            {
+                ticket.Status = closeAs;
+                ticket.ResolvedDate = DateTime.UtcNow;
+                ticket.Notes = $"Đóng tự động: tài sản được đổi trạng thái sang {(next == AssetStatus.Broken ? "Hỏng" : "Đang sử dụng")} từ trang Tài sản.";
+            }
+        }
     }
 
-    public async Task<AssetResponseDto> GetByIdAsync(int id, string? currentUserRole, int? currentUserDepartmentId)
+    public async Task<AssetResponseDto> GetByIdAsync(
+        int id, string? currentUserRole, int? currentUserDepartmentId, int? currentUserId)
     {
         var asset = await _repo.GetByIdWithDetailsAsync(id)
             ?? throw new AssetNotFoundException(id);
@@ -163,15 +210,15 @@ public class AssetService : IAssetService
 
     public async Task<PagedResultDto<AssetResponseDto>> GetPagedAsync(
         int? departmentId, string? status, int page, int pageSize,
-        string? currentUserRole, int? currentUserDepartmentId)
+        string? currentUserRole, int? currentUserDepartmentId, int? currentUserId)
     {
         var parsedStatus = ParseStatusOrThrow(status);
         var scopedDepartmentId = ResolveDepartmentScope(departmentId, currentUserRole, currentUserDepartmentId);
 
-        page = page < 1 ? 1 : page;
-        pageSize = pageSize is < 1 or > MaxPageSize ? DefaultPageSize : pageSize;
+        (page, pageSize) = Paging.Normalize(page, pageSize);
 
-        var (items, total) = await _repo.GetPagedAsync(scopedDepartmentId, parsedStatus, page, pageSize);
+        var (items, total) = await _repo.GetPagedAsync(
+            scopedDepartmentId, parsedStatus, orAssignedTechnicianId: null, page, pageSize);
         return new PagedResultDto<AssetResponseDto>
         {
             Items = items.Select(MapToDto).ToList(),
@@ -182,18 +229,18 @@ public class AssetService : IAssetService
     }
 
     public async Task<PagedResultDto<AssetResponseDto>> SearchAsync(
-        AssetSearchFilterDto filter, string? currentUserRole, int? currentUserDepartmentId)
+        AssetSearchFilterDto filter, string? currentUserRole, int? currentUserDepartmentId, int? currentUserId)
     {
         var parsedStatus = ParseStatusOrThrow(filter.Status);
         var isUnderWarranty = ParseWarrantyStatusOrThrow(filter.WarrantyStatus);
         var scopedDepartmentId = ResolveDepartmentScope(filter.DepartmentId, currentUserRole, currentUserDepartmentId);
 
-        var page = filter.Page < 1 ? 1 : filter.Page;
-        var pageSize = filter.PageSize is < 1 or > MaxPageSize ? DefaultPageSize : filter.PageSize;
+        var (page, pageSize) = Paging.Normalize(filter.Page, filter.PageSize);
 
         var (items, total) = await _repo.SearchAsync(
             filter.Keyword, scopedDepartmentId, filter.CategoryId, parsedStatus,
-            filter.PurchaseYear, isUnderWarranty, page, pageSize);
+            filter.PurchaseYear, isUnderWarranty, orAssignedTechnicianId: null,
+            page, pageSize);
 
         return new PagedResultDto<AssetResponseDto>
         {
@@ -223,6 +270,10 @@ public class AssetService : IAssetService
     // Enum.TryParse mặc định chấp nhận cả chuỗi số ("3" -> Disposed) — không đúng ý định thiết kế
     // (Status dùng string tên để dễ đọc/debug qua Postman, xem UpdateAssetRequestDto). Kiểm tra chặt
     // theo đúng tên định nghĩa trong enum, từ chối mọi chuỗi số hoặc alias khác.
+    // Serial rỗng/chỉ có khoảng trắng coi như không có (null) để không bị tính trùng với nhau.
+    private static string? NormalizeSerialNumber(string? serialNumber) =>
+        string.IsNullOrWhiteSpace(serialNumber) ? null : serialNumber.Trim();
+
     private static bool TryParseAssetStatus(string value, out AssetStatus status)
     {
         if (Enum.GetNames<AssetStatus>().Contains(value, StringComparer.Ordinal))
@@ -250,8 +301,8 @@ public class AssetService : IAssetService
         };
     }
 
-    // UC-08 E2: Manager/Technician tự động bị giới hạn theo phòng ban mình phụ trách — bỏ qua
-    // departmentId client gửi lên (nếu có) để tránh lộ dữ liệu của phòng ban khác. Admin IT không bị giới hạn.
+    // UC-08 E2: Manager tự động bị giới hạn theo phòng ban mình phụ trách — bỏ qua departmentId client
+    // gửi lên (nếu có). Admin IT và Technician (phục vụ mọi phòng ban) không bị giới hạn.
     private static int? ResolveDepartmentScope(
         int? requestedDepartmentId, string? currentUserRole, int? currentUserDepartmentId)
     {
@@ -289,7 +340,7 @@ public class AssetService : IAssetService
         {
             // Race hiếm: 2 request cùng lúc dùng chung AssetCode vượt qua bước kiểm tra trùng ở trên.
             // Unique index trên AssetCode (itam.dbml) là chốt chặn cuối cùng ở DB — ánh xạ lại thành
-            // 409 thân thiện thay vì để lỗi 500 từ MySQL lộ ra ngoài (rủi ro đã nêu ở CLAUDE.md Mục 8).
+            // 409 thân thiện thay vì để lỗi 500 từ MySQL lộ ra ngoài.
             throw new AssetCodeAlreadyExistsException(assetCode);
         }
     }
@@ -299,8 +350,7 @@ public class AssetService : IAssetService
         string.Equals(currentUserRole, ManagerRoleName, StringComparison.Ordinal)
         && currentUserDepartmentId != targetDepartmentId;
 
-    // Dùng cho các thao tác chỉ-đọc (GetById): cả Manager lẫn Technician đều bị giới hạn theo
-    // phòng ban (khác Create/Update, nơi chỉ Manager được phép thao tác nên chỉ cần kiểm tra Manager).
+    // Dùng cho các thao tác chỉ-đọc (GetById): chỉ Manager bị giới hạn theo phòng ban.
     private static bool IsOutsideDepartmentScope(
         string? currentUserRole, int? currentUserDepartmentId, int targetDepartmentId) =>
         DepartmentScopedRoles.Contains(currentUserRole)

@@ -79,25 +79,39 @@
             <p>Danh sách, tìm kiếm/lọc nâng cao, thêm/sửa/thanh lý tài sản CNTT.</p>
           </a>
         </div>
-        <div class="col-md-6 col-lg-3">
+        <div class="col-md-6 col-lg-3" data-roles="Admin IT">
           <a href="pages/asset-categories.html" class="nav-card">
             <div class="icon-box tint-slate"><i class="bi bi-tags"></i></div>
             <h5>Loại tài sản</h5>
             <p>Quản lý danh mục loại tài sản dùng chung.</p>
           </a>
         </div>
-        <div class="col-md-6 col-lg-3">
+        <div class="col-md-6 col-lg-3" data-roles="Admin IT">
           <a href="pages/departments.html" class="nav-card">
             <div class="icon-box tint-success"><i class="bi bi-building"></i></div>
             <h5>Phòng ban</h5>
-            <p>Danh sách phòng ban, thêm phòng ban mới.</p>
+            <p>Danh sách phòng ban, thêm/sửa/xoá phòng ban.</p>
           </a>
         </div>
-        <div class="col-md-6 col-lg-3">
+        <div class="col-md-6 col-lg-3" data-roles="Admin IT">
           <a href="pages/software-licenses.html" class="nav-card">
             <div class="icon-box tint-info"><i class="bi bi-key"></i></div>
             <h5>Phần mềm & Giấy phép</h5>
             <p>Quản lý license, gán/gỡ cho tài sản, cảnh báo sắp hết hạn.</p>
+          </a>
+        </div>
+        <div class="col-md-6 col-lg-3">
+          <a href="pages/maintenance.html" class="nav-card">
+            <div class="icon-box tint-warning"><i class="bi bi-tools"></i></div>
+            <h5>Bảo trì & hỗ trợ</h5>
+            <p>Tạo phiếu báo lỗi, nhận xử lý, cập nhật kết quả và xem thống kê bảo trì.</p>
+          </a>
+        </div>
+        <div class="col-md-6 col-lg-3" data-roles="Admin IT,Manager">
+          <a href="pages/allocations.html" class="nav-card">
+            <div class="icon-box tint-primary"><i class="bi bi-box-arrow-up-right"></i></div>
+            <h5>Phân bổ & thu hồi</h5>
+            <p>Bàn giao, thu hồi tài sản và cảnh báo quá hạn bảo trì.</p>
           </a>
         </div>
       </div>
@@ -112,12 +126,31 @@
     const session = requireAuth("pages/login.html");
     if (session) {
       renderNav({ active: "home", basePath: "" });
+
+      // Ẩn các thẻ truy cập nhanh mà vai trò hiện tại không có quyền dùng (khớp phân quyền backend).
+      document.querySelectorAll("[data-roles]").forEach((el) => {
+        if (!el.dataset.roles.split(",").includes(session.role)) el.remove();
+      });
       document.getElementById("welcomeName").textContent = `Chào mừng trở lại, ${session.fullName} 👋`;
 
       const STATUS_LABELS = { InUse: "Đang dùng", Maintenance: "Bảo trì", Broken: "Hỏng", Disposed: "Đã thanh lý" };
       const STATUS_COLORS = { InUse: "#15803d", Maintenance: "#b45309", Broken: "#b91c1c", Disposed: "#64748b" };
 
-      api.get("/assets/search?page=1&pageSize=200").then((r) => {
+      // API giới hạn pageSize tối đa 100 (vượt quá sẽ bị đưa về 20) nên phải duyệt đủ mọi trang, nếu không biểu
+      // đồ trạng thái chỉ đếm 20 tài sản đầu trong khi tổng số lại là toàn bộ.
+      async function loadAllAssets() {
+        const items = [];
+        let page = 1;
+        let result;
+        do {
+          result = await api.get(`/assets/search?page=${page}&pageSize=100`);
+          items.push(...(result.items || []));
+          page += 1;
+        } while (page <= result.totalPages);
+        return { totalItems: result.totalItems, items };
+      }
+
+      loadAllAssets().then((r) => {
         document.getElementById("statAssets").textContent = r.totalItems;
         renderStatusChart(r.items);
       }).catch(() => { document.getElementById("statAssets").textContent = "–"; });

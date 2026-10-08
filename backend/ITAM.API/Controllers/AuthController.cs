@@ -13,32 +13,10 @@ namespace ITAM.API.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
-    private readonly IWebHostEnvironment _environment;
 
-    public AuthController(IAuthService authService, IWebHostEnvironment environment)
+    public AuthController(IAuthService authService)
     {
         _authService = authService;
-        _environment = environment;
-    }
-
-    [EnableRateLimiting("AuthPolicy")]
-    [HttpPost("register")]
-    public async Task<IActionResult> Register([FromBody] RegisterRequestDto dto)
-    {
-        try
-        {
-            var result = await _authService.RegisterAsync(dto);
-            return StatusCode(StatusCodes.Status201Created,
-                ApiResponse<AuthResponseDto>.Ok(result, "Đăng ký thành công."));
-        }
-        catch (EmailAlreadyExistsException ex)
-        {
-            return Conflict(ApiResponse<object>.Fail(ex.Message));
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(ApiResponse<object>.Fail(ex.Message));
-        }
     }
 
     [EnableRateLimiting("AuthPolicy")]
@@ -47,7 +25,7 @@ public class AuthController : ControllerBase
     {
         try
         {
-            var result = await _authService.LoginAsync(dto);
+            var result = await _authService.LoginAsync(dto, HttpContext.Connection.RemoteIpAddress?.ToString());
             return Ok(ApiResponse<AuthResponseDto>.Ok(result, "Đăng nhập thành công."));
         }
         catch (InvalidCredentialsException ex)
@@ -58,43 +36,25 @@ public class AuthController : ControllerBase
         {
             return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Fail(ex.Message));
         }
-    }
-
-    // Quên mật khẩu: luôn trả 200 với message chung dù email có tồn tại hay không (chống dò email).
-    [EnableRateLimiting("AuthPolicy")]
-    [HttpPost("forgot-password")]
-    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequestDto dto)
-    {
-        var result = await _authService.ForgotPasswordAsync(dto);
-
-        // Dự án chưa có hạ tầng gửi email — chỉ để lộ token qua response ở môi trường Development
-        // để tiện demo/test. Production phải gửi qua email, KHÔNG bao giờ trả token trong response.
-        if (!_environment.IsDevelopment())
+        catch (TooManyLoginAttemptsException ex)
         {
-            result.DevOnlyResetToken = null;
-        }
-
-        return Ok(ApiResponse<ForgotPasswordResponseDto>.Ok(result, result.Message));
-    }
-
-    [EnableRateLimiting("AuthPolicy")]
-    [HttpPost("reset-password")]
-    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequestDto dto)
-    {
-        try
-        {
-            await _authService.ResetPasswordAsync(dto);
-            return Ok(ApiResponse<object>.Ok(new { }, "Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại."));
-        }
-        catch (InvalidResetTokenException ex)
-        {
-            return BadRequest(ApiResponse<object>.Fail(ex.Message));
+            Response.Headers.RetryAfter = ((int)Math.Ceiling(ex.RetryAfter.TotalSeconds)).ToString();
+            return StatusCode(StatusCodes.Status429TooManyRequests, ApiResponse<object>.Fail(ex.Message));
         }
     }
 
-    // Đổi mật khẩu khi đang đăng nhập và còn nhớ mật khẩu hiện tại — khác với quên mật khẩu
-    // (không cần token, chỉ cần xác nhận đúng mật khẩu cũ). Áp dụng như nhau cho mọi role.
+    // Ghi nhận đăng xuất vào nhật ký (token JWT vẫn hết hạn tự nhiên; client xoá token ở phía mình).
     [Authorize]
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout()
+    {
+        await _authService.LogoutAsync(int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!));
+        return Ok(ApiResponse<object>.Ok(new { }, "Đã đăng xuất."));
+    }
+
+    // Đổi mật khẩu khi đang đăng nhập, cần xác nhận đúng mật khẩu hiện tại. Áp dụng như nhau cho mọi role.
+    [Authorize]
+    [EnableRateLimiting("AuthPolicy")]
     [HttpPost("change-password")]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequestDto dto)
     {
@@ -112,6 +72,10 @@ public class AuthController : ControllerBase
         catch (UserNotFoundException ex)
         {
             return NotFound(ApiResponse<object>.Fail(ex.Message));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<object>.Fail(ex.Message));
         }
     }
 

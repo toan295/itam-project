@@ -21,9 +21,13 @@ public class AccountLockedException : Exception
     }
 }
 
-public class InvalidResetTokenException : Exception
+public class TooManyLoginAttemptsException : Exception
 {
-    public InvalidResetTokenException(string message) : base(message)
+    public TimeSpan RetryAfter { get; }
+
+    public TooManyLoginAttemptsException(TimeSpan retryAfter)
+        : base($"Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau {Math.Max(1, (int)Math.Ceiling(retryAfter.TotalMinutes))} phút.")
     {
+        RetryAfter = retryAfter;
     }
 }

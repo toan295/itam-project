@@ -1,3 +1,4 @@
+using ITAM.Tests.Helpers;
 using ITAM.API.Models.DTOs.SoftwareLicenses;
 using ITAM.API.Models.Entities;
 using ITAM.API.Repositories.Interfaces;
@@ -95,10 +96,11 @@ public class SoftwareLicenseServiceTests
         await Assert.ThrowsAsync<KeyNotFoundException>(() => service.GetByIdAsync(1));
     }
 
-    private static SoftwareLicenseService CreateService(ISoftwareLicenseRepository repository)
+    private static SoftwareLicenseService CreateService(ISoftwareLicenseRepository repository, RecordingExclusiveSection? exclusive = null)
     {
         return new SoftwareLicenseService(
             repository,
+            exclusive ?? new RecordingExclusiveSection(),
             NullLogger<SoftwareLicenseService>.Instance);
     }
 

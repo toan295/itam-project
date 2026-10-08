@@ -9,8 +9,9 @@ public class User
     public int RoleId { get; set; }
     public int DepartmentId { get; set; }
     public bool IsActive { get; set; } = true;
-    public string? RefreshToken { get; set; }
-    public DateTime? RefreshTokenExpiryTime { get; set; }
+
+    // true khi mật khẩu là mật khẩu mặc định do Admin cấp/đặt lại — buộc đổi trước khi dùng hệ thống.
+    public bool MustChangePassword { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public Role Role { get; set; } = null!;

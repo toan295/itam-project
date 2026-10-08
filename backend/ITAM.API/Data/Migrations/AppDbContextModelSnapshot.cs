@@ -101,14 +101,43 @@ namespace ITAM.API.Data.Migrations
                     b.Property<int>("DepartmentId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("EmployeeId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("HandedOverByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("HandoverCondition")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("HandoverLocation")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
                     b.Property<string>("HandoverNote")
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
+
+                    b.Property<string>("HandoverReason")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<int?>("ReceivedByUserId")
+                        .HasColumnType("int");
 
                     b.Property<string>("RecipientName")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
+
+                    b.Property<byte?>("ReturnCondition")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<string>("ReturnNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
 
                     b.Property<DateOnly?>("ReturnedDate")
                         .HasColumnType("date");
@@ -121,6 +150,12 @@ namespace ITAM.API.Data.Migrations
                     b.HasIndex("AssetId");
 
                     b.HasIndex("DepartmentId");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("HandedOverByUserId");
+
+                    b.HasIndex("ReceivedByUserId");
 
                     b.ToTable("AssetAllocations");
                 });
@@ -144,6 +179,50 @@ namespace ITAM.API.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("AssetCategories");
+                });
+
+            modelBuilder.Entity("ITAM.API.Models.Entities.AssetCategoryLifecyclePolicy", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CategoryId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxAgeYears")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxFailureCount")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategoryId")
+                        .IsUnique();
+
+                    b.ToTable("AssetCategoryLifecyclePolicies");
+                });
+
+            modelBuilder.Entity("ITAM.API.Models.Entities.AssetCategoryReferencePrice", b =>
+                {
+                    b.Property<int>("CategoryId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("CategoryId");
+
+                    b.ToTable("AssetCategoryReferencePrices", (string)null);
                 });
 
             modelBuilder.Entity("ITAM.API.Models.Entities.AssetSoftwareLicense", b =>
@@ -223,6 +302,12 @@ namespace ITAM.API.Data.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("BreakdownJson")
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<int>("DepartmentId")
                         .HasColumnType("int");
 
@@ -231,6 +316,12 @@ namespace ITAM.API.Data.Migrations
 
                     b.Property<int>("EstimatedReplacementCount")
                         .HasColumnType("int");
+
+                    b.Property<DateTime?>("GeneratedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("Notes")
                         .HasMaxLength(500)
@@ -272,6 +363,230 @@ namespace ITAM.API.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Departments");
+                });
+
+            modelBuilder.Entity("ITAM.API.Models.Entities.DisposalRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AssetId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int?>("CompletedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CompletionNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("DisposalMethod")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime>("InspectedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("InspectedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("InspectionNote")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("varchar(2000)");
+
+                    b.Property<DateTime?>("ProposedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int?>("ProposedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<string>("ReviewNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int?>("ReviewedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StatusId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("SubStatusId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssetId");
+
+                    b.HasIndex("CompletedByUserId");
+
+                    b.HasIndex("InspectedByUserId");
+
+                    b.HasIndex("ProposedByUserId");
+
+                    b.HasIndex("ReviewedByUserId");
+
+                    b.HasIndex("StatusId");
+
+                    b.HasIndex("SubStatusId");
+
+                    b.ToTable("DisposalRequests");
+                });
+
+            modelBuilder.Entity("ITAM.API.Models.Entities.DisposalStatus", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<bool>("IsSystem")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("DisposalStatuses");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Code = "Inspected",
+                            Color = "info",
+                            Description = "Technician đã kiểm tra tài sản",
+                            IsSystem = true,
+                            Name = "Đã kiểm tra",
+                            SortOrder = 1
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Code = "Proposed",
+                            Color = "warning",
+                            Description = "Technician đề xuất thanh lý, chờ Manager duyệt",
+                            IsSystem = true,
+                            Name = "Đã đề xuất",
+                            SortOrder = 2
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Code = "Approved",
+                            Color = "success",
+                            Description = "Manager đã duyệt, chờ Admin IT thực hiện thanh lý",
+                            IsSystem = true,
+                            Name = "Đã duyệt",
+                            SortOrder = 3
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Code = "Rejected",
+                            Color = "danger",
+                            Description = "Manager từ chối đề xuất",
+                            IsSystem = true,
+                            Name = "Từ chối",
+                            SortOrder = 4
+                        },
+                        new
+                        {
+                            Id = 5,
+                            Code = "Completed",
+                            Color = "slate",
+                            Description = "Admin IT đã thanh lý, tài sản chuyển sang Đã thanh lý",
+                            IsSystem = true,
+                            Name = "Hoàn tất",
+                            SortOrder = 5
+                        });
+                });
+
+            modelBuilder.Entity("ITAM.API.Models.Entities.Employee", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("DepartmentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EmployeeCode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Position")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeCode")
+                        .IsUnique();
+
+                    b.HasIndex("FullName");
+
+                    b.HasIndex("DepartmentId", "FullName")
+                        .IsUnique();
+
+                    b.ToTable("Employees");
                 });
 
             modelBuilder.Entity("ITAM.API.Models.Entities.ImportLog", b =>
@@ -329,6 +644,9 @@ namespace ITAM.API.Data.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("varchar(1000)");
 
+                    b.Property<byte>("Priority")
+                        .HasColumnType("tinyint unsigned");
+
                     b.Property<DateTime>("ReportedDate")
                         .HasColumnType("datetime(6)");
 
@@ -344,6 +662,8 @@ namespace ITAM.API.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AssetId");
+
+                    b.HasIndex("Priority");
 
                     b.HasIndex("Status");
 
@@ -411,6 +731,35 @@ namespace ITAM.API.Data.Migrations
                     b.ToTable("SoftwareLicenses");
                 });
 
+            modelBuilder.Entity("ITAM.API.Models.Entities.SystemSetting", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Key")
+                        .IsUnique();
+
+                    b.ToTable("SystemSettings");
+                });
+
             modelBuilder.Entity("ITAM.API.Models.Entities.User", b =>
                 {
                     b.Property<int>("Id")
@@ -438,17 +787,13 @@ namespace ITAM.API.Data.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<bool>("MustChangePassword")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("varchar(255)");
-
-                    b.Property<string>("RefreshToken")
-                        .HasMaxLength(255)
-                        .HasColumnType("varchar(255)");
-
-                    b.Property<DateTime?>("RefreshTokenExpiryTime")
-                        .HasColumnType("datetime(6)");
 
                     b.Property<int>("RoleId")
                         .HasColumnType("int");
@@ -498,9 +843,52 @@ namespace ITAM.API.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("ITAM.API.Models.Entities.Employee", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ITAM.API.Models.Entities.User", "HandedOverBy")
+                        .WithMany()
+                        .HasForeignKey("HandedOverByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ITAM.API.Models.Entities.User", "ReceivedBy")
+                        .WithMany()
+                        .HasForeignKey("ReceivedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Asset");
 
                     b.Navigation("Department");
+
+                    b.Navigation("Employee");
+
+                    b.Navigation("HandedOverBy");
+
+                    b.Navigation("ReceivedBy");
+                });
+
+            modelBuilder.Entity("ITAM.API.Models.Entities.AssetCategoryLifecyclePolicy", b =>
+                {
+                    b.HasOne("ITAM.API.Models.Entities.AssetCategory", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("ITAM.API.Models.Entities.AssetCategoryReferencePrice", b =>
+                {
+                    b.HasOne("ITAM.API.Models.Entities.AssetCategory", "Category")
+                        .WithOne()
+                        .HasForeignKey("ITAM.API.Models.Entities.AssetCategoryReferencePrice", "CategoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Category");
                 });
 
             modelBuilder.Entity("ITAM.API.Models.Entities.AssetSoftwareLicense", b =>
@@ -537,6 +925,72 @@ namespace ITAM.API.Data.Migrations
                 {
                     b.HasOne("ITAM.API.Models.Entities.Department", "Department")
                         .WithMany("BudgetForecasts")
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Department");
+                });
+
+            modelBuilder.Entity("ITAM.API.Models.Entities.DisposalRequest", b =>
+                {
+                    b.HasOne("ITAM.API.Models.Entities.Asset", "Asset")
+                        .WithMany()
+                        .HasForeignKey("AssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ITAM.API.Models.Entities.User", "CompletedBy")
+                        .WithMany()
+                        .HasForeignKey("CompletedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ITAM.API.Models.Entities.User", "InspectedBy")
+                        .WithMany()
+                        .HasForeignKey("InspectedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ITAM.API.Models.Entities.User", "ProposedBy")
+                        .WithMany()
+                        .HasForeignKey("ProposedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ITAM.API.Models.Entities.User", "ReviewedBy")
+                        .WithMany()
+                        .HasForeignKey("ReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ITAM.API.Models.Entities.DisposalStatus", "Status")
+                        .WithMany()
+                        .HasForeignKey("StatusId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ITAM.API.Models.Entities.DisposalStatus", "SubStatus")
+                        .WithMany()
+                        .HasForeignKey("SubStatusId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Asset");
+
+                    b.Navigation("CompletedBy");
+
+                    b.Navigation("InspectedBy");
+
+                    b.Navigation("ProposedBy");
+
+                    b.Navigation("ReviewedBy");
+
+                    b.Navigation("Status");
+
+                    b.Navigation("SubStatus");
+                });
+
+            modelBuilder.Entity("ITAM.API.Models.Entities.Employee", b =>
+                {
+                    b.HasOne("ITAM.API.Models.Entities.Department", "Department")
+                        .WithMany()
                         .HasForeignKey("DepartmentId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();

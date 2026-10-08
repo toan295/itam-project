@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dự báo ngân sách - EAIMS</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="../shared/theme.css" rel="stylesheet">
+</head>
+<body>
+  <div class="eaims-shell">
+    <div id="appNav"></div>
+
+    <main class="eaims-main">
+      <div class="page-header">
+        <div>
+          <h1>Dự báo ngân sách thay thế</h1>
+          <p>Ước tính số thiết bị cần thay và ngân sách theo năm, dựa trên tuổi thọ và số lần lỗi. Chỉ Admin IT được phép sử dụng.</p>
+        </div>
+      </div>
+
+      <div id="forbiddenAlert" class="alert alert-warning d-none"></div>
+      <div id="errorAlert" class="alert alert-danger d-none"></div>
+
+      <div id="forecastContent">
+        <!-- Tạo dự báo -->
+        <div class="eaims-card mb-3">
+          <div class="card-body">
+            <h5 class="mb-3">Tạo dự báo</h5>
+            <form id="generateForm" class="row g-2 align-items-end">
+              <div class="col-lg-2 col-md-4">
+                <label class="form-label" for="genYear">Năm dự báo</label>
+                <select class="form-select" id="genYear"></select>
+              </div>
+              <div class="col-lg-3 col-md-5">
+                <label class="form-label" for="genDepartment">Phòng ban</label>
+                <select class="form-select" id="genDepartment">
+                  <option value="">Tất cả phòng ban</option>
+                </select>
+              </div>
+              <div class="col-auto">
+                <button class="btn btn-primary" type="submit" id="generateBtn">
+                  <i class="bi bi-calculator"></i> Tạo dự báo
+                </button>
+              </div>
+            </form>
+            <div class="form-text mt-2">
+              Mỗi năm chỉ tính các tài sản đến hạn thay thế đúng năm đó (không cộng dồn). Tạo lại cùng năm và phòng ban sẽ cập nhật dự báo cũ.
+            </div>
+
+            <details class="mt-2" id="howItWorks">
+              <summary class="text-primary" style="cursor:pointer"><i class="bi bi-question-circle"></i> Dự báo này được tính như thế nào?</summary>
+              <ol class="small text-muted mt-2 mb-0 ps-3">
+                <li>Mỗi tài sản (trừ tài sản đã thanh lý) được xét theo <strong>2 tiêu chí</strong>: <em>tuổi</em> (tính từ ngày mua) và <em>số phiếu bảo trì</em>. Vượt <strong>ngưỡng tuổi</strong> hoặc <strong>ngưỡng số lần bảo trì</strong> của loại tài sản đó thì cần thay thế. Ngưỡng cấu hình ở trang <a href="lifecycle.html">Vòng đời tài sản</a> (mặc định 5 năm / 3 lần).</li>
+                <li>Mỗi tài sản cần thay có một <strong>năm đến hạn</strong>: đã quá tuổi hoặc đã vượt ngưỡng bảo trì thì đến hạn ngay <em>năm hiện tại</em>; chưa quá tuổi thì đến hạn vào năm tài sản tròn ngưỡng tuổi.</li>
+                <li>Dự báo năm X chỉ tính tài sản có <strong>năm đến hạn đúng bằng X</strong> (không cộng dồn). Vì vậy tài sản đã quá hạn từ trước nằm ở dự báo của năm hiện tại, không lặp lại ở các năm sau.</li>
+                <li><strong>Số thiết bị đề xuất</strong> = số tài sản đến hạn của phòng ban đó. <strong>Ngân sách</strong> = số lượng từng loại × đơn giá tham khảo. Phòng ban có số 0 nghĩa là chưa có tài sản nào đến hạn thay thế trong năm đã chọn.</li>
+                <li>Bấm <strong>Chi tiết</strong> để xem chính xác những tài sản nào được đề xuất và vì lý do gì.</li>
+              </ol>
+            </details>
+
+            <div id="warningBanner" class="alert alert-warning mt-3 mb-0 d-none">
+              <div class="fw-semibold mb-1"><i class="bi bi-exclamation-triangle"></i> Ngân sách có thể thấp hơn thực tế</div>
+              <ul class="mb-0" id="warningList"></ul>
+            </div>
+
+            <div id="resultSection" class="mt-3 d-none">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0" id="resultTitle"></h6>
+                <span class="fw-semibold" id="resultTotal"></span>
+              </div>
+              <div class="eaims-table-wrap">
+                <div class="table-responsive">
+                  <table class="eaims-table">
+                    <thead>
+                      <tr>
+                        <th>Phòng ban</th>
+                        <th class="text-end">Số thiết bị đề xuất</th>
+                        <th class="text-end">Ngân sách ước tính</th>
+                        <th class="text-end">Chi tiết</th>
+                      </tr>
+                    </thead>
+                    <tbody id="resultTableBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Lịch sử dự báo -->
+        <div class="eaims-card mb-3">
+          <div class="card-body">
+            <h5 class="mb-3">Lịch sử dự báo</h5>
+            <form id="historyFilterForm" class="row g-2 align-items-end mb-3">
+              <div class="col-lg-2 col-md-4">
+                <label class="form-label" for="filterYear">Năm</label>
+                <input type="number" class="form-control" id="filterYear" min="2000" max="2200" placeholder="Tất cả">
+              </div>
+              <div class="col-lg-3 col-md-5">
+                <label class="form-label" for="filterDepartment">Phòng ban</label>
+                <select class="form-select" id="filterDepartment">
+                  <option value="">-- Tất cả --</option>
+                </select>
+              </div>
+              <div class="col-auto">
+                <button class="btn btn-primary" type="submit"><i class="bi bi-search"></i> Lọc</button>
+              </div>
+              <div class="col-auto">
+                <button class="btn btn-outline-secondary" type="button" id="resetFilterBtn">Xoá lọc</button>
+              </div>
+            </form>
+
+            <div class="eaims-table-wrap">
+              <div class="table-responsive">
+                <table class="eaims-table">
+                  <thead>
+                    <tr>
+                      <th>Năm</th>
+                      <th>Phòng ban</th>
+                      <th class="text-end">Số thiết bị</th>
+                      <th class="text-end">Ngân sách</th>
+                      <th>Thời điểm tạo</th>
+                      <th class="text-end">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody id="historyTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mt-3">
+              <span class="text-muted small" id="totalItemsLabel"></span>
+              <nav><ul class="pagination mb-0" id="pagination"></ul></nav>
+            </div>
+          </div>
+        </div>
+
+        <!-- Đơn giá tham khảo -->
+        <div class="eaims-card mb-3">
+          <div class="card-body">
+            <h5 class="mb-1">Đơn giá tham khảo theo loại tài sản</h5>
+            <p class="text-muted small mb-3">Đơn vị: VNĐ. Nhập số, hệ thống tự thêm dấu chấm ngăn cách hàng nghìn (vd 25.000.000). Loại chưa có đơn giá vẫn được đếm số lượng nhưng không được tính vào ngân sách.</p>
+            <div class="eaims-table-wrap">
+              <div class="table-responsive">
+                <table class="eaims-table">
+                  <thead>
+                    <tr>
+                      <th>Loại tài sản</th>
+                      <th style="min-width:220px">Đơn giá (VNĐ)</th>
+                      <th>Trạng thái</th>
+                      <th class="text-end">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody id="priceTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal chi tiết dự báo -->
+  <div class="modal fade" id="forecastDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="detailTitle">Chi tiết dự báo</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <dl class="row mb-3">
+            <dt class="col-sm-4">Số thiết bị đề xuất</dt><dd class="col-sm-8" id="detailCount"></dd>
+            <dt class="col-sm-4">Ngân sách ước tính</dt><dd class="col-sm-8" id="detailBudget"></dd>
+            <dt class="col-sm-4">Thời điểm tạo</dt><dd class="col-sm-8" id="detailGeneratedAt"></dd>
+          </dl>
+          <div id="detailNotes" class="alert alert-warning py-2 d-none"></div>
+          <p class="small text-muted" id="detailExplain"></p>
+          <div class="table-responsive">
+            <table class="eaims-table">
+              <thead>
+                <tr>
+                  <th>Loại tài sản</th>
+                  <th class="text-end">Số lượng</th>
+                  <th class="text-end">Đơn giá</th>
+                  <th class="text-end">Thành tiền</th>
+                </tr>
+              </thead>
+              <tbody id="detailBreakdownBody"></tbody>
+            </table>
+          </div>
+          <h6 class="mt-4 mb-2">Tài sản được đề xuất thay thế</h6>
+          <div class="table-responsive">
+            <table class="eaims-table">
+              <thead>
+                <tr>
+                  <th>Mã</th><th>Tên tài sản</th><th>Loại</th><th>Ngày mua</th>
+                  <th class="text-end">Tuổi</th><th class="text-end">Số phiếu BT</th><th>Lý do</th>
+                </tr>
+              </thead>
+              <tbody id="detailAssetsBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="../shared/api-client.js"></script>
+  <script src="../shared/nav.js"></script>
+  <script src="../assets/js/forecasts.js"></script>
+</body>
+</html>

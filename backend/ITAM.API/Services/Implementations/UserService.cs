@@ -1,5 +1,5 @@
-using ITAM.API.Helpers;
 using ITAM.API.Models.DTOs.Common;
+using ITAM.API.Helpers;
 using ITAM.API.Models.DTOs.Users;
 using ITAM.API.Models.Entities;
 using ITAM.API.Repositories.Interfaces;
@@ -11,37 +11,38 @@ namespace ITAM.API.Services.Implementations;
 public class UserService : IUserService
 {
     private const string AdminRoleName = "Admin IT";
-    private const int DefaultPageSize = 20;
-    private const int MaxPageSize = 100;
+    private const string TechnicianRoleName = "Technician";
+    // Số kỹ thuật viên đang hoạt động khuyến nghị tối thiểu — họ phục vụ tất cả phòng ban. Chỉ cảnh báo, không chặn.
+    private const int MinActiveTechnicians = 3;
 
-    // Link do Admin IT cấp (tạo tài khoản/đặt lại mật khẩu hộ) sống lâu hơn token tự phục vụ
-    // (15 phút) vì Admin có thể chưa chuyển ngay cho người dùng cuối.
-    private static readonly TimeSpan AdminIssuedLinkLifetime = TimeSpan.FromHours(24);
+    private const int BCryptWorkFactor = 11;
 
     private readonly IUserRepository _userRepo;
     private readonly IRoleRepository _roleRepo;
     private readonly IDepartmentRepository _departmentRepo;
-    private readonly PasswordResetTokenHelper _resetTokenHelper;
+    private readonly IDefaultPasswordService _defaultPasswordService;
+    private readonly IAuditLogService _auditLogService;
     private readonly ILogger<UserService> _logger;
 
     public UserService(
         IUserRepository userRepo,
         IRoleRepository roleRepo,
         IDepartmentRepository departmentRepo,
-        PasswordResetTokenHelper resetTokenHelper,
+        IDefaultPasswordService defaultPasswordService,
+        IAuditLogService auditLogService,
         ILogger<UserService> logger)
     {
         _userRepo = userRepo;
         _roleRepo = roleRepo;
         _departmentRepo = departmentRepo;
-        _resetTokenHelper = resetTokenHelper;
+        _defaultPasswordService = defaultPasswordService;
+        _auditLogService = auditLogService;
         _logger = logger;
     }
 
     public async Task<PagedResultDto<UserResponseDto>> GetPagedAsync(int page, int pageSize, string? search)
     {
-        page = page < 1 ? 1 : page;
-        pageSize = pageSize is < 1 or > MaxPageSize ? DefaultPageSize : pageSize;
+        (page, pageSize) = Paging.Normalize(page, pageSize);
 
         var (items, total) = await _userRepo.GetPagedAsync(page, pageSize, search);
         return new PagedResultDto<UserResponseDto>
@@ -59,7 +60,7 @@ public class UserService : IUserService
         return MapToDto(user);
     }
 
-    public async Task<UserSetupLinkResponseDto> CreateAsync(CreateUserRequestDto dto)
+    public async Task<UserResponseDto> CreateAsync(CreateUserRequestDto dto, int currentUserId)
     {
         var email = dto.Email.Trim();
 
@@ -70,14 +71,15 @@ public class UserService : IUserService
         }
 
         await EnsureRoleAndDepartmentExistAsync(dto.RoleId, dto.DepartmentId);
+        var passwordHash = await HashDefaultPasswordAsync();
 
         var user = new User
         {
             FullName = dto.FullName.Trim(),
             Email = email,
-            // Mật khẩu ngẫu nhiên, không ai (kể cả Admin IT vừa tạo) biết được — tài khoản chỉ
-            // dùng được sau khi người dùng tự đặt mật khẩu qua link thiết lập bên dưới.
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N") + Guid.NewGuid(), 11),
+            // Tài khoản mới dùng mật khẩu mặc định do Admin IT cấu hình; buộc đổi ở lần đăng nhập đầu.
+            PasswordHash = passwordHash,
+            MustChangePassword = true,
             RoleId = dto.RoleId,
             DepartmentId = dto.DepartmentId,
             IsActive = true,
@@ -88,16 +90,26 @@ public class UserService : IUserService
         await SaveChangesGuardingEmailConflictAsync(email);
 
         var created = await _userRepo.GetByIdWithDetailsAsync(user.Id) ?? throw new UserNotFoundException(user.Id);
-        var setupToken = _resetTokenHelper.GenerateToken(created, AdminIssuedLinkLifetime);
 
-        _logger.LogInformation("User {Email} created by Admin IT, setup link issued", created.Email);
+        _logger.LogInformation("User {Email} created by Admin IT with the default password", created.Email);
 
-        return new UserSetupLinkResponseDto { User = MapToDto(created), DevOnlySetupToken = setupToken };
+        // Lần lưu thứ 2 (bắt buộc): EntityId của log là Id tự sinh, chỉ có sau lần lưu User ở trên.
+        await _auditLogService.RecordAsync(
+            currentUserId,
+            "Create",
+            "User",
+            created.Id,
+            oldValue: null,
+            newValue: ToAuditSnapshot(created));
+        await _userRepo.SaveChangesAsync();
+
+        return MapToDto(created);
     }
 
     public async Task<UserResponseDto> UpdateAsync(int id, UpdateUserRequestDto dto, int currentUserId)
     {
         var user = await _userRepo.GetByIdWithDetailsAsync(id) ?? throw new UserNotFoundException(id);
+        var oldValue = ToAuditSnapshot(user);
 
         // UC-03 quy tắc nghiệp vụ: không được tự khoá tài khoản của chính mình.
         if (id == currentUserId && !dto.IsActive)
@@ -130,6 +142,19 @@ public class UserService : IUserService
             }
         }
 
+        string? warning = null;
+        var wasTechnician = string.Equals(user.Role.Name, TechnicianRoleName, StringComparison.Ordinal);
+        if (wasTechnician && user.IsActive && (!dto.IsActive || dto.RoleId != user.RoleId))
+        {
+            // Không chặn — chỉ cảnh báo khi việc này kéo số kỹ thuật viên hoạt động xuống dưới mức tối thiểu.
+            var otherActiveTechnicians = await _userRepo.CountActiveUsersInRoleAsync(user.RoleId, excludeUserId: id);
+            if (otherActiveTechnicians < MinActiveTechnicians)
+            {
+                warning = $"Hiện chỉ còn {otherActiveTechnicians} kỹ thuật viên đang hoạt động " +
+                          $"(khuyến nghị tối thiểu {MinActiveTechnicians}). Hãy bổ sung kỹ thuật viên.";
+            }
+        }
+
         user.FullName = dto.FullName.Trim();
         user.Email = email;
         user.RoleId = dto.RoleId;
@@ -137,13 +162,24 @@ public class UserService : IUserService
         user.IsActive = dto.IsActive;
 
         _userRepo.Update(user);
+
+        // Id đã biết trước -> ghi log rồi lưu MỘT lần: User và AuditLog cùng commit (atomic).
+        await _auditLogService.RecordAsync(
+            currentUserId,
+            "Update",
+            "User",
+            user.Id,
+            oldValue,
+            ToAuditSnapshot(user));
         await SaveChangesGuardingEmailConflictAsync(email);
 
         var updated = await _userRepo.GetByIdWithDetailsAsync(id) ?? throw new UserNotFoundException(id);
-        return MapToDto(updated);
+        var result = MapToDto(updated);
+        result.Warning = warning;
+        return result;
     }
 
-    public async Task<UserSetupLinkResponseDto> ResetPasswordAsync(int id, int currentUserId)
+    public async Task<UserResponseDto> ResetPasswordAsync(int id, int currentUserId)
     {
         if (id == currentUserId)
         {
@@ -152,11 +188,26 @@ public class UserService : IUserService
 
         var user = await _userRepo.GetByIdWithDetailsAsync(id) ?? throw new UserNotFoundException(id);
 
-        var token = _resetTokenHelper.GenerateToken(user, AdminIssuedLinkLifetime);
-        _logger.LogInformation("Password reset link issued by Admin IT for user {Email}", user.Email);
+        user.PasswordHash = await HashDefaultPasswordAsync();
+        user.MustChangePassword = true;
+        _userRepo.Update(user);
+        _logger.LogInformation("Password reset to default by Admin IT for user {Email}", user.Email);
 
-        return new UserSetupLinkResponseDto { User = MapToDto(user), DevOnlySetupToken = token };
+        await _auditLogService.RecordAsync(
+            currentUserId,
+            "ResetPassword",
+            "User",
+            user.Id,
+            oldValue: null,
+            newValue: new { PasswordResetToDefault = true });
+        await _userRepo.SaveChangesAsync();
+
+        var updated = await _userRepo.GetByIdWithDetailsAsync(id) ?? throw new UserNotFoundException(id);
+        return MapToDto(updated);
     }
+
+    private async Task<string> HashDefaultPasswordAsync() =>
+        BCrypt.Net.BCrypt.HashPassword(await _defaultPasswordService.GetRequiredAsync(), BCryptWorkFactor);
 
     private async Task EnsureRoleAndDepartmentExistAsync(int roleId, int departmentId)
     {
@@ -185,6 +236,20 @@ public class UserService : IUserService
         }
     }
 
+    private static UserAuditSnapshot ToAuditSnapshot(User user) => new(
+        user.FullName,
+        user.Email,
+        user.RoleId,
+        user.DepartmentId,
+        user.IsActive);
+
+    private sealed record UserAuditSnapshot(
+        string FullName,
+        string Email,
+        int RoleId,
+        int DepartmentId,
+        bool IsActive);
+
     private static UserResponseDto MapToDto(User u) => new()
     {
         Id = u.Id,
@@ -195,6 +260,7 @@ public class UserService : IUserService
         DepartmentId = u.DepartmentId,
         DepartmentName = u.Department?.Name ?? "",
         IsActive = u.IsActive,
+        MustChangePassword = u.MustChangePassword,
         CreatedAt = u.CreatedAt,
     };
 }

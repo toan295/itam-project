@@ -25,12 +25,42 @@ public class DepartmentForbiddenException : Exception
     }
 }
 
-// UC-07: chỉ Admin IT được chuyển tài sản sang Disposed (qua DELETE /assets/{id}) — chặn Manager
-// "lách" qua PUT /assets/{id} để tự đặt Status = Disposed.
+// Không cho đặt Status = Disposed trực tiếp qua PUT /assets/{id} — thanh lý bắt buộc qua quy trình
+// phiếu thanh lý (/disposal-requests) để có đủ kiểm tra, đề xuất và duyệt.
 public class AssetDisposalNotAllowedException : Exception
 {
     public AssetDisposalNotAllowedException()
-        : base("Chỉ Admin IT được ngừng sử dụng tài sản. Vui lòng dùng chức năng \"Thanh lý\" (DELETE).")
+        : base("Không thể đặt trạng thái \"Đã thanh lý\" trực tiếp. Hãy dùng quy trình Thanh lý: " +
+               "Technician kiểm tra và đề xuất, Manager duyệt, Admin IT thực hiện.")
+    {
+    }
+}
+
+// UC-07 E1: không cho thanh lý tài sản khi còn AssetAllocation đang mở (chưa thu hồi) — phải thu hồi
+// trước (UC-15). Tách riêng khỏi AssetDisposalNotAllowedException: lý do khác hẳn (409 - xung đột
+// trạng thái, không phải 403 - thiếu quyền), dùng chung sẽ hiển thị nhầm thông báo "chỉ Admin IT..."
+// cho một lỗi hoàn toàn không liên quan tới quyền hạn.
+public class AssetHasOpenAllocationException : Exception
+{
+    public AssetHasOpenAllocationException(int assetId)
+        : base($"Tài sản Id={assetId} đang có một phân bổ chưa thu hồi. Vui lòng thu hồi trước khi thanh lý.")
+    {
+    }
+}
+
+// Chiều ngược lại của UC-07: chỉ Admin IT được đưa tài sản đã thanh lý (Disposed) trở lại hoạt động.
+public class AssetReactivationNotAllowedException : Exception
+{
+    public AssetReactivationNotAllowedException()
+        : base("Tài sản đã thanh lý. Chỉ Admin IT được khôi phục trạng thái của tài sản này.")
+    {
+    }
+}
+
+public class AssetSerialNumberAlreadyExistsException : Exception
+{
+    public AssetSerialNumberAlreadyExistsException(string serialNumber)
+        : base($"Số serial '{serialNumber}' đã được dùng cho một tài sản khác.")
     {
     }
 }

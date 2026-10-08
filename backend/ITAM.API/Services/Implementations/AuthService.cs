@@ -1,9 +1,8 @@
-using ITAM.API.Data;
 using ITAM.API.Helpers;
 using ITAM.API.Models.DTOs;
 using ITAM.API.Models.Entities;
+using ITAM.API.Repositories.Interfaces;
 using ITAM.API.Services.Interfaces;
-using Microsoft.EntityFrameworkCore;
 
 namespace ITAM.API.Services.Implementations;
 
@@ -11,89 +10,70 @@ public class AuthService : IAuthService
 {
     private const int BCryptWorkFactor = 11;
 
-    // Người tự đăng ký luôn nhận role thấp nhất; nâng role (Manager, Admin IT)
-    // phải do Admin thao tác sau, không cho client tự chọn qua /auth/register.
-    private const string DefaultRegisterRoleName = "Technician";
+    // Hash BCrypt hợp lệ (cùng work factor) của một chuỗi ngẫu nhiên, dùng để cân bằng thời gian khi không có user.
+    private static readonly string DummyPasswordHash =
+        BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N"), BCryptWorkFactor);
 
-    // Message chung, không tiết lộ email có tồn tại trong hệ thống hay không (chống dò email — UC quên mật khẩu).
-    private const string ForgotPasswordGenericMessage =
-        "Nếu email tồn tại trong hệ thống, hướng dẫn đặt lại mật khẩu đã được gửi tới email đó.";
-
-    private readonly AppDbContext _context;
+    private readonly IUserRepository _userRepository;
     private readonly JwtHelper _jwtHelper;
-    private readonly PasswordResetTokenHelper _resetTokenHelper;
+    private readonly ILoginAttemptTracker _loginAttempts;
+    private readonly IDefaultPasswordService _defaultPassword;
     private readonly ILogger<AuthService> _logger;
+    private readonly IAuditLogService _auditLog;
 
     public AuthService(
-        AppDbContext context,
+        IUserRepository userRepository,
         JwtHelper jwtHelper,
-        PasswordResetTokenHelper resetTokenHelper,
-        ILogger<AuthService> logger)
+        ILoginAttemptTracker loginAttempts,
+        IDefaultPasswordService defaultPassword,
+        ILogger<AuthService> logger,
+        IAuditLogService auditLog)
     {
-        _context = context;
+        _userRepository = userRepository;
         _jwtHelper = jwtHelper;
-        _resetTokenHelper = resetTokenHelper;
+        _loginAttempts = loginAttempts;
+        _defaultPassword = defaultPassword;
         _logger = logger;
+        _auditLog = auditLog;
     }
 
-    public async Task<AuthResponseDto> RegisterAsync(RegisterRequestDto dto)
+    public async Task<AuthResponseDto> LoginAsync(LoginRequestDto dto, string? clientIp = null)
     {
-        var emailExists = await _context.Users.AnyAsync(u => u.Email == dto.Email);
-        if (emailExists)
+        var attemptKey = $"{clientIp ?? "unknown"}|{dto.Email.Trim().ToLowerInvariant()}";
+        if (_loginAttempts.IsBlocked(attemptKey, out var retryAfter))
         {
-            throw new EmailAlreadyExistsException(dto.Email);
+            throw new TooManyLoginAttemptsException(retryAfter);
         }
 
-        var departmentExists = await _context.Departments.AnyAsync(d => d.Id == dto.DepartmentId);
-        if (!departmentExists)
+        var user = await _userRepository.GetByEmailWithRoleAsync(dto.Email);
+
+        // Luôn chạy một lần BCrypt dù email không tồn tại — nếu không, request cho email không có thật trả về
+        // nhanh hơn hẳn (không băm), cho phép dò email nào có tài khoản qua thời gian phản hồi.
+        var passwordOk = BCrypt.Net.BCrypt.Verify(dto.Password, user?.PasswordHash ?? DummyPasswordHash);
+        if (user is null || !passwordOk)
         {
-            throw new ArgumentException($"DepartmentId '{dto.DepartmentId}' không tồn tại.");
-        }
+            _loginAttempts.RecordFailure(attemptKey);
+            if (user is not null)
+            {
+                // Chỉ ghi được khi email thuộc một tài khoản có thật (nhật ký cần UserId) — dấu vết đoán mật khẩu.
+                await RecordAsync(user.Id, "LoginFailed", new { reason = "WrongPassword" });
+            }
 
-        var defaultRole = await _context.Roles.SingleOrDefaultAsync(r => r.Name == DefaultRegisterRoleName);
-        if (defaultRole is null)
-        {
-            throw new InvalidOperationException(
-                $"Role mặc định '{DefaultRegisterRoleName}' chưa tồn tại — cần seed Roles trước khi cho phép đăng ký.");
-        }
-
-        var user = new User
-        {
-            FullName = dto.FullName,
-            Email = dto.Email,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password, BCryptWorkFactor),
-            RoleId = defaultRole.Id,
-            DepartmentId = dto.DepartmentId
-        };
-
-        _context.Users.Add(user);
-        await _context.SaveChangesAsync();
-
-        _logger.LogInformation("User {Email} registered successfully", user.Email);
-
-        await _context.Entry(user).Reference(u => u.Role).LoadAsync();
-        return BuildAuthResponse(user);
-    }
-
-    public async Task<AuthResponseDto> LoginAsync(LoginRequestDto dto)
-    {
-        var user = await _context.Users
-            .Include(u => u.Role)
-            .FirstOrDefaultAsync(u => u.Email == dto.Email);
-
-        if (user is null || !BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash))
-        {
             throw new InvalidCredentialsException();
         }
+
+        _loginAttempts.Reset(attemptKey);
 
         // Kiểm tra sau khi xác thực mật khẩu thành công, để không lộ trạng thái tài khoản
         // cho người chưa biết đúng mật khẩu. Thiếu bước này thì tài khoản bị Admin khoá
         // (UC-03) vẫn đăng nhập được bình thường và dùng được mọi API.
         if (!user.IsActive)
         {
+            await RecordAsync(user.Id, "LoginFailed", new { reason = "AccountLocked" });
             throw new AccountLockedException();
         }
 
+        await RecordAsync(user.Id, "Login", null);
         _logger.LogInformation("User {Email} logged in successfully", user.Email);
 
         return BuildAuthResponse(user);
@@ -101,9 +81,7 @@ public class AuthService : IAuthService
 
     public async Task<UserProfileDto?> GetMeAsync(int userId)
     {
-        var user = await _context.Users
-            .Include(u => u.Role)
-            .FirstOrDefaultAsync(u => u.Id == userId);
+        var user = await _userRepository.GetByIdWithDetailsAsync(userId);
 
         if (user is null)
         {
@@ -117,65 +95,14 @@ public class AuthService : IAuthService
             Email = user.Email,
             Role = user.Role.Name,
             DepartmentId = user.DepartmentId,
-            IsActive = user.IsActive
+            IsActive = user.IsActive,
+            MustChangePassword = user.MustChangePassword
         };
-    }
-
-    public async Task<ForgotPasswordResponseDto> ForgotPasswordAsync(ForgotPasswordRequestDto dto)
-    {
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
-
-        // Không throw/trả lỗi riêng khi không tìm thấy email hoặc tài khoản bị khoá — luôn trả về
-        // cùng một message chung để không lộ thông tin "email này có tồn tại trong hệ thống hay không"
-        // cho người ngoài dò quét (OWASP: chống User Enumeration).
-        if (user is null || !user.IsActive)
-        {
-            _logger.LogInformation(
-                "Forgot-password requested for unknown or inactive email {Email}", dto.Email);
-            return new ForgotPasswordResponseDto { Message = ForgotPasswordGenericMessage };
-        }
-
-        var token = _resetTokenHelper.GenerateToken(user);
-        _logger.LogInformation("Password reset token issued for user {Email}", user.Email);
-
-        // Token luôn được tính ở đây (business logic); Controller sẽ quyết định có trả về client hay
-        // không tuỳ môi trường (Development mới trả, Production phải null vì chưa có hạ tầng gửi email).
-        return new ForgotPasswordResponseDto
-        {
-            Message = ForgotPasswordGenericMessage,
-            DevOnlyResetToken = token,
-        };
-    }
-
-    public async Task ResetPasswordAsync(ResetPasswordRequestDto dto)
-    {
-        if (!_resetTokenHelper.TryParse(dto.Token, out var payload, out var parseError))
-        {
-            throw new InvalidResetTokenException(parseError);
-        }
-
-        var user = await _context.Users.FindAsync(payload!.UserId);
-        if (user is null || !user.IsActive)
-        {
-            throw new InvalidResetTokenException("Token không hợp lệ.");
-        }
-
-        // Fingerprint không khớp nghĩa là mật khẩu đã đổi kể từ khi token này được cấp
-        // (đã dùng một token reset khác trước đó, hoặc mật khẩu bị đổi bằng cách khác) -> từ chối.
-        if (payload.PasswordFingerprint != PasswordResetTokenHelper.ComputeFingerprint(user.PasswordHash))
-        {
-            throw new InvalidResetTokenException("Token đã được sử dụng hoặc không còn hiệu lực.");
-        }
-
-        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword, BCryptWorkFactor);
-        await _context.SaveChangesAsync();
-
-        _logger.LogInformation("Password reset successfully for user {Email}", user.Email);
     }
 
     public async Task ChangePasswordAsync(int userId, ChangePasswordRequestDto dto)
     {
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId)
+        var user = await _userRepository.GetByIdTrackedAsync(userId)
             ?? throw new UserNotFoundException(userId);
 
         if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
@@ -183,10 +110,46 @@ public class AuthService : IAuthService
             throw new InvalidCredentialsException();
         }
 
+        if (dto.NewPassword == dto.CurrentPassword)
+        {
+            throw new ArgumentException("Mật khẩu mới phải khác mật khẩu hiện tại.");
+        }
+
+        var policyError = PasswordPolicy.Validate(dto.NewPassword);
+        if (policyError is not null)
+        {
+            throw new ArgumentException(policyError);
+        }
+
+        // Không cho "đổi" sang lại chính mật khẩu mặc định (mọi tài khoản mới đều biết giá trị này).
+        if (await _defaultPassword.IsDefaultPasswordAsync(dto.NewPassword))
+        {
+            throw new ArgumentException("Mật khẩu mới không được trùng mật khẩu mặc định của hệ thống.");
+        }
+
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword, BCryptWorkFactor);
-        await _context.SaveChangesAsync();
+        user.MustChangePassword = false;
+        await _auditLog.RecordAsync(user.Id, "ChangePassword", "User", user.Id);
+        await _userRepository.SaveChangesAsync();
 
         _logger.LogInformation("User {Email} changed their own password", user.Email);
+    }
+
+    // JWT không có phía server để huỷ; endpoint này chỉ để ghi nhận hành động đăng xuất vào nhật ký.
+    public async Task LogoutAsync(int userId) => await RecordAsync(userId, "Logout", null);
+
+    // Nhật ký không được làm hỏng đăng nhập/đăng xuất: lỗi ghi log chỉ cảnh báo.
+    private async Task RecordAsync(int userId, string action, object? newValue)
+    {
+        try
+        {
+            await _auditLog.RecordAsync(userId, action, "User", userId, null, newValue);
+            await _userRepository.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Không ghi được nhật ký {Action} cho UserId={UserId}", action, userId);
+        }
     }
 
     private AuthResponseDto BuildAuthResponse(User user)
@@ -201,7 +164,8 @@ public class AuthService : IAuthService
             FullName = user.FullName,
             Email = user.Email,
             Role = user.Role.Name,
-            DepartmentId = user.DepartmentId
+            DepartmentId = user.DepartmentId,
+            MustChangePassword = user.MustChangePassword
         };
     }
 }

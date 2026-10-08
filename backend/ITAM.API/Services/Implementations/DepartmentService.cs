@@ -2,6 +2,7 @@ using ITAM.API.Models.DTOs.Departments;
 using ITAM.API.Models.Entities;
 using ITAM.API.Repositories.Interfaces;
 using ITAM.API.Services.Interfaces;
+using Microsoft.EntityFrameworkCore;
 
 namespace ITAM.API.Services.Implementations;
 
@@ -31,11 +32,8 @@ public class DepartmentService : IDepartmentService
     {
         var name = dto.Name.Trim();
 
-        // Không có check này thì Admin IT tạo được nhiều phòng ban trùng tên (Department.Name hiện
-        // chưa có unique index ở DB như Role.Name — xem AppDbContext.cs), gây nhầm lẫn khi Manager
-        // được gán vào "đúng" phòng ban nhưng có 2 bản ghi cùng tên. Do chưa có ràng buộc DB, vẫn còn
-        // race condition hiếm (2 request tạo cùng lúc) — nên bổ sung unique index thật sự ở DB sau,
-        // cần trao đổi với Hoàng Đức Tú vì AppDbContext.cs là file dùng chung.
+        // Kiểm tra trước để trả 409 thân thiện; unique index trên Department.Name (migration
+        // AddDepartmentUniqueIndexAndRestrictLicenseDelete) là chốt chặn cuối cho race hiếm.
         var existed = await _repo.GetByNameAsync(name);
         if (existed is not null)
         {
@@ -45,14 +43,79 @@ public class DepartmentService : IDepartmentService
         var department = new Department
         {
             Name = name,
-            Description = dto.Description?.Trim(),
+            Description = NormalizeOptionalText(dto.Description),
         };
 
         await _repo.AddAsync(department);
-        await _repo.SaveChangesAsync();
+        await SaveChangesGuardingNameConflictAsync(name);
 
         return MapToDto(department);
     }
+
+    public async Task<DepartmentResponseDto> UpdateAsync(int id, UpdateDepartmentRequestDto dto)
+    {
+        var department = await _repo.GetByIdAsync(id)
+            ?? throw new DepartmentNotFoundException(id);
+
+        var name = dto.Name.Trim();
+        if (!string.Equals(name, department.Name, StringComparison.Ordinal))
+        {
+            var existed = await _repo.GetByNameAsync(name);
+            if (existed is not null && existed.Id != id)
+            {
+                throw new DepartmentNameAlreadyExistsException(name);
+            }
+        }
+
+        department.Name = name;
+        department.Description = NormalizeOptionalText(dto.Description);
+
+        _repo.Update(department);
+        await SaveChangesGuardingNameConflictAsync(name);
+
+        return MapToDto(department);
+    }
+
+    public async Task DeleteAsync(int id)
+    {
+        var department = await _repo.GetByIdAsync(id)
+            ?? throw new DepartmentNotFoundException(id);
+
+        // UC-04 E1 + quy tắc "không xoá cứng danh mục đang sử dụng": chặn khi còn người dùng, tài sản,
+        // bản ghi phân bổ hoặc dự báo ngân sách thuộc phòng ban này.
+        if (await _repo.IsReferencedAsync(id))
+        {
+            throw new DepartmentInUseException(id);
+        }
+
+        _repo.Remove(department);
+
+        try
+        {
+            await _repo.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // Race hiếm: có bản ghi mới tham chiếu phòng ban này ngay giữa lúc kiểm tra và xoá
+            // (FK Restrict ở DB từ chối) — vẫn trả 409 thay vì 500.
+            throw new DepartmentInUseException(id);
+        }
+    }
+
+    private async Task SaveChangesGuardingNameConflictAsync(string name)
+    {
+        try
+        {
+            await _repo.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            throw new DepartmentNameAlreadyExistsException(name);
+        }
+    }
+
+    private static string? NormalizeOptionalText(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static DepartmentResponseDto MapToDto(Department d) => new()
     {

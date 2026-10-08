@@ -43,9 +43,9 @@ function renderTable(items) {
     return;
   }
 
-  tbody.innerHTML = items.map((c) => `
+  tbody.innerHTML = items.map((c, i) => `
     <tr>
-      <td class="text-muted">#${c.id}</td>
+      <td class="text-muted">${i + 1}</td>
       <td class="fw-semibold">${escapeHtml(c.name)}</td>
       <td class="text-end">
         ${isAdmin ? `

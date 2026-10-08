@@ -18,18 +18,15 @@ public class UsersController : ControllerBase
     private readonly IUserService _userService;
     private readonly IValidator<CreateUserRequestDto> _createValidator;
     private readonly IValidator<UpdateUserRequestDto> _updateValidator;
-    private readonly IWebHostEnvironment _environment;
 
     public UsersController(
         IUserService userService,
         IValidator<CreateUserRequestDto> createValidator,
-        IValidator<UpdateUserRequestDto> updateValidator,
-        IWebHostEnvironment environment)
+        IValidator<UpdateUserRequestDto> updateValidator)
     {
         _userService = userService;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
-        _environment = environment;
     }
 
     [HttpGet]
@@ -65,12 +62,15 @@ public class UsersController : ControllerBase
 
         try
         {
-            var result = await _userService.CreateAsync(dto);
-            RedactSetupTokenIfNotDevelopment(result);
-            return CreatedAtAction(nameof(GetById), new { id = result.User.Id },
-                ApiResponse<object>.Ok(result, "Tạo người dùng thành công."));
+            var result = await _userService.CreateAsync(dto, GetCurrentUserId());
+            return CreatedAtAction(nameof(GetById), new { id = result.Id },
+                ApiResponse<object>.Ok(result, "Tạo người dùng thành công. Mật khẩu ban đầu là mật khẩu mặc định của hệ thống."));
         }
         catch (EmailAlreadyExistsException ex)
+        {
+            return Conflict(ApiResponse<object>.Fail(ex.Message));
+        }
+        catch (DefaultPasswordNotConfiguredException ex)
         {
             return Conflict(ApiResponse<object>.Fail(ex.Message));
         }
@@ -117,16 +117,14 @@ public class UsersController : ControllerBase
         }
     }
 
-    // Admin IT đặt lại mật khẩu HỘ một người dùng khác — không cần người đó tự chứng minh sở
-    // hữu email như /auth/forgot-password, vì Admin IT đã xác thực và đứng ra bảo lãnh.
+    // Admin IT đặt lại mật khẩu HỘ một người dùng khác về mật khẩu mặc định (cấu hình UserDefaults).
     [HttpPost("{id:int}/reset-password")]
     public async Task<IActionResult> ResetPassword(int id)
     {
         try
         {
             var result = await _userService.ResetPasswordAsync(id, GetCurrentUserId());
-            RedactSetupTokenIfNotDevelopment(result);
-            return Ok(ApiResponse<object>.Ok(result, "Đã tạo liên kết đặt lại mật khẩu cho người dùng."));
+            return Ok(ApiResponse<object>.Ok(result, "Đã đặt lại mật khẩu của người dùng về mật khẩu mặc định."));
         }
         catch (UserNotFoundException ex)
         {
@@ -136,13 +134,9 @@ public class UsersController : ControllerBase
         {
             return BadRequest(ApiResponse<object>.Fail(ex.Message));
         }
-    }
-
-    private void RedactSetupTokenIfNotDevelopment(UserSetupLinkResponseDto result)
-    {
-        if (!_environment.IsDevelopment())
+        catch (DefaultPasswordNotConfiguredException ex)
         {
-            result.DevOnlySetupToken = null;
+            return Conflict(ApiResponse<object>.Fail(ex.Message));
         }
     }
 

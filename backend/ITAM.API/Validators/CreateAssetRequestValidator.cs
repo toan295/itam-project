@@ -1,4 +1,5 @@
 using FluentValidation;
+using ITAM.API.Helpers;
 using ITAM.API.Models.DTOs.Assets;
 
 namespace ITAM.API.Validators;
@@ -18,6 +19,10 @@ public class CreateAssetRequestValidator : AbstractValidator<CreateAssetRequestD
         RuleFor(x => x.SerialNumber).MaximumLength(100).WithMessage("Số serial không được vượt quá 100 ký tự.");
         RuleFor(x => x.Specification).MaximumLength(500).WithMessage("Thông số kỹ thuật không được vượt quá 500 ký tự.");
         RuleFor(x => x.OperatingSystem).MaximumLength(100).WithMessage("Hệ điều hành không được vượt quá 100 ký tự.");
+        RuleFor(x => x.PurchaseDate)
+            .Must(d => DateRules.IsNotInFuture(d!.Value))
+            .When(x => x.PurchaseDate.HasValue)
+            .WithMessage("Ngày mua không được ở tương lai.");
         RuleFor(x => x.WarrantyExpiry)
             .GreaterThanOrEqualTo(x => x.PurchaseDate!.Value)
             .When(x => x.PurchaseDate.HasValue && x.WarrantyExpiry.HasValue)

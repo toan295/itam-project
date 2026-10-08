@@ -15,7 +15,7 @@ public class AssetCategoryRepository : IAssetCategoryRepository
     }
 
     public Task<List<AssetCategory>> GetAllAsync() =>
-        _db.AssetCategories.AsNoTracking().OrderBy(c => c.Name).ToListAsync();
+        _db.AssetCategories.AsNoTracking().OrderBy(c => c.Id).ToListAsync(); // Sắp theo Id: thứ tự ổn định, dễ đối chiếu.
 
     // AsNoTracking an toàn dù kết quả có thể bị sửa/xoá rồi lưu lại (UpdateAsync/DeleteAsync) —
     // Update()/Remove() bên dưới luôn gọi tường minh, không phụ thuộc change-tracking ngầm.

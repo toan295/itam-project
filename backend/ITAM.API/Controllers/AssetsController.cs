@@ -36,7 +36,8 @@ public class AssetsController : ControllerBase
         try
         {
             var result = await _assetService.GetPagedAsync(
-                departmentId, status, page, pageSize, GetCurrentUserRole(), GetCurrentUserDepartmentId());
+                departmentId, status, page, pageSize,
+                GetCurrentUserRole(), GetCurrentUserDepartmentId(), GetCurrentUserId());
             return Ok(ApiResponse<object>.Ok(result));
         }
         catch (ArgumentException ex)
@@ -50,7 +51,8 @@ public class AssetsController : ControllerBase
     {
         try
         {
-            var result = await _assetService.GetByIdAsync(id, GetCurrentUserRole(), GetCurrentUserDepartmentId());
+            var result = await _assetService.GetByIdAsync(
+                id, GetCurrentUserRole(), GetCurrentUserDepartmentId(), GetCurrentUserId());
             return Ok(ApiResponse<object>.Ok(result));
         }
         catch (AssetNotFoundException ex)
@@ -64,7 +66,8 @@ public class AssetsController : ControllerBase
     {
         try
         {
-            var result = await _assetService.SearchAsync(filter, GetCurrentUserRole(), GetCurrentUserDepartmentId());
+            var result = await _assetService.SearchAsync(
+                filter, GetCurrentUserRole(), GetCurrentUserDepartmentId(), GetCurrentUserId());
             return Ok(ApiResponse<object>.Ok(result));
         }
         catch (ArgumentException ex)
@@ -91,6 +94,10 @@ public class AssetsController : ControllerBase
                 ApiResponse<object>.Ok(result, "Thêm tài sản thành công."));
         }
         catch (AssetCodeAlreadyExistsException ex)
+        {
+            return Conflict(ApiResponse<object>.Fail(ex.Message));
+        }
+        catch (AssetSerialNumberAlreadyExistsException ex)
         {
             return Conflict(ApiResponse<object>.Fail(ex.Message));
         }
@@ -132,7 +139,15 @@ public class AssetsController : ControllerBase
         {
             return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Fail(ex.Message));
         }
+        catch (AssetReactivationNotAllowedException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Fail(ex.Message));
+        }
         catch (AssetCodeAlreadyExistsException ex)
+        {
+            return Conflict(ApiResponse<object>.Fail(ex.Message));
+        }
+        catch (AssetSerialNumberAlreadyExistsException ex)
         {
             return Conflict(ApiResponse<object>.Fail(ex.Message));
         }
@@ -142,23 +157,11 @@ public class AssetsController : ControllerBase
         }
     }
 
-    [HttpDelete("{id:int}")]
-    [Authorize(Roles = "Admin IT")] // UC-07: chỉ Admin IT được ngừng sử dụng tài sản.
-    public async Task<IActionResult> Dispose(int id)
-    {
-        try
-        {
-            var result = await _assetService.DisposeAsync(id);
-            return Ok(ApiResponse<object>.Ok(result, "Đã chuyển tài sản sang trạng thái Disposed."));
-        }
-        catch (AssetNotFoundException ex)
-        {
-            return NotFound(ApiResponse<object>.Fail(ex.Message));
-        }
-    }
-
     private string? GetCurrentUserRole() => User.FindFirstValue(ClaimTypes.Role);
 
     private int? GetCurrentUserDepartmentId() =>
         int.TryParse(User.FindFirstValue("DepartmentId"), out var departmentId) ? departmentId : null;
+
+    private int? GetCurrentUserId() =>
+        int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) ? userId : null;
 }

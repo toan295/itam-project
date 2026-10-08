@@ -5,14 +5,35 @@ function renderNav({ active, basePath }) {
   const el = document.getElementById("appNav");
   if (!el || !session) return;
 
-  const links = [
+  // roles: vai trò được thấy mục này (không khai báo = mọi vai trò). Khớp đúng phân quyền backend:
+  // - Loại tài sản / Phòng ban / Phần mềm & Giấy phép / Người dùng: chỉ Admin IT (UC-03, UC-04, UC-09, UC-10).
+  // - Phân bổ – thu hồi: Admin IT, Manager (UC-14, UC-15). - Bảo trì, Tài sản: mọi vai trò (đã giới hạn theo phòng ban ở API).
+  const ADMIN = ["Admin IT"];
+  const ADMIN_MANAGER = ["Admin IT", "Manager"];
+  const allLinks = [
     { key: "home", label: "Trang chủ", icon: "bi-grid-1x2", href: `${basePath}index.html` },
     { key: "assets", label: "Tài sản", icon: "bi-laptop", href: `${basePath}pages/assets.html` },
-    { key: "categories", label: "Loại tài sản", icon: "bi-tags", href: `${basePath}pages/asset-categories.html` },
-    { key: "departments", label: "Phòng ban", icon: "bi-building", href: `${basePath}pages/departments.html` },
-    { key: "licenses", label: "Phần mềm & Giấy phép", icon: "bi-key", href: `${basePath}pages/software-licenses.html` },
-    { key: "users", label: "Người dùng", icon: "bi-people", href: `${basePath}pages/users.html` },
+    { key: "categories", label: "Loại tài sản", icon: "bi-tags", href: `${basePath}pages/asset-categories.html`, roles: ADMIN },
+    { key: "departments", label: "Phòng ban", icon: "bi-building", href: `${basePath}pages/departments.html`, roles: ADMIN },
+    { key: "licenses", label: "Phần mềm & Giấy phép", icon: "bi-key", href: `${basePath}pages/software-licenses.html`, roles: ADMIN },
+    { key: "maintenance", label: "Bảo trì", icon: "bi-tools", href: `${basePath}pages/maintenance.html` },
+    { key: "disposals", label: "Thanh lý", icon: "bi-archive", href: `${basePath}pages/disposals.html` },
+    { key: "allocations", label: "Phân bổ", icon: "bi-box-arrow-up-right", href: `${basePath}pages/allocations.html`, roles: ADMIN_MANAGER },
+    { key: "employees", label: "Nhân viên", icon: "bi-person-badge", href: `${basePath}pages/employees.html`, roles: ADMIN_MANAGER },
+    { key: "users", label: "Người dùng", icon: "bi-people", href: `${basePath}pages/users.html`, roles: ADMIN },
+    { key: "lifecycle", label: "Vòng đời tài sản", icon: "bi-hourglass-split", href: `${basePath}pages/lifecycle.html`, roles: ADMIN },
+    { key: "forecasts", label: "Dự báo ngân sách", icon: "bi-graph-up-arrow", href: `${basePath}pages/forecasts.html`, roles: ADMIN },
+    { key: "auditLogs", label: "Nhật ký hệ thống", icon: "bi-journal-text", href: `${basePath}pages/audit-logs.html`, roles: ADMIN },
   ];
+  const canSee = (l) => !l.roles || l.roles.includes(session.role);
+  const links = allLinks.filter(canSee);
+
+  // Vào thẳng URL của trang không có quyền (gõ tay/bookmark) -> về Trang chủ thay vì hiện trang lỗi 403.
+  const activeLink = allLinks.find((l) => l.key === active);
+  if (activeLink && !canSee(activeLink)) {
+    window.location.href = allLinks[0].href;
+    return;
+  }
 
   const initials = (session.fullName || "?")
     .split(" ")
@@ -67,6 +88,37 @@ function renderNav({ active, basePath }) {
 
   document.getElementById("navChangePasswordBtn").addEventListener("click", openChangePasswordModal);
   ensureChangePasswordModal();
+
+  // Tài khoản đang dùng mật khẩu mặc định (do Admin cấp/đặt lại) phải đổi mật khẩu trước khi dùng tiếp.
+  if (session.mustChangePassword) {
+    forcePasswordChange();
+  }
+  syncMustChangePassword(session);
+}
+
+// Admin có thể đặt lại mật khẩu khi người dùng đang đăng nhập — đồng bộ cờ từ server thay vì tin session cũ.
+async function syncMustChangePassword(session) {
+  try {
+    const profile = await api.get("/auth/me");
+    const must = !!profile.mustChangePassword;
+    if (must !== !!session.mustChangePassword) {
+      setSession({ ...session, mustChangePassword: must });
+      if (must) forcePasswordChange();
+    }
+  } catch {
+    // Lỗi mạng/phiên hết hạn đã được xử lý ở nơi khác; không chặn trang vì việc đồng bộ này.
+  }
+}
+
+function forcePasswordChange() {
+  const modalEl = document.getElementById("changePasswordModal");
+  modalEl.dataset.forced = "true";
+  modalEl.querySelector(".btn-close").classList.add("d-none");
+  modalEl.querySelector('.modal-footer [data-bs-dismiss="modal"]').classList.add("d-none");
+  modalEl.querySelector(".modal-title").textContent = "Bạn cần đổi mật khẩu";
+  const notice = document.getElementById("changePasswordNotice");
+  notice.classList.remove("d-none");
+  bootstrap.Modal.getOrCreateInstance(modalEl, { backdrop: "static", keyboard: false }).show();
 }
 
 // Modal "Đổi mật khẩu" (khi đang đăng nhập, còn nhớ mật khẩu hiện tại) — chèn 1 lần vào body,
@@ -85,6 +137,9 @@ function ensureChangePasswordModal() {
               <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+              <div id="changePasswordNotice" class="alert alert-warning d-none py-2">
+                Tài khoản của bạn đang dùng mật khẩu mặc định do Admin IT cấp. Hãy đặt mật khẩu mới để tiếp tục.
+              </div>
               <div id="changePasswordError" class="alert alert-danger d-none py-2"></div>
               <div id="changePasswordSuccess" class="alert alert-success d-none py-2"></div>
               <div class="mb-2">
@@ -93,7 +148,8 @@ function ensureChangePasswordModal() {
               </div>
               <div class="mb-2">
                 <label class="form-label">Mật khẩu mới</label>
-                <input type="password" class="form-control" id="newPasswordInput" required minlength="6" maxlength="100">
+                <input type="password" class="form-control" id="newPasswordInput" required minlength="8" maxlength="72" autocomplete="new-password">
+                <div class="form-text">Ít nhất 8 ký tự, gồm cả chữ và số; không dùng lại mật khẩu mặc định.</div>
               </div>
             </div>
             <div class="modal-footer">
@@ -121,6 +177,12 @@ function ensureChangePasswordModal() {
       okEl.textContent = "Đổi mật khẩu thành công.";
       okEl.classList.remove("d-none");
       document.getElementById("changePasswordForm").reset();
+
+      const current = getSession();
+      if (current?.mustChangePassword) {
+        setSession({ ...current, mustChangePassword: false });
+        setTimeout(() => window.location.reload(), 800); // tải lại để trang nạp dữ liệu bình thường.
+      }
     } catch (err) {
       errEl.textContent = err.message;
       errEl.classList.remove("d-none");

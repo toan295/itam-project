@@ -1,4 +1,5 @@
 using FluentValidation;
+using ITAM.API.Helpers;
 using ITAM.API.Models.DTOs.Assets;
 using ITAM.API.Models.Enums;
 
@@ -24,6 +25,10 @@ public class UpdateAssetRequestValidator : AbstractValidator<UpdateAssetRequestD
         RuleFor(x => x.Status)
             .Must(s => Enum.GetNames<AssetStatus>().Contains(s))
             .WithMessage($"Trạng thái tài sản không hợp lệ. Giá trị hợp lệ: {string.Join(", ", Enum.GetNames<AssetStatus>())}.");
+        RuleFor(x => x.PurchaseDate)
+            .Must(d => DateRules.IsNotInFuture(d!.Value))
+            .When(x => x.PurchaseDate.HasValue)
+            .WithMessage("Ngày mua không được ở tương lai.");
         RuleFor(x => x.WarrantyExpiry)
             .GreaterThanOrEqualTo(x => x.PurchaseDate!.Value)
             .When(x => x.PurchaseDate.HasValue && x.WarrantyExpiry.HasValue)

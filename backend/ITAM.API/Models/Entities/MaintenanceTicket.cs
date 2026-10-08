@@ -8,6 +8,7 @@ public class MaintenanceTicket
     public int AssetId { get; set; }
     public string IssueDescription { get; set; } = null!;
     public TicketStatus Status { get; set; }
+    public TicketPriority Priority { get; set; } = TicketPriority.Normal;
     public int? TechnicianId { get; set; }
     public DateTime ReportedDate { get; set; } = DateTime.UtcNow;
     public DateTime? ResolvedDate { get; set; }

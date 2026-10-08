@@ -26,6 +26,29 @@
       <div id="setupLinkResult" class="d-none"></div>
 
       <div id="usersContent">
+        <div class="eaims-table-wrap p-3 mb-3" id="defaultPasswordCard">
+          <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <h6 class="mb-0"><i class="bi bi-key"></i> Mật khẩu mặc định</h6>
+            <span id="defaultPasswordStatus" class="badge-soft slate">Đang tải...</span>
+          </div>
+          <p class="text-muted small mb-2">
+            Dùng khi cấp tài khoản mới và khi "Đặt lại mật khẩu". Người dùng bị buộc đổi mật khẩu ở lần đăng nhập kế tiếp.
+            Đổi giá trị này không ảnh hưởng tài khoản đã cấp trước đó.
+          </p>
+          <div id="defaultPasswordError" class="alert alert-danger py-2 d-none"></div>
+          <form id="defaultPasswordForm" class="d-flex flex-wrap gap-2" autocomplete="off">
+            <div class="input-group" style="max-width: 360px">
+              <input type="password" class="form-control" id="defaultPasswordInput" minlength="8" maxlength="72"
+                     placeholder="Ít nhất 8 ký tự, gồm chữ và số" required autocomplete="new-password">
+              <button type="button" class="btn btn-outline-secondary" id="toggleDefaultPasswordBtn" title="Hiện/ẩn">
+                <i class="bi bi-eye"></i>
+              </button>
+            </div>
+            <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> Lưu</button>
+            <button type="button" class="btn btn-outline-danger" id="deleteDefaultPasswordBtn"><i class="bi bi-trash"></i> Xoá</button>
+          </form>
+        </div>
+
         <div class="eaims-table-wrap">
           <div class="table-responsive">
             <table class="eaims-table">
@@ -77,7 +100,7 @@
               </div>
             </div>
             <p class="text-muted small mb-0" id="createHint">
-              <i class="bi bi-info-circle"></i> Không cần đặt mật khẩu — hệ thống sẽ cấp liên kết để người dùng tự thiết lập mật khẩu đầu tiên.
+              <i class="bi bi-info-circle"></i> Không cần đặt mật khẩu — tài khoản mới dùng mật khẩu mặc định của hệ thống; người dùng nên đổi sau lần đăng nhập đầu.
             </p>
           </div>
           <div class="modal-footer">

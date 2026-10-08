@@ -161,13 +161,14 @@ async function submitLicenseForm(e) {
 }
 
 async function deleteLicense(id) {
-  // Xoá license sẽ xoá cascade toàn bộ lượt gán của nó (AssetSoftwareLicenses) ở tầng DB — cảnh báo
-  // rõ số lượng tài sản đang dùng để Admin IT không xoá nhầm mất lịch sử gán mà không biết.
+  // Backend chặn xoá license còn đang được gán (FK Restrict, trả 409) — báo trước cho Admin IT biết phải gỡ
+  // hết lượt gán trước thay vì để họ xác nhận rồi mới nhận lỗi.
   const item = currentItems.find((x) => x.id === id);
-  const warning = item && item.currentUsage > 0
-    ? ` License này đang được gán cho ${item.currentUsage} tài sản — toàn bộ các lượt gán này sẽ bị gỡ theo.`
-    : "";
-  if (!confirm(`Xoá license này? Thao tác không thể hoàn tác.${warning}`)) return;
+  if (item && item.currentUsage > 0) {
+    showError(`Không thể xoá: license đang được gán cho ${item.currentUsage} tài sản. Hãy gỡ hết các lượt gán trước.`);
+    return;
+  }
+  if (!confirm("Xoá license này? Thao tác không thể hoàn tác.")) return;
   try {
     await api.del(`/software-licenses/${id}`);
     loadLicenses();

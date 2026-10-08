@@ -7,6 +7,8 @@ public interface IUserRepository
     Task<(List<User> Items, int TotalItems)> GetPagedAsync(int page, int pageSize, string? search);
     Task<User?> GetByIdWithDetailsAsync(int id);
     Task<User?> GetByEmailAsync(string email);
+    Task<User?> GetByEmailWithRoleAsync(string email);   // đăng nhập: cần tên Role để phát JWT.
+    Task<User?> GetByIdTrackedAsync(int id);              // đổi mật khẩu: sửa trực tiếp entity đang được track.
     Task AddAsync(User user);
     void Update(User user);
     Task<int> SaveChangesAsync();

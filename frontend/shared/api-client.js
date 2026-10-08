@@ -43,7 +43,16 @@ function requireAuth(pathToLoginPage) {
   return session;
 }
 
-function logout(pathToLoginPage) {
+// Báo server ghi nhật ký "Đăng xuất" (best-effort, tối đa ~1,5 giây) rồi xoá phiên và về trang đăng nhập.
+async function logout(pathToLoginPage) {
+  try {
+    await Promise.race([
+      fetch(`${API_BASE_URL}/auth/logout`, { method: "POST", headers: { Authorization: `Bearer ${getToken() || ""}` }, keepalive: true }),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]);
+  } catch {
+    // Mất mạng/hết hạn phiên: vẫn đăng xuất phía client.
+  }
   clearSession();
   window.location.href = pathToLoginPage;
 }
@@ -102,5 +111,6 @@ const api = {
   get: (path) => apiRequest(path, { method: "GET" }),
   post: (path, data) => apiRequest(path, { method: "POST", body: JSON.stringify(data) }),
   put: (path, data) => apiRequest(path, { method: "PUT", body: JSON.stringify(data) }),
+  patch: (path, data) => apiRequest(path, { method: "PATCH", body: JSON.stringify(data) }),
   del: (path) => apiRequest(path, { method: "DELETE" }),
 };

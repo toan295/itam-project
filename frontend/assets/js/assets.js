@@ -2,7 +2,8 @@ const session = requireAuth("login.html");
 renderNav({ active: "assets", basePath: "../" });
 
 const canCreateOrEdit = session.role === "Admin IT" || session.role === "Manager";
-const canDispose = session.role === "Admin IT";
+const canDispose = session.role === "Admin IT"; // chỉ Admin IT được khôi phục tài sản đã thanh lý.
+const canStartDisposal = session.role === "Technician"; // Technician mở quy trình thanh lý (kiểm tra -> đề xuất).
 
 let currentPage = 1;
 let assetModal;
@@ -129,8 +130,8 @@ function renderTable(items) {
       <td>${a.warrantyExpiry ? (a.isUnderWarranty ? '<span class="badge-soft success"><i class="bi bi-shield-check"></i> Còn hạn</span>' : '<span class="badge-soft slate"><i class="bi bi-shield-x"></i> Hết hạn</span>') : '<span class="text-muted">-</span>'}</td>
       <td class="text-end">
         ${canCreateOrEdit ? `<button class="btn btn-sm btn-outline-primary me-1" onclick="openEditModal(${a.id})"><i class="bi bi-pencil"></i> Sửa</button>` : ""}
-        ${canDispose && a.status !== "Disposed"
-          ? `<button class="btn btn-sm btn-outline-danger" onclick="disposeAsset(${a.id})"><i class="bi bi-archive"></i> Thanh lý</button>`
+        ${canStartDisposal && a.status !== "Disposed"
+          ? `<a class="btn btn-sm btn-outline-danger" href="disposals.html?newAssetId=${a.id}" title="Thanh lý phải qua quy trình: Technician kiểm tra và đề xuất, Manager duyệt, Admin IT thực hiện."><i class="bi bi-clipboard-check"></i> Kiểm tra thanh lý</a>`
           : ""}
       </td>
     </tr>`).join("");
@@ -146,14 +147,13 @@ function renderPagination(page, totalPages) {
   el.innerHTML = html;
 }
 
-async function disposeAsset(id) {
-  if (!confirm("Chuyển tài sản này sang trạng thái Đã thanh lý?")) return;
-  try {
-    await api.del(`/assets/${id}`);
-    loadAssets(currentPage);
-  } catch (err) {
-    showError(err.message);
-  }
+// Không ai được đặt "Đã thanh lý" trực tiếp (phải qua quy trình thanh lý); chỉ Admin IT được khôi phục tài sản
+// đã thanh lý — Manager sửa được các trường khác nhưng không đổi được trạng thái này.
+function applyStatusPermissions(currentStatus) {
+  const select = document.getElementById("formStatus");
+  const disposedOption = select.querySelector('option[value="Disposed"]');
+  if (disposedOption) disposedOption.disabled = currentStatus !== "Disposed";
+  select.disabled = !canDispose && currentStatus === "Disposed";
 }
 
 function openCreateModal() {
@@ -186,6 +186,7 @@ function openEditModal(id) {
   document.getElementById("warrantyExpiry").value = asset.warrantyExpiry || "";
   document.getElementById("formStatusWrapper").style.display = "block";
   document.getElementById("formStatus").value = asset.status;
+  applyStatusPermissions(asset.status);
   clearModalError();
   assetModal.show();
 }

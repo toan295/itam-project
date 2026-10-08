@@ -24,6 +24,10 @@ async function initPage() {
   userModal = new bootstrap.Modal(document.getElementById("userModal"));
   document.getElementById("openCreateBtn").addEventListener("click", openCreateModal);
   document.getElementById("userForm").addEventListener("submit", submitUserForm);
+  document.getElementById("defaultPasswordForm").addEventListener("submit", saveDefaultPassword);
+  document.getElementById("deleteDefaultPasswordBtn").addEventListener("click", deleteDefaultPassword);
+  document.getElementById("toggleDefaultPasswordBtn").addEventListener("click", toggleDefaultPasswordVisibility);
+  loadDefaultPassword();
 
   try {
     const [roles, departments] = await Promise.all([api.get("/roles"), api.get("/departments")]);
@@ -74,11 +78,25 @@ function renderTable(items) {
     return;
   }
 
+  // Nhóm theo vai trò (backend đã sắp xếp theo vai trò): chèn dòng tiêu đề mỗi khi sang vai trò mới.
+  const countByRole = items.reduce((acc, u) => ({ ...acc, [u.roleName]: (acc[u.roleName] || 0) + 1 }), {});
+  let lastRole = null;
+
   tbody.innerHTML = items.map((u) => {
     const isSelf = u.id === session.userId;
-    return `
+    const groupHeader = u.roleName !== lastRole
+      ? `<tr class="table-light">
+          <td colspan="6" class="fw-semibold">
+            <span class="badge-soft ${ROLE_BADGE_CLASSES[u.roleName] || "slate"}">${escapeHtml(u.roleName)}</span>
+            <span class="text-muted small ms-1">${countByRole[u.roleName]} tài khoản</span>
+          </td>
+        </tr>`
+      : "";
+    lastRole = u.roleName;
+    return `${groupHeader}
     <tr>
-      <td class="fw-semibold">${escapeHtml(u.fullName)} ${isSelf ? '<span class="badge-soft slate">Bạn</span>' : ""}</td>
+      <td class="fw-semibold">${escapeHtml(u.fullName)} ${isSelf ? '<span class="badge-soft slate">Bạn</span>' : ""}
+        ${u.mustChangePassword ? '<span class="badge-soft warning" title="Đang dùng mật khẩu mặc định"><i class="bi bi-key"></i> Chờ đổi mật khẩu</span>' : ""}</td>
       <td>${escapeHtml(u.email)}</td>
       <td><span class="badge-soft ${ROLE_BADGE_CLASSES[u.roleName] || "slate"}">${escapeHtml(u.roleName)}</span></td>
       <td>${escapeHtml(u.departmentName)}</td>
@@ -142,7 +160,7 @@ async function submitUserForm(e) {
 
   try {
     if (id) {
-      await api.put(`/users/${id}`, {
+      const updated = await api.put(`/users/${id}`, {
         fullName: document.getElementById("fullName").value.trim(),
         email: document.getElementById("email").value.trim(),
         roleId: Number(document.getElementById("roleId").value),
@@ -150,7 +168,8 @@ async function submitUserForm(e) {
         isActive: isSelf ? true : document.getElementById("isActive").checked,
       });
       userModal.hide();
-      loadUsers();
+      await loadUsers();
+      if (updated.warning) showWarning(updated.warning);
     } else {
       const result = await api.post("/users", {
         fullName: document.getElementById("fullName").value.trim(),
@@ -160,7 +179,7 @@ async function submitUserForm(e) {
       });
       userModal.hide();
       await loadUsers(); // await trước — loadUsers() tự ẩn khung kết quả cũ, phải xong rồi mới hiện khung mới.
-      showSetupLink(`Đã tạo tài khoản cho ${result.user.fullName}.`, result.devOnlySetupToken);
+      showResult(`Đã tạo tài khoản cho ${result.fullName}. Mật khẩu ban đầu là mật khẩu mặc định của hệ thống — hãy báo người dùng đăng nhập và đổi mật khẩu.`);
     }
   } catch (err) {
     errEl.textContent = err.message;
@@ -176,14 +195,15 @@ async function toggleActive(id) {
   if (!confirm(`Xác nhận ${action} tài khoản "${user.fullName}"?`)) return;
 
   try {
-    await api.put(`/users/${user.id}`, {
+    const updated = await api.put(`/users/${user.id}`, {
       fullName: user.fullName,
       email: user.email,
       roleId: user.roleId,
       departmentId: user.departmentId,
       isActive: !user.isActive,
     });
-    loadUsers();
+    await loadUsers();
+    if (updated.warning) showWarning(updated.warning);
   } catch (err) {
     showError(err.message);
   }
@@ -193,29 +213,89 @@ async function resetPassword(id) {
   const user = currentItems.find((x) => x.id === id);
   if (!user) return;
 
-  if (!confirm(`Tạo liên kết đặt lại mật khẩu cho "${user.fullName}"?`)) return;
+  if (!confirm(`Đặt lại mật khẩu của "${user.fullName}" về mật khẩu mặc định?`)) return;
 
   try {
     const result = await api.post(`/users/${id}/reset-password`);
-    showSetupLink(`Đã tạo liên kết đặt lại mật khẩu cho ${result.user.fullName}.`, result.devOnlySetupToken);
+    showResult(`Đã đặt lại mật khẩu của ${result.fullName} về mật khẩu mặc định. Hãy báo người dùng đăng nhập và đổi mật khẩu.`);
   } catch (err) {
     showError(err.message);
   }
 }
 
-function showSetupLink(message, devOnlyToken) {
+function showWarning(message) {
   const el = document.getElementById("setupLinkResult");
-  if (devOnlyToken) {
-    const link = `../pages/reset-password.html?token=${encodeURIComponent(devOnlyToken)}`;
-    el.innerHTML = `
-      <div class="alert alert-success py-2 mb-2">${escapeHtml(message)}</div>
-      <div class="alert alert-warning py-2 small">
-        <i class="bi bi-info-circle"></i> Môi trường Development chưa có email thật — gửi link bên dưới cho người dùng
-        (qua điện thoại/chat nội bộ...) để họ tự thiết lập mật khẩu. Production sẽ gửi qua email, Admin không thấy link này.<br>
-        <a href="${link}" target="_blank" class="fw-semibold">Mở liên kết thiết lập mật khẩu <i class="bi bi-box-arrow-up-right"></i></a>
-      </div>`;
-  } else {
-    el.innerHTML = `<div class="alert alert-success py-2 mb-0">${escapeHtml(message)}</div>`;
-  }
+  el.innerHTML = `<div class="alert alert-warning py-2 mb-0"><i class="bi bi-exclamation-triangle"></i> ${escapeHtml(message)}</div>`;
   el.classList.remove("d-none");
+}
+
+function showResult(message) {
+  const el = document.getElementById("setupLinkResult");
+  el.innerHTML = `<div class="alert alert-success py-2 mb-0">${escapeHtml(message)}</div>`;
+  el.classList.remove("d-none");
+}
+
+// ----- Mật khẩu mặc định (Admin IT thêm/sửa/xoá) -----
+
+let defaultPasswordVisible = false;
+
+function showDefaultPasswordError(message) {
+  const el = document.getElementById("defaultPasswordError");
+  el.textContent = message || "";
+  el.classList.toggle("d-none", !message);
+}
+
+function renderDefaultPassword(data) {
+  const status = document.getElementById("defaultPasswordStatus");
+  const input = document.getElementById("defaultPasswordInput");
+  if (data.isConfigured) {
+    status.className = "badge-soft success";
+    status.innerHTML = '<i class="bi bi-check-circle"></i> Đã cấu hình';
+    input.value = data.password;
+  } else {
+    status.className = "badge-soft danger";
+    status.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Chưa cấu hình — chưa thể cấp tài khoản/đặt lại mật khẩu';
+    input.value = "";
+  }
+  document.getElementById("deleteDefaultPasswordBtn").disabled = !data.isConfigured;
+}
+
+async function loadDefaultPassword() {
+  showDefaultPasswordError("");
+  try {
+    renderDefaultPassword(await api.get("/settings/default-password"));
+  } catch (err) {
+    showDefaultPasswordError(err.message);
+  }
+}
+
+async function saveDefaultPassword(e) {
+  e.preventDefault();
+  showDefaultPasswordError("");
+  try {
+    const result = await api.put("/settings/default-password", {
+      password: document.getElementById("defaultPasswordInput").value,
+    });
+    renderDefaultPassword(result);
+    showResult("Đã lưu mật khẩu mặc định mới. Chỉ áp dụng cho tài khoản cấp/đặt lại từ giờ trở đi.");
+  } catch (err) {
+    showDefaultPasswordError(err.message);
+  }
+}
+
+async function deleteDefaultPassword() {
+  if (!confirm("Xoá mật khẩu mặc định? Sau đó sẽ không thể cấp tài khoản mới hay đặt lại mật khẩu cho tới khi đặt lại giá trị mới.")) return;
+  showDefaultPasswordError("");
+  try {
+    await api.del("/settings/default-password");
+    renderDefaultPassword({ isConfigured: false });
+  } catch (err) {
+    showDefaultPasswordError(err.message);
+  }
+}
+
+function toggleDefaultPasswordVisibility() {
+  defaultPasswordVisible = !defaultPasswordVisible;
+  document.getElementById("defaultPasswordInput").type = defaultPasswordVisible ? "text" : "password";
+  document.querySelector("#toggleDefaultPasswordBtn i").className = defaultPasswordVisible ? "bi bi-eye-slash" : "bi bi-eye";
 }

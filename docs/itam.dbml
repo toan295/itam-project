@@ -22,8 +22,7 @@ Table Users {
   RoleId int [not null]
   DepartmentId int [not null]
   IsActive boolean [not null, default: true]
-  RefreshToken varchar(255) [note: 'Bo sung khi chot ERD - phuc vu POST /api/v1/auth/refresh-token']
-  RefreshTokenExpiryTime datetime
+  MustChangePassword boolean [not null, default: false, note: 'true khi dang dung mat khau mac dinh do Admin cap/dat lai - bat buoc doi truoc khi dung he thong']
   CreatedAt datetime [not null, default: `now()`]
 
   indexes {
@@ -35,6 +34,15 @@ Table Users {
 Table AssetCategories {
   Id int [pk, increment]
   Name varchar(100) [not null, unique, note: 'may tinh, man hinh, may in, switch/router, thiet bi luu tru...']
+}
+
+Table AssetCategoryLifecyclePolicies {
+  Id int [pk, increment]
+  CategoryId int [not null, unique]
+  MaxAgeYears int [not null, note: 'Nguong tuoi toi da theo loai tai san']
+  MaxFailureCount int [not null, note: 'Nguong tong so phieu bao tri (moi trang thai) theo loai tai san']
+
+  Note: 'Chi luu nguong override. Loai khong co dong rieng se dung LifecycleOptions trong appsettings.json'
 }
 
 Table Assets {
@@ -89,6 +97,7 @@ Table MaintenanceTickets {
   AssetId int [not null]
   IssueDescription varchar(1000) [not null]
   Status tinyint [not null, note: '0=Pending,1=Resolved,2=Failed']
+  Priority tinyint [not null, note: '0=Low,1=Normal,2=High,3=Urgent; danh sach sap gap nhat truoc']
   TechnicianId int [note: 'nullable - co the chua gan luc moi tao phieu']
   ReportedDate datetime [not null, default: `now()`]
   ResolvedDate datetime
@@ -106,9 +115,17 @@ Table AssetAllocations {
   AssetId int [not null]
   DepartmentId int [not null]
   RecipientName varchar(100) [not null]
+  EmployeeId int [note: 'Nguoi nhan chon tu Employees; RecipientName la ban chup ho ten luc phan bo']
+  HandoverReason varchar(255)
+  HandoverLocation varchar(200)
+  HandoverCondition varchar(50) [not null, note: 'Moi|Tot|Binh thuong|Cu']
+  HandedOverByUserId int [note: 'Ben giao tren bien ban = nguoi thuc hien phan bo']
+  ReceivedByUserId int [note: 'Ben nhan lai tren bien ban thu hoi']
   AllocatedDate date [not null]
   ReturnedDate date [note: 'null = con dang cap phat']
   HandoverNote varchar(500)
+  ReturnCondition tinyint [note: '0=Good,1=Damaged, null khi chưa thu hồi']
+  ReturnNote varchar(500) [note: 'Ghi chú khi nhận lại tài sản']
   Status tinyint [not null, note: '0=Allocated,1=Returned']
 
   indexes {
@@ -140,12 +157,92 @@ Table BudgetForecasts {
   EstimatedReplacementCount int [not null]
   EstimatedBudget decimal(18,2) [not null]
   Notes varchar(500)
+  BreakdownJson longtext [note: 'chi tiet theo loai tai san + danh sach tai san de xuat (JSON camelCase), nullable']
+  GeneratedAt datetime [note: 'lan tao/cap nhat du bao gan nhat (UTC), nullable']
+  IsDeleted boolean [not null, default: false, note: 'xoa mem - chi an tren giao dien, dong van con trong DB']
+  DeletedAt datetime [note: 'thoi diem xoa mem (UTC), nullable']
 
   indexes {
     (Year, DepartmentId) [unique, note: 'moi phong ban chi co 1 du bao/nam']
   }
 
   Note: 'Uu tien Could - MoSCoW, co the cat giam'
+}
+
+Table AssetCategoryReferencePrices {
+  CategoryId int [pk, note: 'vua la PK vua la FK - moi loai toi da 1 don gia']
+  UnitPrice decimal(18,2) [not null, note: 'VND, > 0']
+  IsDeleted boolean [not null, default: false, note: 'xoa mem - nhap lai don gia se khoi phuc']
+  DeletedAt datetime [note: 'thoi diem xoa mem (UTC), nullable']
+
+  Note: 'Don gia tham khao theo loai tai san - dung uoc tinh ngan sach thay the (UC-17)'
+}
+
+Table SystemSettings {
+  Id int [pk, increment]
+  Key varchar(100) [not null, unique, note: 'vd: DefaultPassword']
+  Value varchar(500) [not null]
+  UpdatedAt datetime [not null]
+
+  Note: 'Cau hinh key-value do Admin IT chinh luc chay; hien chi luu mat khau mac dinh (key DefaultPassword)'
+}
+
+Table Employees {
+  Id int [pk, increment]
+  EmployeeCode varchar(20) [not null, unique, note: 'NV0001... sinh tu dong theo Id']
+  FullName varchar(100) [not null]
+  DepartmentId int [not null]
+  Position varchar(100) [note: 'Chuc danh']
+  IsActive boolean [not null]
+  CreatedAt datetime [not null]
+
+  indexes {
+    (DepartmentId, FullName) [unique]
+    FullName
+  }
+
+  Note: 'Danh muc nhan vien nhan tai san; nguoi nhan khi phan bo phai chon tu day (khong phai tai khoan dang nhap)'
+}
+
+Table DisposalStatuses {
+  Id int [pk, increment]
+  Code varchar(50) [not null, unique, note: 'Inspected|Proposed|Approved|Rejected|Completed (he thong) hoac custom-xxxx (Admin them)']
+  Name varchar(100) [not null, unique]
+  Description varchar(255)
+  Color varchar(20) [not null, note: 'success|warning|danger|info|slate']
+  SortOrder int [not null]
+  IsSystem boolean [not null, note: 'true = buoc chinh cua luong (khong xoa duoc, Code bat bien); false = trang thai phu do Admin them']
+
+  Note: 'Danh muc trang thai phieu thanh ly, Admin IT them/sua/xoa. 5 dong he thong co san trong migration.'
+}
+
+Table DisposalRequests {
+  Id int [pk, increment]
+  AssetId int [not null]
+  StatusId int [not null, note: 'Buoc hien tai cua luong (luon la trang thai he thong)']
+  SubStatusId int [note: 'Trang thai phu Admin IT gan thu cong (IsSystem = false)']
+  InspectionNote varchar(2000) [not null]
+  InspectedByUserId int [not null]
+  InspectedAt datetime [not null]
+  Reason varchar(1000)
+  DisposalMethod varchar(100)
+  ProposedByUserId int
+  ProposedAt datetime
+  ReviewNote varchar(1000)
+  ReviewedByUserId int
+  ReviewedAt datetime
+  CompletionNote varchar(1000)
+  CompletedByUserId int
+  CompletedAt datetime
+  CreatedAt datetime [not null]
+
+  indexes {
+    AssetId
+    StatusId
+    SubStatusId
+  }
+
+  Note: 'Luong: Technician kiem tra -> de xuat -> Manager duyet/tu choi -> Admin IT thanh ly -> hoan tat'
 }
 
 Table ImportLogs {
@@ -162,6 +259,7 @@ Table ImportLogs {
 
 Ref: Users.RoleId > Roles.Id
 Ref: Users.DepartmentId > Departments.Id
+Ref: AssetCategoryLifecyclePolicies.CategoryId > AssetCategories.Id
 Ref: Assets.CategoryId > AssetCategories.Id
 Ref: Assets.DepartmentId > Departments.Id
 Ref: AssetSoftwareLicenses.AssetId > Assets.Id
@@ -172,4 +270,18 @@ Ref: AssetAllocations.AssetId > Assets.Id
 Ref: AssetAllocations.DepartmentId > Departments.Id
 Ref: AuditLogs.UserId > Users.Id
 Ref: BudgetForecasts.DepartmentId > Departments.Id
+Ref: AssetCategoryReferencePrices.CategoryId - AssetCategories.Id
 Ref: ImportLogs.ImportedBy > Users.Id
+
+Ref: DisposalRequests.AssetId > Assets.Id
+Ref: DisposalRequests.StatusId > DisposalStatuses.Id
+Ref: DisposalRequests.SubStatusId > DisposalStatuses.Id
+Ref: DisposalRequests.InspectedByUserId > Users.Id
+Ref: DisposalRequests.ProposedByUserId > Users.Id
+Ref: DisposalRequests.ReviewedByUserId > Users.Id
+Ref: DisposalRequests.CompletedByUserId > Users.Id
+
+Ref: Employees.DepartmentId > Departments.Id
+Ref: AssetAllocations.EmployeeId > Employees.Id
+Ref: AssetAllocations.HandedOverByUserId > Users.Id
+Ref: AssetAllocations.ReceivedByUserId > Users.Id

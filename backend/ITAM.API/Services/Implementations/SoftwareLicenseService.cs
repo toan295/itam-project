@@ -1,4 +1,5 @@
 using ITAM.API.Models.DTOs.Common;
+using ITAM.API.Helpers;
 using ITAM.API.Models.DTOs.SoftwareLicenses;
 using ITAM.API.Models.Entities;
 using ITAM.API.Repositories.Interfaces;
@@ -13,13 +14,16 @@ public class SoftwareLicenseService : ISoftwareLicenseService
     private const decimal NearUsageLimitPercentage = 80m;
 
     private readonly ISoftwareLicenseRepository _repository;
+    private readonly IExclusiveSection _exclusive;
     private readonly ILogger<SoftwareLicenseService> _logger;
 
     public SoftwareLicenseService(
         ISoftwareLicenseRepository repository,
+        IExclusiveSection exclusive,
         ILogger<SoftwareLicenseService> logger)
     {
         _repository = repository;
+        _exclusive = exclusive;
         _logger = logger;
     }
 
@@ -28,8 +32,7 @@ public class SoftwareLicenseService : ISoftwareLicenseService
         int pageSize = 20,
         string? search = null)
     {
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 100);
+        (page, pageSize) = Paging.Normalize(page, pageSize);
 
         var (items, totalItems) = await _repository.GetPagedAsync(page, pageSize, search);
 
@@ -122,7 +125,12 @@ public class SoftwareLicenseService : ISoftwareLicenseService
         _logger.LogInformation("Deleted software license {LicenseId}", id);
     }
 
-    public async Task<SoftwareLicenseResponseDto> AssignAsync(int id, int assetId)
+    // Khoá dòng license: đếm số lượt dùng rồi mới gán nên phải tuần tự, nếu không nhiều request đồng thời cùng thấy
+    // "còn chỗ" và gán vượt MaxUsage.
+    public Task<SoftwareLicenseResponseDto> AssignAsync(int id, int assetId) =>
+        _exclusive.RunAsync(LockTarget.SoftwareLicense, id, () => AssignCoreAsync(id, assetId));
+
+    private async Task<SoftwareLicenseResponseDto> AssignCoreAsync(int id, int assetId)
     {
         var license = await _repository.GetEntityByIdAsync(id)
             ?? throw new KeyNotFoundException($"Không tìm thấy license có Id = {id}.");

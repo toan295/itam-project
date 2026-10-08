@@ -10,27 +10,15 @@
       "name": "Auth",
       "item": [
         {
-          "name": "Register",
-          "request": {
-            "method": "POST",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/auth/register",
-              "host": [
-                "{{baseUrl}}/auth/register"
-              ]
-            },
-            "auth": {
-              "type": "noauth"
-            }
-          },
-          "response": []
-        },
-        {
           "name": "Login",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/auth/login",
               "host": [
@@ -39,23 +27,31 @@
             },
             "auth": {
               "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@eaims.local\",\n  \"password\": \"Admin@123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           },
-          "response": []
-        },
-        {
-          "name": "Refresh Token",
-          "request": {
-            "method": "POST",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/auth/refresh-token",
-              "host": [
-                "{{baseUrl}}/auth/refresh-token"
-              ]
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('Dang nhap thanh cong', () => pm.response.to.have.status(200));",
+                  "if (body && body.data && body.data.token) { pm.collectionVariables.set('token', body.data.token); }"
+                ]
+              }
             }
-          },
-          "response": []
+          ]
         },
         {
           "name": "Get Current User",
@@ -66,6 +62,57 @@
               "raw": "{{baseUrl}}/auth/me",
               "host": [
                 "{{baseUrl}}/auth/me"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "change-password"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"OldPassword#1\",\n  \"newPassword\": \"NewPassword#1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Đổi mật khẩu của chính mình. Bắt buộc với tài khoản đang dùng mật khẩu mặc định (mustChangePassword = true)."
+          },
+          "response": []
+        },
+        {
+          "name": "Logout (ghi nhật ký)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
               ]
             }
           },
@@ -94,12 +141,26 @@
           "name": "Create User",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/users",
               "host": [
                 "{{baseUrl}}/users"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Nguyen Van A\",\n  \"email\": \"a@eaims.local\",\n  \"roleId\": 3,\n  \"departmentId\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           },
           "response": []
@@ -122,11 +183,67 @@
           "name": "Create Department",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/departments",
               "host": [
                 "{{baseUrl}}/departments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Phong Moi\",\n  \"description\": \"Mo ta (tuy chon)\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Department",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/departments/1",
+              "host": [
+                "{{baseUrl}}/departments/1"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Phong IT\",\n  \"description\": \"Phong phu trach ha tang va ho tro CNTT\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Department",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/departments/6",
+              "host": [
+                "{{baseUrl}}/departments/6"
               ]
             }
           },
@@ -136,11 +253,160 @@
           "name": "Update User",
           "request": {
             "method": "PUT",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/users/{id}",
               "host": [
                 "{{baseUrl}}/users/{id}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Nguyen Van A\",\n  \"email\": \"a@eaims.local\",\n  \"roleId\": 3,\n  \"departmentId\": 1,\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/{id}/reset-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "{id}",
+                "reset-password"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Default Password",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/settings/default-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "settings",
+                "default-password"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Set Default Password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/settings/default-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "settings",
+                "default-password"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"Eaims@123\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Default Password",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/settings/default-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "settings",
+                "default-password"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Roles (Admin IT)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/roles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "roles"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get User By Id (Admin IT)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "1"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Department By Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/departments/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "departments",
+                "1"
               ]
             }
           },
@@ -183,12 +449,26 @@
           "name": "Create Asset",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/assets",
               "host": [
                 "{{baseUrl}}/assets"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assetCode\": \"PC-100\",\n  \"name\": \"Dell Latitude 5440\",\n  \"categoryId\": 1,\n  \"serialNumber\": \"SN-0001\",\n  \"specification\": \"i5 / 16GB / 512GB\",\n  \"operatingSystem\": \"Windows 11\",\n  \"departmentId\": 1,\n  \"purchaseDate\": \"2025-01-15\",\n  \"warrantyExpiry\": \"2028-01-15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           },
           "response": []
@@ -197,26 +477,26 @@
           "name": "Update Asset",
           "request": {
             "method": "PUT",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/assets/{id}",
               "host": [
                 "{{baseUrl}}/assets/{id}"
               ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Delete Asset",
-          "request": {
-            "method": "DELETE",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/assets/{id}",
-              "host": [
-                "{{baseUrl}}/assets/{id}"
-              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assetCode\": \"PC-100\",\n  \"name\": \"Dell Latitude 5440\",\n  \"categoryId\": 1,\n  \"serialNumber\": \"SN-0001\",\n  \"specification\": \"i5 / 16GB / 512GB\",\n  \"operatingSystem\": \"Windows 11\",\n  \"departmentId\": 1,\n  \"status\": \"InUse\",\n  \"purchaseDate\": \"2025-01-15\",\n  \"warrantyExpiry\": \"2028-01-15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           },
           "response": []
@@ -258,12 +538,26 @@
           "name": "Create Asset Category",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/asset-categories",
               "host": [
                 "{{baseUrl}}/asset-categories"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"May tinh de ban\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           },
           "response": []
@@ -272,12 +566,26 @@
           "name": "Update Asset Category",
           "request": {
             "method": "PUT",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/asset-categories/{id}",
               "host": [
                 "{{baseUrl}}/asset-categories/{id}"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"May tinh de ban\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           },
           "response": []
@@ -291,6 +599,24 @@
               "raw": "{{baseUrl}}/asset-categories/{id}",
               "host": [
                 "{{baseUrl}}/asset-categories/{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Asset Category By Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/asset-categories/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "asset-categories",
+                "1"
               ]
             }
           },
@@ -319,12 +645,26 @@
           "name": "Create Software License",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/software-licenses",
               "host": [
                 "{{baseUrl}}/software-licenses"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"softwareName\": \"Microsoft 365\",\n  \"licenseKey\": \"XXXXX-XXXXX-XXXXX\",\n  \"expiryDate\": \"2027-12-31\",\n  \"maxUsage\": 10,\n  \"notes\": \"Ghi chu (tuy chon)\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           },
           "response": []
@@ -333,12 +673,26 @@
           "name": "Update Software License",
           "request": {
             "method": "PUT",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/software-licenses/{id}",
               "host": [
                 "{{baseUrl}}/software-licenses/{id}"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"softwareName\": \"Microsoft 365\",\n  \"licenseKey\": \"XXXXX-XXXXX-XXXXX\",\n  \"expiryDate\": \"2027-12-31\",\n  \"maxUsage\": 10,\n  \"notes\": \"Ghi chu (tuy chon)\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           },
           "response": []
@@ -370,6 +724,77 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Get Software License By Id (Admin IT)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/software-licenses/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "software-licenses",
+                "1"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Assign Software License (Admin IT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/software-licenses/1/assign",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "software-licenses",
+                "1",
+                "assign"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assetId\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Unassign Software License (Admin IT)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/software-licenses/1/assign/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "software-licenses",
+                "1",
+                "assign",
+                "1"
+              ]
+            }
+          },
+          "response": []
         }
       ]
     },
@@ -382,9 +807,23 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/maintenance-tickets",
+              "raw": "{{baseUrl}}/maintenance-tickets?page=1&pageSize=20&status=Pending",
               "host": [
-                "{{baseUrl}}/maintenance-tickets"
+                "{{baseUrl}}/maintenance-tickets?page=1&pageSize=20&status=Pending"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Maintenance Ticket By Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/maintenance-tickets/1",
+              "host": [
+                "{{baseUrl}}/maintenance-tickets/1"
               ]
             }
           },
@@ -394,12 +833,54 @@
           "name": "Create Maintenance Ticket",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/maintenance-tickets",
               "host": [
                 "{{baseUrl}}/maintenance-tickets"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assetId\": 1,\n  \"issueDescription\": \"Máy không lên nguồn\",\n  \"technicianId\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Assign Technician",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/maintenance-tickets/1/assign",
+              "host": [
+                "{{baseUrl}}/maintenance-tickets/1/assign"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"technicianId\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           },
           "response": []
@@ -408,12 +889,26 @@
           "name": "Update Ticket Status",
           "request": {
             "method": "PATCH",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
-              "raw": "{{baseUrl}}/maintenance-tickets/{id}/status",
+              "raw": "{{baseUrl}}/maintenance-tickets/1/status",
               "host": [
-                "{{baseUrl}}/maintenance-tickets/{id}/status"
+                "{{baseUrl}}/maintenance-tickets/1/status"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"Resolved\",\n  \"notes\": \"Đã thay nguồn\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           },
           "response": []
@@ -424,9 +919,71 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/maintenance-tickets/stats",
+              "raw": "{{baseUrl}}/maintenance-tickets/stats?departmentId=&assetId=&fromDate=2026-01-01&toDate=2026-12-31",
               "host": [
-                "{{baseUrl}}/maintenance-tickets/stats"
+                "{{baseUrl}}/maintenance-tickets/stats?departmentId=&assetId=&fromDate=2026-01-01&toDate=2026-12-31"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Ticket Priority (Admin IT/Manager)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/maintenance-tickets/{id}/priority",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "maintenance-tickets",
+                "{id}",
+                "priority"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"priority\": \"Urgent\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Tickets - tab Cần xử lý",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/maintenance-tickets?closed=false&priority=&page=1&pageSize=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "maintenance-tickets"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Tickets - tab Đã xử lý",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/maintenance-tickets?closed=true&status=&page=1&pageSize=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "maintenance-tickets"
               ]
             }
           },
@@ -438,14 +995,28 @@
       "name": "Asset Allocations",
       "item": [
         {
-          "name": "Create Allocation",
+          "name": "Get Allocations",
           "request": {
-            "method": "POST",
+            "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/allocations",
+              "raw": "{{baseUrl}}/allocations?page=1&pageSize=20&status=Allocated&departmentId=",
               "host": [
-                "{{baseUrl}}/allocations"
+                "{{baseUrl}}/allocations?page=1&pageSize=20&status=Allocated&departmentId="
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Allocation By Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/allocations/1",
+              "host": [
+                "{{baseUrl}}/allocations/1"
               ]
             }
           },
@@ -455,12 +1026,26 @@
           "name": "Return Allocation",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
-              "raw": "{{baseUrl}}/allocations/{id}/return",
+              "raw": "{{baseUrl}}/allocations/1/return",
               "host": [
-                "{{baseUrl}}/allocations/{id}/return"
+                "{{baseUrl}}/allocations/1/return"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"returnedDate\": \"2026-09-23\",\n  \"condition\": \"Good\",\n  \"returnNote\": \"Da kiem tra khi nhan lai\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           },
           "response": []
@@ -471,9 +1056,90 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/allocations/overdue",
+              "raw": "{{baseUrl}}/allocations/overdue?thresholdDays=180",
               "host": [
-                "{{baseUrl}}/allocations/overdue"
+                "{{baseUrl}}/allocations/overdue?thresholdDays=180"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Allocation (chọn nhân viên)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/allocations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "allocations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assetId\": 1,\n  \"employeeId\": 1,\n  \"allocatedDate\": \"2026-10-08\",\n  \"handoverReason\": \"Cấp phát tài sản phục vụ công việc\",\n  \"handoverLocation\": \"Văn phòng công ty\",\n  \"handoverCondition\": \"Tốt\",\n  \"handoverNote\": \"\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Allocations (search)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/allocations?keyword=&employeeId=&status=&departmentId=&page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "allocations"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Allocation Document - bàn giao",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/allocations/{id}/document?kind=handover",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "allocations",
+                "{id}",
+                "document"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Allocation Document - thu hồi",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/allocations/{id}/document?kind=return",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "allocations",
+                "{id}",
+                "document"
               ]
             }
           },
@@ -482,33 +1148,329 @@
       ]
     },
     {
-      "name": "Forecast & Budget",
+      "name": "Forecasts",
       "item": [
         {
-          "name": "Get Forecasts",
+          "name": "Generate Forecast (Admin IT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/forecasts/generate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "forecasts",
+                "generate"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"year\": 2026,\n  \"departmentId\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Tạo/cập nhật dự báo. Bỏ departmentId để tạo 1 dòng cho mỗi phòng ban. Năm hợp lệ: từ năm hiện tại đến +10. Chạy lại cùng (năm, phòng ban) sẽ cập nhật dòng cũ."
+          },
+          "response": []
+        },
+        {
+          "name": "List Forecasts (Admin IT)",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/forecasts",
+              "raw": "{{baseUrl}}/forecasts?page=1&pageSize=20&year=2026&departmentId=1",
               "host": [
-                "{{baseUrl}}/forecasts"
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "forecasts"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20",
+                  "disabled": false
+                },
+                {
+                  "key": "year",
+                  "value": "2026",
+                  "disabled": true
+                },
+                {
+                  "key": "departmentId",
+                  "value": "1",
+                  "disabled": true
+                }
               ]
             }
           },
           "response": []
         },
         {
-          "name": "Generate Forecast",
+          "name": "Get Forecast Detail (Admin IT)",
           "request": {
-            "method": "POST",
+            "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/forecasts/generate",
+              "raw": "{{baseUrl}}/forecasts/1",
               "host": [
-                "{{baseUrl}}/forecasts/generate"
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "forecasts",
+                "1"
+              ]
+            },
+            "description": "Kèm breakdown theo loại tài sản."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Forecast - soft delete (Admin IT)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/forecasts/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "forecasts",
+                "1"
+              ]
+            },
+            "description": "Xoá mềm: chỉ ẩn dòng dự báo khỏi giao diện, dữ liệu vẫn còn trong DB. Trả 204."
+          },
+          "response": []
+        },
+        {
+          "name": "List Reference Prices (Admin IT)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/forecasts/reference-prices",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "forecasts",
+                "reference-prices"
+              ]
+            },
+            "description": "Mọi loại tài sản; loại chưa có giá → unitPrice: null."
+          },
+          "response": []
+        },
+        {
+          "name": "Upsert Reference Price (Admin IT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/forecasts/reference-prices/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "forecasts",
+                "reference-prices",
+                "1"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"unitPrice\": 20000000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Đơn giá VND, > 0."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Reference Price (Admin IT)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/forecasts/reference-prices/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "forecasts",
+                "reference-prices",
+                "1"
+              ]
+            },
+            "description": "204 khi xoá thành công; 404 nếu loại chưa có đơn giá."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Lifecycle",
+      "item": [
+        {
+          "name": "Lifecycle Stats (Admin IT)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lifecycle/stats?departmentId=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lifecycle",
+                "stats"
+              ],
+              "query": [
+                {
+                  "key": "departmentId",
+                  "value": "1",
+                  "disabled": true
+                }
               ]
             }
+          },
+          "response": []
+        },
+        {
+          "name": "Replacement Candidates (Admin IT)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lifecycle/replacement-candidates?departmentId=1&categoryId=1&page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lifecycle",
+                "replacement-candidates"
+              ],
+              "query": [
+                {
+                  "key": "departmentId",
+                  "value": "1",
+                  "disabled": true
+                },
+                {
+                  "key": "categoryId",
+                  "value": "1",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20",
+                  "disabled": false
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Lifecycle Policies (Admin IT)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lifecycle/policies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lifecycle",
+                "policies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Upsert Lifecycle Policy (Admin IT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/lifecycle/policies/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lifecycle",
+                "policies",
+                "1"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"maxAgeYears\": 7,\n  \"maxFailureCount\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Lifecycle Policy (Admin IT)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lifecycle/policies/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lifecycle",
+                "policies",
+                "1"
+              ]
+            },
+            "description": "Về ngưỡng mặc định. 204."
           },
           "response": []
         }
@@ -518,7 +1480,7 @@
       "name": "Dashboard & Reports",
       "item": [
         {
-          "name": "Dashboard Summary",
+          "name": "Dashboard Summary (Chưa triển khai — UC-18/19/20)",
           "request": {
             "method": "GET",
             "header": [],
@@ -551,7 +1513,7 @@
       "name": "Import/Export",
       "item": [
         {
-          "name": "Import Assets",
+          "name": "Import Assets (Chưa triển khai — UC-18/19/20)",
           "request": {
             "method": "POST",
             "header": [],
@@ -565,7 +1527,7 @@
           "response": []
         },
         {
-          "name": "Export Assets",
+          "name": "Export Assets (Chưa triển khai — UC-18/19/20)",
           "request": {
             "method": "GET",
             "header": [],
@@ -573,6 +1535,524 @@
               "raw": "{{baseUrl}}/assets/export",
               "host": [
                 "{{baseUrl}}/assets/export"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Audit Logs",
+      "item": [
+        {
+          "name": "List Audit Logs (Admin IT)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/audit-logs?page=1&pageSize=20&userId=&entityName=User&action=Update&fromDate=2026-10-01&toDate=2026-10-31",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "audit-logs"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20",
+                  "disabled": false
+                },
+                {
+                  "key": "userId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "entityName",
+                  "value": "User",
+                  "disabled": true
+                },
+                {
+                  "key": "action",
+                  "value": "Update",
+                  "disabled": true
+                },
+                {
+                  "key": "fromDate",
+                  "value": "2026-10-01",
+                  "disabled": true
+                },
+                {
+                  "key": "toDate",
+                  "value": "2026-10-31",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Audit Log By Id (Admin IT)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/audit-logs/{id}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "audit-logs",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Disposals",
+      "item": [
+        {
+          "name": "List Disposal Requests",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/disposal-requests?status=&page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "disposal-requests?status=&page=1&pageSize=20"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Disposal Request",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/disposal-requests/{id}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "disposal-requests",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "1. Inspect (Technician)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/disposal-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "disposal-requests"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assetId\": 1,\n  \"inspectionNote\": \"Hong nang, khong sua duoc\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "2. Propose (Technician)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/disposal-requests/{id}/propose",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "disposal-requests",
+                "{id}",
+                "propose"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Het khau hao\",\n  \"disposalMethod\": \"Ban phe lieu\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "3a. Approve (Manager)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/disposal-requests/{id}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "disposal-requests",
+                "{id}",
+                "approve"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Dong y\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "3b. Reject (Manager)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/disposal-requests/{id}/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "disposal-requests",
+                "{id}",
+                "reject"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Con su dung duoc\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "4. Complete (Admin IT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/disposal-requests/{id}/complete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "disposal-requests",
+                "{id}",
+                "complete"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Da ban giao\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Set Sub Status (Admin IT)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/disposal-requests/{id}/sub-status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "disposal-requests",
+                "{id}",
+                "sub-status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subStatusId\": null\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Statuses",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/disposal-statuses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "disposal-statuses"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Status (Admin IT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/disposal-statuses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "disposal-statuses"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Cho chung tu\",\n  \"description\": \"\",\n  \"color\": \"warning\",\n  \"sortOrder\": 10\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Status (Admin IT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/disposal-statuses/{id}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "disposal-statuses",
+                "{id}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Cho chung tu\",\n  \"description\": \"\",\n  \"color\": \"warning\",\n  \"sortOrder\": 10\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Status (Admin IT)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/disposal-statuses/{id}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "disposal-statuses",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Candidates - tài sản hỏng chờ kiểm tra",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/disposal-requests/candidates?page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "disposal-requests",
+                "candidates"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Restore Default Steps (Admin IT)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/disposal-statuses/restore-defaults",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "disposal-statuses",
+                "restore-defaults"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Employees",
+      "item": [
+        {
+          "name": "List Employees",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/employees?keyword=&departmentId=&isActive=&page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "employees"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Employee",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/employees/{id}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "employees",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Employee",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/employees",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "employees"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Nguyễn Văn An\",\n  \"departmentId\": 1,\n  \"position\": \"Kế toán tổng hợp\",\n  \"isActive\": true\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Employee",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/employees/{id}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "employees",
+                "{id}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Nguyễn Văn An\",\n  \"departmentId\": 1,\n  \"position\": \"Kế toán trưởng\",\n  \"isActive\": true\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Employee",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/employees/{id}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "employees",
+                "{id}"
               ]
             }
           },

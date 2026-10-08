@@ -26,12 +26,12 @@ public class LastAdminProtectionException : Exception
 }
 
 // Admin IT không tự "đặt lại mật khẩu hộ" cho chính mình qua kênh quản trị — phải dùng
-// /auth/change-password (khi còn nhớ mật khẩu) hoặc /auth/forgot-password (khi quên).
+// /auth/change-password; nếu quên mật khẩu thì nhờ Admin IT khác đặt lại.
 public class SelfPasswordResetNotAllowedException : Exception
 {
     public SelfPasswordResetNotAllowedException()
         : base("Không thể tự đặt lại mật khẩu của chính mình qua chức năng quản trị. " +
-               "Hãy dùng \"Đổi mật khẩu\" (nếu còn nhớ mật khẩu hiện tại) hoặc \"Quên mật khẩu\" ở trang đăng nhập.")
+               "Hãy dùng \"Đổi mật khẩu\", hoặc nhờ Admin IT khác đặt lại nếu bạn quên mật khẩu.")
     {
     }
 }
