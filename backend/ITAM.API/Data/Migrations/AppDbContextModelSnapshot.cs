@@ -181,6 +181,19 @@ namespace ITAM.API.Data.Migrations
                     b.ToTable("AssetCategories");
                 });
 
+            modelBuilder.Entity("ITAM.API.Models.Entities.AssetCategoryDeviceRatio", b =>
+                {
+                    b.Property<int>("CategoryId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("DevicesPerPerson")
+                        .HasColumnType("decimal(6,2)");
+
+                    b.HasKey("CategoryId");
+
+                    b.ToTable("AssetCategoryDeviceRatios", (string)null);
+                });
+
             modelBuilder.Entity("ITAM.API.Models.Entities.AssetCategoryLifecyclePolicy", b =>
                 {
                     b.Property<int>("Id")
@@ -314,8 +327,17 @@ namespace ITAM.API.Data.Migrations
                     b.Property<decimal>("EstimatedBudget")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<decimal>("EstimatedExpansionBudget")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("EstimatedExpansionCount")
+                        .HasColumnType("int");
+
                     b.Property<int>("EstimatedReplacementCount")
                         .HasColumnType("int");
+
+                    b.Property<string>("ExpansionBreakdownJson")
+                        .HasColumnType("longtext");
 
                     b.Property<DateTime?>("GeneratedAt")
                         .HasColumnType("datetime(6)");
@@ -363,6 +385,40 @@ namespace ITAM.API.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Departments");
+                });
+
+            modelBuilder.Entity("ITAM.API.Models.Entities.DepartmentExpansionPlan", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AdditionalHeadcount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DepartmentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("Year", "DepartmentId")
+                        .IsUnique();
+
+                    b.ToTable("DepartmentExpansionPlans", (string)null);
                 });
 
             modelBuilder.Entity("ITAM.API.Models.Entities.DisposalRequest", b =>
@@ -869,6 +925,17 @@ namespace ITAM.API.Data.Migrations
                     b.Navigation("ReceivedBy");
                 });
 
+            modelBuilder.Entity("ITAM.API.Models.Entities.AssetCategoryDeviceRatio", b =>
+                {
+                    b.HasOne("ITAM.API.Models.Entities.AssetCategory", "Category")
+                        .WithOne()
+                        .HasForeignKey("ITAM.API.Models.Entities.AssetCategoryDeviceRatio", "CategoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Category");
+                });
+
             modelBuilder.Entity("ITAM.API.Models.Entities.AssetCategoryLifecyclePolicy", b =>
                 {
                     b.HasOne("ITAM.API.Models.Entities.AssetCategory", "Category")
@@ -925,6 +992,17 @@ namespace ITAM.API.Data.Migrations
                 {
                     b.HasOne("ITAM.API.Models.Entities.Department", "Department")
                         .WithMany("BudgetForecasts")
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Department");
+                });
+
+            modelBuilder.Entity("ITAM.API.Models.Entities.DepartmentExpansionPlan", b =>
+                {
+                    b.HasOne("ITAM.API.Models.Entities.Department", "Department")
+                        .WithMany()
                         .HasForeignKey("DepartmentId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();

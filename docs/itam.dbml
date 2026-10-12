@@ -159,6 +159,9 @@ Table BudgetForecasts {
   Notes varchar(500)
   BreakdownJson longtext [note: 'chi tiet theo loai tai san + danh sach tai san de xuat (JSON camelCase), nullable']
   GeneratedAt datetime [note: 'lan tao/cap nhat du bao gan nhat (UTC), nullable']
+  EstimatedExpansionCount int [not null, default: 0, note: 'so thiet bi can MUA THEM theo ke hoach mo rong phong ban (Tuan 8)']
+  EstimatedExpansionBudget decimal(18,2) [not null, default: 0, note: 'VND - chi phan mua them. EstimatedBudget van chi la phan THAY THE; tong tinh khi map DTO']
+  ExpansionBreakdownJson longtext [note: 'object { additionalHeadcount, items[] } (JSON camelCase), nullable - dong cu truoc Tuan 8 = null']
   IsDeleted boolean [not null, default: false, note: 'xoa mem - chi an tren giao dien, dong van con trong DB']
   DeletedAt datetime [note: 'thoi diem xoa mem (UTC), nullable']
 
@@ -176,6 +179,28 @@ Table AssetCategoryReferencePrices {
   DeletedAt datetime [note: 'thoi diem xoa mem (UTC), nullable']
 
   Note: 'Don gia tham khao theo loai tai san - dung uoc tinh ngan sach thay the (UC-17)'
+}
+
+Table DepartmentExpansionPlans {
+  Id int [pk, increment]
+  Year int [not null]
+  DepartmentId int [not null]
+  AdditionalHeadcount int [not null, note: 'so nhan su tang them TRONG nam do (khong cong don), 0..5000']
+  Notes varchar(500)
+  UpdatedAt datetime [not null, note: 'UTC']
+
+  indexes {
+    (Year, DepartmentId) [unique, note: 'moi (nam, phong ban) toi da 1 ke hoach']
+  }
+
+  Note: 'Ke hoach mo rong nhan su theo phong ban - dau vao tinh nhu cau mua them thiet bi (UC-17)'
+}
+
+Table AssetCategoryDeviceRatios {
+  CategoryId int [pk, note: 'vua la PK vua la FK - moi loai toi da 1 dinh muc']
+  DevicesPerPerson decimal(6,2) [not null, note: '0,01..20,00']
+
+  Note: 'Dinh muc so thiet bi tren moi nhan su theo loai tai san (toan he thong) - UC-17'
 }
 
 Table SystemSettings {
@@ -271,6 +296,8 @@ Ref: AssetAllocations.DepartmentId > Departments.Id
 Ref: AuditLogs.UserId > Users.Id
 Ref: BudgetForecasts.DepartmentId > Departments.Id
 Ref: AssetCategoryReferencePrices.CategoryId - AssetCategories.Id
+Ref: DepartmentExpansionPlans.DepartmentId > Departments.Id
+Ref: AssetCategoryDeviceRatios.CategoryId - AssetCategories.Id
 Ref: ImportLogs.ImportedBy > Users.Id
 
 Ref: DisposalRequests.AssetId > Assets.Id

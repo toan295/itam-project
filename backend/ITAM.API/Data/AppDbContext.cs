@@ -27,6 +27,8 @@ public class AppDbContext : DbContext
     public DbSet<BudgetForecast> BudgetForecasts => Set<BudgetForecast>();
     public DbSet<ImportLog> ImportLogs => Set<ImportLog>();
     public DbSet<AssetCategoryReferencePrice> AssetCategoryReferencePrices => Set<AssetCategoryReferencePrice>();
+    public DbSet<DepartmentExpansionPlan> DepartmentExpansionPlans => Set<DepartmentExpansionPlan>();
+    public DbSet<AssetCategoryDeviceRatio> AssetCategoryDeviceRatios => Set<AssetCategoryDeviceRatio>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -259,6 +261,8 @@ public class AppDbContext : DbContext
             entity.Property(e => e.EstimatedBudget).HasColumnType("decimal(18,2)");
             entity.Property(e => e.Notes).HasMaxLength(500);
             entity.Property(e => e.BreakdownJson).HasColumnType("longtext");
+            entity.Property(e => e.EstimatedExpansionBudget).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.ExpansionBreakdownJson).HasColumnType("longtext");
             entity.HasIndex(e => new { e.Year, e.DepartmentId }).IsUnique();
             entity.HasQueryFilter(e => !e.IsDeleted);
 
@@ -279,6 +283,33 @@ public class AppDbContext : DbContext
             entity.HasOne(e => e.Category)
                 .WithOne()
                 .HasForeignKey<AssetCategoryReferencePrice>(e => e.CategoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Module Dự báo ngân sách — kế hoạch mở rộng nhân sự theo (năm, phòng ban).
+        modelBuilder.Entity<DepartmentExpansionPlan>(entity =>
+        {
+            entity.ToTable("DepartmentExpansionPlans");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Notes).HasMaxLength(500);
+            entity.HasIndex(e => new { e.Year, e.DepartmentId }).IsUnique();   // mỗi (năm, phòng ban) tối đa 1 dòng
+
+            entity.HasOne(e => e.Department)
+                .WithMany()
+                .HasForeignKey(e => e.DepartmentId)
+                .OnDelete(DeleteBehavior.Restrict);   // không âm thầm xoá kế hoạch khi xoá phòng ban
+        });
+
+        // Module Dự báo ngân sách — định mức thiết bị/người theo loại tài sản.
+        modelBuilder.Entity<AssetCategoryDeviceRatio>(entity =>
+        {
+            entity.ToTable("AssetCategoryDeviceRatios");
+            entity.HasKey(e => e.CategoryId);
+            entity.Property(e => e.DevicesPerPerson).HasColumnType("decimal(6,2)");
+
+            entity.HasOne(e => e.Category)
+                .WithOne()
+                .HasForeignKey<AssetCategoryDeviceRatio>(e => e.CategoryId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
