@@ -20,9 +20,29 @@ function clearError() {
   document.getElementById("errorAlert").classList.add("d-none");
 }
 
+let successTimer = null;
+function showSuccess(message) {
+  const el = document.getElementById("successAlert");
+  el.textContent = message;
+  el.classList.remove("d-none");
+  clearTimeout(successTimer);
+  successTimer = setTimeout(() => el.classList.add("d-none"), 4000);
+}
+
 // Định dạng hiển thị ở frontend (backend chỉ trả số decimal thô).
 function formatVnd(value) {
   return `${Number(value).toLocaleString("vi-VN")} ₫`;
+}
+
+// Định mức hiển thị kiểu Việt Nam, tối đa 2 chữ số thập phân (0,1 / 1 / 2,5).
+function formatRatio(value) {
+  return Number(value).toLocaleString("vi-VN", { maximumFractionDigits: 2 });
+}
+
+// Nhận cả "0,5" lẫn "0.5"; trả NaN nếu không hợp lệ hoặc quá 2 chữ số thập phân (khớp validator backend).
+function parseRatioInput(text) {
+  const normalized = String(text).trim().replace(",", ".");
+  return /^\d+(\.\d{1,2})?$/.test(normalized) ? Number(normalized) : NaN;
 }
 
 // Ô nhập tiền: chỉ giữ chữ số và tự chèn dấu chấm ngăn cách hàng nghìn khi đang gõ (25000000 -> 25.000.000).
@@ -77,9 +97,10 @@ function formatDateTime(value) {
 
 function fillYearOptions() {
   const current = new Date().getFullYear();
-  const select = document.getElementById("genYear");
-  select.innerHTML = Array.from({ length: MAX_YEARS_AHEAD + 1 }, (_, i) => current + i)
+  const options = Array.from({ length: MAX_YEARS_AHEAD + 1 }, (_, i) => current + i)
     .map((year) => `<option value="${year}">${year}</option>`).join("");
+  document.getElementById("genYear").innerHTML = options;
+  document.getElementById("planYear").innerHTML = options;
 }
 
 async function loadDepartments() {
@@ -105,8 +126,9 @@ function renderGenerated(result) {
   lastGenerated = result.forecasts || [];
   renderWarnings(result.warnings || []);
 
-  const totalCount = lastGenerated.reduce((sum, f) => sum + f.estimatedReplacementCount, 0);
-  const totalBudget = lastGenerated.reduce((sum, f) => sum + Number(f.estimatedBudget), 0);
+  // Tổng = thay thế + mua thêm (backend đã tính sẵn từng dòng).
+  const totalCount = lastGenerated.reduce((sum, f) => sum + f.totalPurchaseCount, 0);
+  const totalBudget = lastGenerated.reduce((sum, f) => sum + Number(f.totalBudget), 0);
 
   document.getElementById("resultTitle").textContent = `Kết quả dự báo năm ${result.year}`;
   document.getElementById("resultTotal").textContent = `Tổng: ${totalCount} thiết bị — ${formatVnd(totalBudget)}`;
@@ -116,17 +138,19 @@ function renderGenerated(result) {
     ? lastGenerated.map((f, index) => `
       <tr>
         <td class="fw-semibold">${escapeHtml(f.departmentName)}
-          ${f.estimatedReplacementCount === 0 ? `<div class="small text-muted fw-normal">Chưa có tài sản nào đến hạn thay thế năm ${f.year}</div>` : ""}
+          ${f.totalPurchaseCount === 0 ? `<div class="small text-muted fw-normal">Chưa có thiết bị nào cần thay hoặc mua thêm năm ${f.year}</div>` : ""}
         </td>
-        <td class="text-end">${f.estimatedReplacementCount}</td>
-        <td class="text-end">${formatVnd(f.estimatedBudget)}</td>
+        <td class="text-end">${f.estimatedReplacementCount} thiết bị<div class="small text-muted">${formatVnd(f.estimatedBudget)}</div></td>
+        <td class="text-end">${f.estimatedExpansionCount} thiết bị<div class="small text-muted">${formatVnd(f.estimatedExpansionBudget)}</div>
+          <div class="small text-muted">Nhân sự tăng thêm: ${f.additionalHeadcount}</div></td>
+        <td class="text-end fw-semibold">${f.totalPurchaseCount} thiết bị<div class="small fw-normal">${formatVnd(f.totalBudget)}</div></td>
         <td class="text-end">
           <button class="btn btn-sm btn-outline-primary" data-action="generated-detail" data-index="${index}">
             <i class="bi bi-eye"></i> Chi tiết
           </button>
         </td>
       </tr>`).join("")
-    : '<tr><td colspan="4" class="text-center text-muted py-4">Không có phòng ban nào.</td></tr>';
+    : '<tr><td colspan="5" class="text-center text-muted py-4">Không có phòng ban nào.</td></tr>';
 
   document.getElementById("resultSection").classList.remove("d-none");
 }
@@ -160,8 +184,12 @@ document.getElementById("resultTableBody").addEventListener("click", (event) => 
 
 function openDetail(forecast) {
   document.getElementById("detailTitle").textContent = `Dự báo năm ${forecast.year} — ${forecast.departmentName}`;
-  document.getElementById("detailCount").textContent = forecast.estimatedReplacementCount;
-  document.getElementById("detailBudget").textContent = formatVnd(forecast.estimatedBudget);
+  document.getElementById("detailCount").textContent =
+    `${forecast.estimatedReplacementCount} thiết bị — ${formatVnd(forecast.estimatedBudget)}`;
+  document.getElementById("detailExpansion").textContent =
+    `${forecast.estimatedExpansionCount} thiết bị — ${formatVnd(forecast.estimatedExpansionBudget)}`;
+  document.getElementById("detailTotal").textContent =
+    `${forecast.totalPurchaseCount} thiết bị — ${formatVnd(forecast.totalBudget)}`;
   document.getElementById("detailGeneratedAt").textContent = formatDateTime(forecast.generatedAt);
 
   const notes = document.getElementById("detailNotes");
@@ -206,7 +234,50 @@ function openDetail(forecast) {
         </tr>`).join("")
     : '<tr><td colspan="4" class="text-center text-muted py-3">Không có thiết bị nào đến hạn thay thế.</td></tr>';
 
+  renderExpansionDetail(forecast);
+  renderPurchaseSummary(forecast);
+
   detailModal.show();
+}
+
+function renderExpansionDetail(forecast) {
+  const items = forecast.expansionBreakdown || [];
+  document.getElementById("detailExpansionExplain").textContent = items.length
+    ? `Nhân sự tăng thêm trong năm ${forecast.year}: ${forecast.additionalHeadcount} người. Số lượng = nhân sự × định mức, làm tròn lên.`
+    : "Không có nhu cầu mua thêm: phòng ban chưa có kế hoạch mở rộng cho năm này, chưa cấu hình định mức, hoặc dự báo được tạo trước khi có tính năng mua thêm (bấm “Tạo dự báo” lại để cập nhật).";
+
+  document.getElementById("detailExpansionBody").innerHTML = items.length
+    ? items.map((i) => i.unitPrice == null
+      ? `<tr class="table-warning">
+          <td>${escapeHtml(i.categoryName)}</td>
+          <td class="text-end">${formatRatio(i.devicesPerPerson)}</td>
+          <td class="text-end">${i.quantity}</td>
+          <td class="text-end" colspan="2"><span class="badge text-bg-warning">Chưa có đơn giá</span></td>
+        </tr>`
+      : `<tr>
+          <td>${escapeHtml(i.categoryName)}</td>
+          <td class="text-end">${formatRatio(i.devicesPerPerson)}</td>
+          <td class="text-end">${i.quantity}</td>
+          <td class="text-end">${formatVnd(i.unitPrice)}</td>
+          <td class="text-end">${formatVnd(i.subtotal)}</td>
+        </tr>`).join("")
+    : '<tr><td colspan="5" class="text-center text-muted py-3">Không có thiết bị nào cần mua thêm.</td></tr>';
+}
+
+function renderPurchaseSummary(forecast) {
+  const items = forecast.purchaseSummary || [];
+  document.getElementById("detailPurchaseBody").innerHTML = items.length
+    ? items.map((i) => `
+        <tr class="${i.unitPrice == null ? "table-warning" : ""}">
+          <td>${escapeHtml(i.categoryName)}</td>
+          <td class="text-end">${i.replacementQuantity}</td>
+          <td class="text-end">${i.expansionQuantity}</td>
+          <td class="text-end fw-semibold">${i.totalQuantity}</td>
+          ${i.unitPrice == null
+            ? '<td class="text-end" colspan="2"><span class="badge text-bg-warning">Chưa có đơn giá</span></td>'
+            : `<td class="text-end">${formatVnd(i.unitPrice)}</td><td class="text-end">${formatVnd(i.totalCost)}</td>`}
+        </tr>`).join("")
+    : '<tr><td colspan="6" class="text-center text-muted py-3">Không có thiết bị nào cần mua.</td></tr>';
 }
 
 async function viewHistoryDetail(id) {
@@ -243,7 +314,7 @@ async function loadHistory(page = 1) {
 function renderHistory(items) {
   const body = document.getElementById("historyTableBody");
   if (!items.length) {
-    body.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Chưa có dự báo nào.</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Chưa có dự báo nào.</td></tr>';
     return;
   }
   body.innerHTML = items.map((f) => `
@@ -251,8 +322,10 @@ function renderHistory(items) {
       <td>${f.year}</td>
       <td>${escapeHtml(f.departmentName)}</td>
       <td class="text-end">${f.estimatedReplacementCount}</td>
+      <td class="text-end">${f.estimatedExpansionCount}</td>
+      <td class="text-end fw-semibold">${f.totalPurchaseCount}</td>
       <td class="text-end">
-        ${formatVnd(f.estimatedBudget)}
+        ${formatVnd(f.totalBudget)}
         ${f.notes ? '<i class="bi bi-exclamation-triangle text-warning ms-1" title="Có loại chưa có đơn giá"></i>' : ""}
       </td>
       <td>${escapeHtml(formatDateTime(f.generatedAt))}</td>
@@ -394,6 +467,152 @@ document.getElementById("priceTableBody").addEventListener("keydown", (event) =>
   }
 });
 
+// ---------- Định mức thiết bị/người ----------
+
+async function loadRatios() {
+  try {
+    renderRatios((await api.get("/forecasts/device-ratios")) || []);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+function renderRatios(items) {
+  const body = document.getElementById("ratioTableBody");
+  if (!items.length) {
+    body.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">Chưa có loại tài sản nào.</td></tr>';
+    return;
+  }
+  body.innerHTML = items.map((r) => {
+    const configured = r.devicesPerPerson != null;
+    return `
+      <tr data-category-id="${r.categoryId}">
+        <td class="fw-semibold">${escapeHtml(r.categoryName)}</td>
+        <td>
+          <input type="text" inputmode="decimal" autocomplete="off" class="form-control form-control-sm ratio-input"
+                 value="${configured ? formatRatio(r.devicesPerPerson) : ""}" placeholder="VD: 1 hoặc 0,1"
+                 aria-label="Định mức ${escapeHtml(r.categoryName)}">
+        </td>
+        <td>${configured
+          ? '<span class="badge text-bg-success">Đã cấu hình</span>'
+          : '<span class="badge text-bg-secondary">Chưa cấu hình — không tính mua thêm</span>'}</td>
+        <td class="text-end text-nowrap">
+          <button class="btn btn-sm btn-primary" data-action="save-ratio"><i class="bi bi-check2"></i> Lưu</button>
+          ${configured ? '<button class="btn btn-sm btn-outline-danger" data-action="delete-ratio"><i class="bi bi-trash"></i> Xoá</button>' : ""}
+        </td>
+      </tr>`;
+  }).join("");
+}
+
+document.getElementById("ratioTableBody").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-action]");
+  if (!button) return;
+
+  const row = button.closest("tr");
+  const categoryId = Number(row.dataset.categoryId);
+  clearError();
+
+  try {
+    if (button.dataset.action === "save-ratio") {
+      const value = parseRatioInput(row.querySelector(".ratio-input").value);
+      if (!Number.isFinite(value) || value < 0.01 || value > 20) {
+        showError("Định mức phải là số từ 0,01 đến 20, tối đa 2 chữ số thập phân.");
+        return;
+      }
+      await api.put(`/forecasts/device-ratios/${categoryId}`, { devicesPerPerson: value });
+      showSuccess("Đã lưu định mức. Bấm “Tạo dự báo” lại để áp dụng.");
+    } else if (button.dataset.action === "delete-ratio") {
+      if (!confirm("Xoá định mức của loại này? Loại này sẽ không còn được tính vào nhu cầu mua thêm.")) return;
+      await api.del(`/forecasts/device-ratios/${categoryId}`);
+      showSuccess("Đã xoá định mức. Bấm “Tạo dự báo” lại để áp dụng.");
+    }
+    await loadRatios();
+  } catch (err) {
+    showError(err.message);
+  }
+});
+
+document.getElementById("ratioTableBody").addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && event.target.matches(".ratio-input")) {
+    event.preventDefault();
+    event.target.closest("tr").querySelector('[data-action="save-ratio"]').click();
+  }
+});
+
+// ---------- Kế hoạch mở rộng nhân sự ----------
+
+async function loadPlans() {
+  const year = document.getElementById("planYear").value;
+  try {
+    renderPlans((await api.get(`/forecasts/expansion-plans?year=${encodeURIComponent(year)}`)) || []);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+function renderPlans(items) {
+  const body = document.getElementById("planTableBody");
+  if (!items.length) {
+    body.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Chưa có phòng ban nào.</td></tr>';
+    return;
+  }
+  body.innerHTML = items.map((p) => `
+    <tr data-department-id="${p.departmentId}" data-year="${p.year}">
+      <td class="fw-semibold">${escapeHtml(p.departmentName)}</td>
+      <td>
+        <input type="number" min="0" max="5000" step="1" class="form-control form-control-sm plan-headcount ${p.hasPlan ? "" : "text-muted"}"
+               value="${p.additionalHeadcount}" aria-label="Nhân sự tăng thêm ${escapeHtml(p.departmentName)}">
+      </td>
+      <td><input type="text" maxlength="500" class="form-control form-control-sm plan-notes" value="${escapeHtml(p.notes || "")}"
+                 placeholder="Ghi chú (tuỳ chọn)" aria-label="Ghi chú ${escapeHtml(p.departmentName)}"></td>
+      <td class="small text-muted">${p.hasPlan ? escapeHtml(formatDateTime(p.updatedAt)) : "Chưa có kế hoạch"}</td>
+      <td class="text-end text-nowrap">
+        <button class="btn btn-sm btn-primary" data-action="save-plan"><i class="bi bi-check2"></i> Lưu</button>
+        ${p.hasPlan ? '<button class="btn btn-sm btn-outline-danger" data-action="delete-plan"><i class="bi bi-trash"></i> Xoá</button>' : ""}
+      </td>
+    </tr>`).join("");
+}
+
+document.getElementById("planYear").addEventListener("change", loadPlans);
+
+document.getElementById("planTableBody").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-action]");
+  if (!button) return;
+
+  const row = button.closest("tr");
+  const year = Number(row.dataset.year);
+  const departmentId = Number(row.dataset.departmentId);
+  clearError();
+
+  try {
+    if (button.dataset.action === "save-plan") {
+      const raw = row.querySelector(".plan-headcount").value.trim();
+      const headcount = Number(raw);
+      if (raw === "" || !Number.isInteger(headcount) || headcount < 0 || headcount > 5000) {
+        showError("Số nhân sự tăng thêm phải là số nguyên từ 0 đến 5.000.");
+        return;
+      }
+      const notes = row.querySelector(".plan-notes").value.trim();
+      await api.put(`/forecasts/expansion-plans/${year}/${departmentId}`, { additionalHeadcount: headcount, notes: notes || null });
+      showSuccess("Đã lưu kế hoạch mở rộng. Bấm “Tạo dự báo” lại để áp dụng.");
+    } else if (button.dataset.action === "delete-plan") {
+      if (!confirm("Xoá kế hoạch mở rộng của phòng ban này trong năm đã chọn?")) return;
+      await api.del(`/forecasts/expansion-plans/${year}/${departmentId}`);
+      showSuccess("Đã xoá kế hoạch mở rộng. Bấm “Tạo dự báo” lại để áp dụng.");
+    }
+    await loadPlans();
+  } catch (err) {
+    showError(err.message);
+  }
+});
+
+document.getElementById("planTableBody").addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && event.target.matches(".plan-headcount, .plan-notes")) {
+    event.preventDefault();
+    event.target.closest("tr").querySelector('[data-action="save-plan"]').click();
+  }
+});
+
 // ---------- Khởi động ----------
 
 if (session?.role !== "Admin IT") {
@@ -404,5 +623,5 @@ if (session?.role !== "Admin IT") {
   fillYearOptions();
   loadDepartments()
     .catch((err) => showError(`Không tải được danh sách phòng ban: ${err.message}`))
-    .then(() => Promise.all([loadHistory(1), loadPrices()]));
+    .then(() => Promise.all([loadHistory(1), loadPrices(), loadRatios(), loadPlans()]));
 }

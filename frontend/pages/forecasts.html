@@ -15,13 +15,14 @@
     <main class="eaims-main">
       <div class="page-header">
         <div>
-          <h1>Dự báo ngân sách thay thế</h1>
-          <p>Ước tính số thiết bị cần thay và ngân sách theo năm, dựa trên tuổi thọ và số lần lỗi. Chỉ Admin IT được phép sử dụng.</p>
+          <h1>Dự báo ngân sách thay thế &amp; mua thêm</h1>
+          <p>Ước tính số thiết bị cần thay (theo tuổi thọ, số lần lỗi) và cần mua thêm (theo kế hoạch mở rộng nhân sự phòng ban), cùng ngân sách theo năm. Chỉ Admin IT được phép sử dụng.</p>
         </div>
       </div>
 
       <div id="forbiddenAlert" class="alert alert-warning d-none"></div>
       <div id="errorAlert" class="alert alert-danger d-none"></div>
+      <div id="successAlert" class="alert alert-success d-none"></div>
 
       <div id="forecastContent">
         <!-- Tạo dự báo -->
@@ -48,6 +49,9 @@
             <div class="form-text mt-2">
               Mỗi năm chỉ tính các tài sản đến hạn thay thế đúng năm đó (không cộng dồn). Tạo lại cùng năm và phòng ban sẽ cập nhật dự báo cũ.
             </div>
+            <div class="form-text text-warning-emphasis" id="staleReminder">
+              <i class="bi bi-info-circle"></i> Thay đổi kế hoạch mở rộng, định mức hoặc đơn giá chỉ có hiệu lực sau khi bấm “Tạo dự báo” lại.
+            </div>
 
             <details class="mt-2" id="howItWorks">
               <summary class="text-primary" style="cursor:pointer"><i class="bi bi-question-circle"></i> Dự báo này được tính như thế nào?</summary>
@@ -56,6 +60,7 @@
                 <li>Mỗi tài sản cần thay có một <strong>năm đến hạn</strong>: đã quá tuổi hoặc đã vượt ngưỡng bảo trì thì đến hạn ngay <em>năm hiện tại</em>; chưa quá tuổi thì đến hạn vào năm tài sản tròn ngưỡng tuổi.</li>
                 <li>Dự báo năm X chỉ tính tài sản có <strong>năm đến hạn đúng bằng X</strong> (không cộng dồn). Vì vậy tài sản đã quá hạn từ trước nằm ở dự báo của năm hiện tại, không lặp lại ở các năm sau.</li>
                 <li><strong>Số thiết bị đề xuất</strong> = số tài sản đến hạn của phòng ban đó. <strong>Ngân sách</strong> = số lượng từng loại × đơn giá tham khảo. Phòng ban có số 0 nghĩa là chưa có tài sản nào đến hạn thay thế trong năm đã chọn.</li>
+                <li><strong>Mua thêm</strong> = số nhân sự tăng thêm trong năm (khai ở mục <a href="#expansionCard">Kế hoạch mở rộng nhân sự</a>) × <strong>định mức thiết bị/người</strong> của từng loại, <em>làm tròn lên</em> (vd 5 người × 0,10 máy in = 0,5 → 1). Loại chưa có định mức thì không tính mua thêm. Phần mua thêm được <strong>cộng</strong> vào phần thay thế, không trừ đi thiết bị đang tồn kho.</li>
                 <li>Bấm <strong>Chi tiết</strong> để xem chính xác những tài sản nào được đề xuất và vì lý do gì.</li>
               </ol>
             </details>
@@ -76,8 +81,9 @@
                     <thead>
                       <tr>
                         <th>Phòng ban</th>
-                        <th class="text-end">Số thiết bị đề xuất</th>
-                        <th class="text-end">Ngân sách ước tính</th>
+                        <th class="text-end">Thay thế</th>
+                        <th class="text-end">Mua thêm</th>
+                        <th class="text-end">Tổng</th>
                         <th class="text-end">Chi tiết</th>
                       </tr>
                     </thead>
@@ -119,8 +125,10 @@
                     <tr>
                       <th>Năm</th>
                       <th>Phòng ban</th>
-                      <th class="text-end">Số thiết bị</th>
-                      <th class="text-end">Ngân sách</th>
+                      <th class="text-end">Thay thế</th>
+                      <th class="text-end">Mua thêm</th>
+                      <th class="text-end">Tổng thiết bị</th>
+                      <th class="text-end">Tổng ngân sách</th>
                       <th>Thời điểm tạo</th>
                       <th class="text-end">Thao tác</th>
                     </tr>
@@ -158,6 +166,61 @@
             </div>
           </div>
         </div>
+
+        <!-- Định mức thiết bị/người -->
+        <div class="eaims-card mb-3" id="ratioCard">
+          <div class="card-body">
+            <h5 class="mb-1">Định mức thiết bị/người theo loại tài sản</h5>
+            <p class="text-muted small mb-3">Số thiết bị cần cấp cho mỗi nhân sự mới (0,01 – 20, tối đa 2 chữ số thập phân). Vd: Máy tính 1; Màn hình 2; Máy in 0,1. Loại chưa cấu hình sẽ không được tính vào nhu cầu mua thêm. Áp dụng chung cho mọi phòng ban.</p>
+            <div class="eaims-table-wrap">
+              <div class="table-responsive">
+                <table class="eaims-table">
+                  <thead>
+                    <tr>
+                      <th>Loại tài sản</th>
+                      <th style="min-width:180px">Thiết bị / người</th>
+                      <th>Trạng thái</th>
+                      <th class="text-end">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody id="ratioTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="form-text mt-2"><i class="bi bi-info-circle"></i> Có hiệu lực sau khi bấm “Tạo dự báo” lại.</div>
+          </div>
+        </div>
+
+        <!-- Kế hoạch mở rộng nhân sự -->
+        <div class="eaims-card mb-3" id="expansionCard">
+          <div class="card-body">
+            <h5 class="mb-1">Kế hoạch mở rộng nhân sự theo phòng ban</h5>
+            <p class="text-muted small mb-3">Nhập số nhân sự <strong>tăng thêm trong chính năm được chọn</strong> (không cộng dồn qua các năm), từ 0 đến 5.000. Phòng ban để trống/0 nghĩa là không mở rộng.</p>
+            <div class="row g-2 align-items-end mb-3">
+              <div class="col-lg-2 col-md-4">
+                <label class="form-label" for="planYear">Năm</label>
+                <select class="form-select" id="planYear"></select>
+              </div>
+            </div>
+            <div class="eaims-table-wrap">
+              <div class="table-responsive">
+                <table class="eaims-table">
+                  <thead>
+                    <tr>
+                      <th>Phòng ban</th>
+                      <th style="min-width:150px">Nhân sự tăng thêm</th>
+                      <th style="min-width:220px">Ghi chú</th>
+                      <th>Cập nhật</th>
+                      <th class="text-end">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody id="planTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="form-text mt-2"><i class="bi bi-info-circle"></i> Có hiệu lực sau khi bấm “Tạo dự báo” lại.</div>
+          </div>
+        </div>
       </div>
     </main>
   </div>
@@ -172,8 +235,9 @@
         </div>
         <div class="modal-body">
           <dl class="row mb-3">
-            <dt class="col-sm-4">Số thiết bị đề xuất</dt><dd class="col-sm-8" id="detailCount"></dd>
-            <dt class="col-sm-4">Ngân sách ước tính</dt><dd class="col-sm-8" id="detailBudget"></dd>
+            <dt class="col-sm-4">Thay thế</dt><dd class="col-sm-8" id="detailCount"></dd>
+            <dt class="col-sm-4">Mua thêm</dt><dd class="col-sm-8" id="detailExpansion"></dd>
+            <dt class="col-sm-4">Tổng cần mua</dt><dd class="col-sm-8 fw-semibold" id="detailTotal"></dd>
             <dt class="col-sm-4">Thời điểm tạo</dt><dd class="col-sm-8" id="detailGeneratedAt"></dd>
           </dl>
           <div id="detailNotes" class="alert alert-warning py-2 d-none"></div>
@@ -189,6 +253,39 @@
                 </tr>
               </thead>
               <tbody id="detailBreakdownBody"></tbody>
+            </table>
+          </div>
+          <h6 class="mt-4 mb-1">Mua thêm theo kế hoạch mở rộng</h6>
+          <p class="small text-muted mb-2" id="detailExpansionExplain"></p>
+          <div class="table-responsive">
+            <table class="eaims-table">
+              <thead>
+                <tr>
+                  <th>Loại tài sản</th>
+                  <th class="text-end">Định mức</th>
+                  <th class="text-end">Số lượng</th>
+                  <th class="text-end">Đơn giá</th>
+                  <th class="text-end">Thành tiền</th>
+                </tr>
+              </thead>
+              <tbody id="detailExpansionBody"></tbody>
+            </table>
+          </div>
+          <h6 class="mt-4 mb-1">Danh sách mua sắm</h6>
+          <p class="small text-muted mb-2">Gộp phần thay thế và phần mua thêm theo từng loại.</p>
+          <div class="table-responsive">
+            <table class="eaims-table">
+              <thead>
+                <tr>
+                  <th>Loại tài sản</th>
+                  <th class="text-end">Thay thế</th>
+                  <th class="text-end">Mua thêm</th>
+                  <th class="text-end">Tổng SL</th>
+                  <th class="text-end">Đơn giá</th>
+                  <th class="text-end">Thành tiền</th>
+                </tr>
+              </thead>
+              <tbody id="detailPurchaseBody"></tbody>
             </table>
           </div>
           <h6 class="mt-4 mb-2">Tài sản được đề xuất thay thế</h6>
