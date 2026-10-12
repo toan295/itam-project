@@ -191,6 +191,9 @@ builder.Services.AddScoped<IBudgetForecastRepository, BudgetForecastRepository>(
 builder.Services.AddScoped<IBudgetForecastService, BudgetForecastService>();
 builder.Services.AddScoped<IValidator<GenerateForecastRequestDto>, GenerateForecastRequestValidator>();
 builder.Services.AddScoped<IValidator<UpsertReferencePriceRequestDto>, UpsertReferencePriceRequestValidator>();
+builder.Services.AddScoped<IExpansionPlanningService, ExpansionPlanningService>();
+builder.Services.AddScoped<IValidator<UpsertExpansionPlanRequestDto>, UpsertExpansionPlanRequestValidator>();
+builder.Services.AddScoped<IValidator<UpsertDeviceRatioRequestDto>, UpsertDeviceRatioRequestValidator>();
 
 // Cho phép frontend (chạy ở origin khác — Live Server/static server) gọi API qua fetch().
 // Danh sách origin cấu hình trong appsettings (Development): Cors:AllowedOrigins.

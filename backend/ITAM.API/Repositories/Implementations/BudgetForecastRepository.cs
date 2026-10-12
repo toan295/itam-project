@@ -80,4 +80,28 @@ public class BudgetForecastRepository : IBudgetForecastRepository
 
     public Task<bool> CategoryExistsAsync(int categoryId) =>
         _db.AssetCategories.AnyAsync(c => c.Id == categoryId);
+
+    public Task<List<DepartmentExpansionPlan>> GetPlansAsync(int year, int? departmentId)
+    {
+        var query = _db.DepartmentExpansionPlans.AsNoTracking().Where(p => p.Year == year);
+        if (departmentId.HasValue) query = query.Where(p => p.DepartmentId == departmentId.Value);
+        return query.ToListAsync();
+    }
+
+    public Task<DepartmentExpansionPlan?> GetPlanAsync(int year, int departmentId) =>
+        _db.DepartmentExpansionPlans.FirstOrDefaultAsync(p => p.Year == year && p.DepartmentId == departmentId);
+
+    public async Task AddPlanAsync(DepartmentExpansionPlan plan) => await _db.DepartmentExpansionPlans.AddAsync(plan);
+
+    public void RemovePlan(DepartmentExpansionPlan plan) => _db.DepartmentExpansionPlans.Remove(plan);
+
+    public Task<List<AssetCategoryDeviceRatio>> GetAllRatiosAsync() =>
+        _db.AssetCategoryDeviceRatios.AsNoTracking().ToListAsync();
+
+    public Task<AssetCategoryDeviceRatio?> GetRatioAsync(int categoryId) =>
+        _db.AssetCategoryDeviceRatios.FirstOrDefaultAsync(r => r.CategoryId == categoryId);
+
+    public async Task AddRatioAsync(AssetCategoryDeviceRatio ratio) => await _db.AssetCategoryDeviceRatios.AddAsync(ratio);
+
+    public void RemoveRatio(AssetCategoryDeviceRatio ratio) => _db.AssetCategoryDeviceRatios.Remove(ratio);
 }

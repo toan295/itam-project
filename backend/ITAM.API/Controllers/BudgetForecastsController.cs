@@ -17,15 +17,24 @@ public class BudgetForecastsController : ControllerBase
     private readonly IBudgetForecastService _service;
     private readonly IValidator<GenerateForecastRequestDto> _generateValidator;
     private readonly IValidator<UpsertReferencePriceRequestDto> _priceValidator;
+    private readonly IExpansionPlanningService _expansionService;
+    private readonly IValidator<UpsertExpansionPlanRequestDto> _planValidator;
+    private readonly IValidator<UpsertDeviceRatioRequestDto> _ratioValidator;
 
     public BudgetForecastsController(
         IBudgetForecastService service,
         IValidator<GenerateForecastRequestDto> generateValidator,
-        IValidator<UpsertReferencePriceRequestDto> priceValidator)
+        IValidator<UpsertReferencePriceRequestDto> priceValidator,
+        IExpansionPlanningService expansionService,
+        IValidator<UpsertExpansionPlanRequestDto> planValidator,
+        IValidator<UpsertDeviceRatioRequestDto> ratioValidator)
     {
         _service = service;
         _generateValidator = generateValidator;
         _priceValidator = priceValidator;
+        _expansionService = expansionService;
+        _planValidator = planValidator;
+        _ratioValidator = ratioValidator;
     }
 
     // 200 (không phải 201): lần gọi có thể chỉ cập nhật dòng dự báo đã có của cùng (năm, phòng ban).
@@ -130,6 +139,118 @@ public class BudgetForecastsController : ControllerBase
             return NoContent();
         }
         catch (ReferencePriceNotFoundException ex)
+        {
+            return NotFound(ApiResponse<object>.Fail(ex.Message));
+        }
+    }
+
+    // ---- Kế hoạch mở rộng nhân sự theo phòng ban (đầu vào dự báo mua thêm) ----
+
+    // year bắt buộc: thiếu năm → 0 → Service trả 400 "Năm phải từ ...".
+    [HttpGet("expansion-plans")]
+    public async Task<IActionResult> GetExpansionPlans([FromQuery] int year, [FromQuery] int? departmentId)
+    {
+        try
+        {
+            var result = await _expansionService.GetPlansAsync(year, departmentId);
+            return Ok(ApiResponse<object>.Ok(result));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<object>.Fail(ex.Message));
+        }
+        catch (DepartmentNotFoundException ex)
+        {
+            return NotFound(ApiResponse<object>.Fail(ex.Message));
+        }
+    }
+
+    [HttpPut("expansion-plans/{year:int}/{departmentId:int}")]
+    public async Task<IActionResult> UpsertExpansionPlan(int year, int departmentId, UpsertExpansionPlanRequestDto dto)
+    {
+        var validation = await _planValidator.ValidateAsync(dto);
+        if (!validation.IsValid)
+        {
+            return BadRequest(ApiResponse<object>.Fail(
+                "Dữ liệu không hợp lệ.", validation.Errors.Select(e => e.ErrorMessage).ToList()));
+        }
+
+        try
+        {
+            var result = await _expansionService.UpsertPlanAsync(year, departmentId, dto);
+            return Ok(ApiResponse<object>.Ok(result, "Đã lưu kế hoạch mở rộng."));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<object>.Fail(ex.Message));
+        }
+        catch (DepartmentNotFoundException ex)
+        {
+            return NotFound(ApiResponse<object>.Fail(ex.Message));
+        }
+        catch (ExpansionPlanConflictException ex)
+        {
+            return Conflict(ApiResponse<object>.Fail(ex.Message));
+        }
+    }
+
+    [HttpDelete("expansion-plans/{year:int}/{departmentId:int}")]
+    public async Task<IActionResult> DeleteExpansionPlan(int year, int departmentId)
+    {
+        try
+        {
+            await _expansionService.DeletePlanAsync(year, departmentId);
+            return NoContent();
+        }
+        catch (ExpansionPlanNotFoundException ex)
+        {
+            return NotFound(ApiResponse<object>.Fail(ex.Message));
+        }
+    }
+
+    // ---- Định mức thiết bị/người theo loại tài sản ----
+
+    [HttpGet("device-ratios")]
+    public async Task<IActionResult> GetDeviceRatios()
+    {
+        var result = await _expansionService.GetRatiosAsync();
+        return Ok(ApiResponse<object>.Ok(result));
+    }
+
+    [HttpPut("device-ratios/{categoryId:int}")]
+    public async Task<IActionResult> UpsertDeviceRatio(int categoryId, UpsertDeviceRatioRequestDto dto)
+    {
+        var validation = await _ratioValidator.ValidateAsync(dto);
+        if (!validation.IsValid)
+        {
+            return BadRequest(ApiResponse<object>.Fail(
+                "Dữ liệu không hợp lệ.", validation.Errors.Select(e => e.ErrorMessage).ToList()));
+        }
+
+        try
+        {
+            var result = await _expansionService.UpsertRatioAsync(categoryId, dto);
+            return Ok(ApiResponse<object>.Ok(result, "Đã lưu định mức thiết bị/người."));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<object>.Fail(ex.Message));
+        }
+        catch (AssetCategoryNotFoundException ex)
+        {
+            return NotFound(ApiResponse<object>.Fail(ex.Message));
+        }
+    }
+
+    [HttpDelete("device-ratios/{categoryId:int}")]
+    public async Task<IActionResult> DeleteDeviceRatio(int categoryId)
+    {
+        try
+        {
+            await _expansionService.DeleteRatioAsync(categoryId);
+            return NoContent();
+        }
+        catch (DeviceRatioNotFoundException ex)
         {
             return NotFound(ApiResponse<object>.Fail(ex.Message));
         }

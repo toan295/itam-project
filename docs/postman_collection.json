@@ -1332,6 +1332,160 @@
             "description": "204 khi xoá thành công; 404 nếu loại chưa có đơn giá."
           },
           "response": []
+        },
+        {
+          "name": "List Expansion Plans (Admin IT)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/forecasts/expansion-plans?year=2026",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "forecasts",
+                "expansion-plans"
+              ],
+              "query": [
+                {
+                  "key": "year",
+                  "value": "2026"
+                }
+              ]
+            },
+            "description": "year bắt buộc (năm hiện tại .. +10). Liệt kê MỌI phòng ban; chưa có kế hoạch → hasPlan=false, additionalHeadcount=0. Lọc 1 phòng ban: thêm &departmentId=."
+          },
+          "response": []
+        },
+        {
+          "name": "Upsert Expansion Plan (Admin IT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/forecasts/expansion-plans/2026/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "forecasts",
+                "expansion-plans",
+                "2026",
+                "1"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"additionalHeadcount\": 5,\n  \"notes\": \"Tuyển thêm 5 nhân sự\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Số nhân sự TĂNG THÊM trong chính năm đó (không cộng dồn), 0..5000. 404 nếu phòng ban không tồn tại; 409 nếu 2 request tạo trùng đồng thời. Phải bấm 'Tạo dự báo' lại để có hiệu lực."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Expansion Plan (Admin IT)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/forecasts/expansion-plans/2026/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "forecasts",
+                "expansion-plans",
+                "2026",
+                "1"
+              ]
+            },
+            "description": "204 khi xoá thành công; 404 nếu chưa có kế hoạch."
+          },
+          "response": []
+        },
+        {
+          "name": "List Device Ratios (Admin IT)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/forecasts/device-ratios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "forecasts",
+                "device-ratios"
+              ]
+            },
+            "description": "Mọi loại tài sản; loại chưa cấu hình → devicesPerPerson=null (không tính mua thêm)."
+          },
+          "response": []
+        },
+        {
+          "name": "Upsert Device Ratio (Admin IT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/forecasts/device-ratios/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "forecasts",
+                "device-ratios",
+                "1"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"devicesPerPerson\": 1.00\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Định mức thiết bị/người, 0,01..20,00, tối đa 2 chữ số thập phân. 404 nếu loại không tồn tại."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Device Ratio (Admin IT)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/forecasts/device-ratios/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "forecasts",
+                "device-ratios",
+                "1"
+              ]
+            },
+            "description": "204 khi xoá thành công; 404 nếu loại chưa có định mức."
+          },
+          "response": []
         }
       ]
     },

@@ -24,4 +24,16 @@ public interface IBudgetForecastRepository
     void UpdatePrice(AssetCategoryReferencePrice price);
     Task<List<(int Id, string Name)>> GetAllCategoriesAsync();
     Task<bool> CategoryExistsAsync(int categoryId);
+
+    // Kế hoạch mở rộng nhân sự (departmentId = null → mọi phòng ban). GetPlanAsync có tracking để Service sửa trực tiếp.
+    Task<List<DepartmentExpansionPlan>> GetPlansAsync(int year, int? departmentId);
+    Task<DepartmentExpansionPlan?> GetPlanAsync(int year, int departmentId);
+    Task AddPlanAsync(DepartmentExpansionPlan plan);
+    void RemovePlan(DepartmentExpansionPlan plan);
+
+    // Định mức thiết bị/người theo loại tài sản
+    Task<List<AssetCategoryDeviceRatio>> GetAllRatiosAsync();
+    Task<AssetCategoryDeviceRatio?> GetRatioAsync(int categoryId);
+    Task AddRatioAsync(AssetCategoryDeviceRatio ratio);
+    void RemoveRatio(AssetCategoryDeviceRatio ratio);
 }
