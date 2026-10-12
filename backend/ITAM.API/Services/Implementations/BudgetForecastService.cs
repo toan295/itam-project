@@ -16,6 +16,7 @@ public class BudgetForecastService : IBudgetForecastService
 {
     // Khớp HasMaxLength(500) của BudgetForecast.Notes trong AppDbContext.
     public const int NotesMaxLength = 500;
+    public const string NoRatioWarning = "Chưa cấu hình định mức thiết bị/người — không tính được nhu cầu mua thêm.";
     private const int MaxForecastYearsAhead = 10;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -66,8 +67,15 @@ public class BudgetForecastService : IBudgetForecastService
         // 3. Đơn giá theo loại (D7).
         var priceByCategory = (await _repo.GetAllPricesAsync()).ToDictionary(p => p.CategoryId, p => p.UnitPrice);
 
+        // 3b. Kế hoạch mở rộng, định mức, tên loại: nạp MỘT lần trước vòng lặp phòng ban (không truy vấn trong vòng lặp).
+        var plans = await _repo.GetPlansAsync(dto.Year, dto.DepartmentId);
+        var ratios = await _repo.GetAllRatiosAsync();
+        var categoryNames = (await _repo.GetAllCategoriesAsync()).ToDictionary(c => c.Id, c => c.Name);
+        var headcountByDepartment = plans.ToDictionary(p => p.DepartmentId, p => p.AdditionalHeadcount);
+
         var missingPriceByCategory = new Dictionary<string, int>();
-        var staged = new List<(BudgetForecast Entity, string DepartmentName, List<ForecastBreakdownItemDto> Breakdown)>();
+        var staged = new List<(BudgetForecast Entity, string DepartmentName, List<ForecastBreakdownItemDto> Breakdown,
+            int Headcount, List<ExpansionBreakdownItemDto> Expansion)>();
         var now = DateTime.UtcNow;
 
         foreach (var (departmentId, departmentName) in departments)
@@ -104,9 +112,34 @@ public class BudgetForecastService : IBudgetForecastService
                 .OrderBy(b => b.CategoryName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
+            // 3c. Mua thêm (E1): ⌈nhân sự tăng × định mức⌉ — int × decimal → decimal, Ceiling trên decimal (tuyệt đối không qua double).
+            var headcount = headcountByDepartment.GetValueOrDefault(departmentId);   // E6: không có kế hoạch → 0
+            var expansion = ratios
+                .Select(r =>
+                {
+                    var quantity = (int)Math.Ceiling(headcount * r.DevicesPerPerson);
+                    var hasPrice = priceByCategory.TryGetValue(r.CategoryId, out var unitPrice);
+                    return new ExpansionBreakdownItemDto
+                    {
+                        CategoryId = r.CategoryId,
+                        CategoryName = categoryNames.GetValueOrDefault(r.CategoryId) ?? $"Loại #{r.CategoryId}",
+                        DevicesPerPerson = r.DevicesPerPerson,
+                        Quantity = quantity,
+                        UnitPrice = hasPrice ? unitPrice : null,
+                        Subtotal = hasPrice ? quantity * unitPrice : null,
+                    };
+                })
+                .Where(i => i.Quantity > 0)
+                .OrderBy(i => i.CategoryName, StringComparer.Ordinal)
+                .ToList();
+
+            // Một loại thiếu giá chỉ sinh MỘT cảnh báo, cộng số thiết bị của cả thay thế lẫn mua thêm (E5).
             foreach (var item in breakdown.Where(b => b.UnitPrice is null))
                 missingPriceByCategory[item.CategoryName] =
                     missingPriceByCategory.GetValueOrDefault(item.CategoryName) + item.AssetCount;
+            foreach (var item in expansion.Where(i => i.UnitPrice is null))
+                missingPriceByCategory[item.CategoryName] =
+                    missingPriceByCategory.GetValueOrDefault(item.CategoryName) + item.Quantity;
 
             // 4. Upsert theo (Năm, Phòng ban) — chạy lại không sinh dòng trùng (D8).
             var entity = await _repo.GetByYearAndDepartmentAsync(dto.Year, departmentId);
@@ -125,26 +158,36 @@ public class BudgetForecastService : IBudgetForecastService
 
             entity!.EstimatedReplacementCount = candidates.Count;                  // đếm cả loại thiếu giá
             entity.EstimatedBudget = breakdown.Sum(b => b.Subtotal ?? 0m);        // chỉ loại có giá
-            entity.Notes = BuildMissingPriceNote(breakdown);
+            entity.Notes = BuildMissingPriceNote(breakdown, expansion);
             entity.BreakdownJson = JsonSerializer.Serialize(breakdown, JsonOptions);
+            // E8: EstimatedBudget (cột cũ) vẫn CHỈ là thay thế; mua thêm nằm ở 3 cột mới. Dòng mới luôn ghi object (không null).
+            entity.EstimatedExpansionCount = expansion.Sum(i => i.Quantity);
+            entity.EstimatedExpansionBudget = expansion.Sum(i => i.Subtotal ?? 0m);
+            entity.ExpansionBreakdownJson = JsonSerializer.Serialize(
+                new ExpansionBreakdownEnvelope { AdditionalHeadcount = headcount, Items = expansion }, JsonOptions);
             entity.GeneratedAt = now;
             if (!isNew) _repo.Update(entity);
 
-            staged.Add((entity, departmentName, breakdown));
+            staged.Add((entity, departmentName, breakdown, headcount, expansion));
         }
 
         // Một lần lưu duy nhất cho mọi dòng (Unit-of-Work).
         await _repo.SaveChangesAsync();
 
+        var warnings = missingPriceByCategory
+            .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(kv => $"Loại '{kv.Key}': {kv.Value} thiết bị chưa có đơn giá tham khảo — không tính vào ngân sách.")
+            .ToList();
+        // E6: có nhập nhân sự nhưng chưa cấu hình định mức nào → kết quả mua thêm = 0 sẽ gây hiểu nhầm nếu im lặng.
+        if (ratios.Count == 0 && plans.Any(p => p.AdditionalHeadcount > 0))
+            warnings.Add(NoRatioWarning);
+
         // 5. Map DTO sau khi lưu để dòng mới đã có Id.
         return new ForecastGenerationResultDto
         {
             Year = dto.Year,
-            Forecasts = staged.Select(s => ToResponse(s.Entity, s.DepartmentName, s.Breakdown)).ToList(),
-            Warnings = missingPriceByCategory
-                .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
-                .Select(kv => $"Loại '{kv.Key}': {kv.Value} thiết bị chưa có đơn giá tham khảo — không tính vào ngân sách.")
-                .ToList(),
+            Forecasts = staged.Select(s => ToResponse(s.Entity, s.DepartmentName, s.Breakdown, s.Headcount, s.Expansion)).ToList(),
+            Warnings = warnings,
         };
     }
 
@@ -241,12 +284,20 @@ public class BudgetForecastService : IBudgetForecastService
     // ---- nội bộ ----
 
     // "Thiếu đơn giá: Máy in (3 thiết bị); Switch (1 thiết bị)" hoặc null; cắt cho vừa cột Notes để tránh DbUpdateException.
-    internal static string? BuildMissingPriceNote(IEnumerable<ForecastBreakdownItemDto> breakdown)
+    internal static string? BuildMissingPriceNote(
+        IEnumerable<ForecastBreakdownItemDto> breakdown, IEnumerable<ExpansionBreakdownItemDto>? expansion = null)
     {
-        var missing = breakdown.Where(b => b.UnitPrice is null).ToList();
+        // Gộp thay thế + mua thêm theo loại để mỗi loại thiếu giá chỉ xuất hiện một lần trong ghi chú.
+        var missing = breakdown.Where(b => b.UnitPrice is null).Select(b => (b.CategoryName, Count: b.AssetCount))
+            .Concat((expansion ?? Enumerable.Empty<ExpansionBreakdownItemDto>())
+                .Where(i => i.UnitPrice is null).Select(i => (i.CategoryName, Count: i.Quantity)))
+            .GroupBy(m => m.CategoryName)
+            .Select(g => (CategoryName: g.Key, Count: g.Sum(m => m.Count)))
+            .OrderBy(m => m.CategoryName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
         if (missing.Count == 0) return null;
 
-        var text = "Thiếu đơn giá: " + string.Join("; ", missing.Select(b => $"{b.CategoryName} ({b.AssetCount} thiết bị)"));
+        var text = "Thiếu đơn giá: " + string.Join("; ", missing.Select(b => $"{b.CategoryName} ({b.Count} thiết bị)"));
         return text.Length <= NotesMaxLength ? text : text[..(NotesMaxLength - 1)] + "…";
     }
 
@@ -267,8 +318,32 @@ public class BudgetForecastService : IBudgetForecastService
         }
     }
 
+    // Dòng cũ (tạo trước Tuần 8) có ExpansionBreakdownJson = null → mua thêm 0; JSON hỏng → rỗng + cảnh báo, không ném.
+    private ExpansionBreakdownEnvelope ParseExpansion(BudgetForecast forecast)
+    {
+        if (string.IsNullOrWhiteSpace(forecast.ExpansionBreakdownJson)) return new ExpansionBreakdownEnvelope();
+
+        try
+        {
+            return JsonSerializer.Deserialize<ExpansionBreakdownEnvelope>(forecast.ExpansionBreakdownJson, JsonOptions)
+                   ?? new ExpansionBreakdownEnvelope();
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "ExpansionBreakdownJson của dự báo Id={ForecastId} không đọc được.", forecast.Id);
+            return new ExpansionBreakdownEnvelope();
+        }
+    }
+
+    private BudgetForecastResponseDto ToResponse(BudgetForecast f, string departmentName, List<ForecastBreakdownItemDto> breakdown)
+    {
+        var expansion = ParseExpansion(f);
+        return ToResponse(f, departmentName, breakdown, expansion.AdditionalHeadcount, expansion.Items ?? new());
+    }
+
     private static BudgetForecastResponseDto ToResponse(
-        BudgetForecast f, string departmentName, List<ForecastBreakdownItemDto> breakdown) => new()
+        BudgetForecast f, string departmentName, List<ForecastBreakdownItemDto> breakdown,
+        int additionalHeadcount, List<ExpansionBreakdownItemDto> expansion) => new()
     {
         Id = f.Id,
         Year = f.Year,
@@ -279,5 +354,56 @@ public class BudgetForecastService : IBudgetForecastService
         Notes = f.Notes,
         GeneratedAt = f.GeneratedAt,
         Breakdown = breakdown,
+        AdditionalHeadcount = additionalHeadcount,
+        EstimatedExpansionCount = f.EstimatedExpansionCount,
+        EstimatedExpansionBudget = f.EstimatedExpansionBudget,
+        ExpansionBreakdown = expansion,
+        TotalPurchaseCount = f.EstimatedReplacementCount + f.EstimatedExpansionCount,
+        TotalBudget = f.EstimatedBudget + f.EstimatedExpansionBudget,
+        PurchaseSummary = BuildPurchaseSummary(breakdown, expansion),
     };
+
+    // Danh sách mua sắm: hợp nhất thay thế + mua thêm theo CategoryId; sắp theo tên loại bằng Ordinal (không phụ thuộc culture).
+    public static List<PurchaseSummaryItemDto> BuildPurchaseSummary(
+        IEnumerable<ForecastBreakdownItemDto> breakdown, IEnumerable<ExpansionBreakdownItemDto> expansion)
+    {
+        var byCategory = new Dictionary<int, PurchaseSummaryItemDto>();
+
+        foreach (var b in breakdown)
+        {
+            byCategory[b.CategoryId] = new PurchaseSummaryItemDto
+            {
+                CategoryId = b.CategoryId,
+                CategoryName = b.CategoryName,
+                ReplacementQuantity = b.AssetCount,
+                UnitPrice = b.UnitPrice,
+            };
+        }
+
+        foreach (var e in expansion)
+        {
+            if (!byCategory.TryGetValue(e.CategoryId, out var item))
+            {
+                item = new PurchaseSummaryItemDto { CategoryId = e.CategoryId, CategoryName = e.CategoryName };
+                byCategory[e.CategoryId] = item;
+            }
+            item.ExpansionQuantity = e.Quantity;
+            if (e.UnitPrice is not null) item.UnitPrice = e.UnitPrice;   // lệch do dữ liệu cũ → ưu tiên mục mua thêm
+        }
+
+        foreach (var item in byCategory.Values)
+        {
+            item.TotalQuantity = item.ReplacementQuantity + item.ExpansionQuantity;
+            item.TotalCost = item.UnitPrice.HasValue ? item.TotalQuantity * item.UnitPrice.Value : null;
+        }
+
+        return byCategory.Values.OrderBy(i => i.CategoryName, StringComparer.Ordinal).ToList();
+    }
+
+    // Định dạng ExpansionBreakdownJson: MỘT object { additionalHeadcount, items[] }, không phải mảng trơn.
+    private sealed class ExpansionBreakdownEnvelope
+    {
+        public int AdditionalHeadcount { get; set; }
+        public List<ExpansionBreakdownItemDto>? Items { get; set; } = new();
+    }
 }

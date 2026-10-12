@@ -43,8 +43,22 @@ public class BudgetForecastServiceTests
         {
             (CatComputer, "Máy tính"), (CatPrinter, "Máy in"), (CatSwitch, "Switch"),
         });
+        SetupPlans();
+        SetupRatios();
         SetupCandidates();
     }
+
+    // Kế hoạch mở rộng của lần chạy (departmentId, nhân sự tăng thêm).
+    private void SetupPlans(params (int DepartmentId, int Headcount)[] plans) =>
+        _repo.Setup(r => r.GetPlansAsync(It.IsAny<int>(), It.IsAny<int?>()))
+            .ReturnsAsync(plans.Select(p => new DepartmentExpansionPlan
+            {
+                Year = Year, DepartmentId = p.DepartmentId, AdditionalHeadcount = p.Headcount,
+            }).ToList());
+
+    private void SetupRatios(params (int CategoryId, decimal Ratio)[] ratios) =>
+        _repo.Setup(r => r.GetAllRatiosAsync())
+            .ReturnsAsync(ratios.Select(x => new AssetCategoryDeviceRatio { CategoryId = x.CategoryId, DevicesPerPerson = x.Ratio }).ToList());
 
     private void SetupCandidates(params AssetReplacementCandidateDto[] candidates) =>
         _lifecycle.Setup(l => l.GetReplacementCandidatesAsync(It.IsAny<int?>(), It.IsAny<int>()))
@@ -511,5 +525,336 @@ public class BudgetForecastServiceTests
         Assert.True(validator.Validate(new GenerateForecastRequestDto { Year = Year }).IsValid);
         Assert.True(validator.Validate(new GenerateForecastRequestDto { Year = Year + 10 }).IsValid);
         Assert.False(validator.Validate(new GenerateForecastRequestDto { Year = Year, DepartmentId = 0 }).IsValid);
+    }
+
+    // ---------- Tuần 8: dự báo MUA THÊM theo kế hoạch mở rộng phòng ban (E1–E9) ----------
+
+    private Task<ForecastGenerationResultDto> GenerateForDeptA() =>
+        _sut.GenerateAsync(new GenerateForecastRequestDto { Year = Year, DepartmentId = DeptA });
+
+    [Fact]
+    public async Task GenerateAsync_ExpansionPlanWithRatios_QuantityIsCeilingOfHeadcountTimesRatio()
+    {
+        SetupPlans((DeptA, 10));
+        SetupRatios((CatComputer, 1.00m), (CatSwitch, 0.25m));   // 10 và ⌈2,5⌉ = 3
+
+        var forecast = Assert.Single((await GenerateForDeptA()).Forecasts);
+
+        Assert.Equal(10, forecast.AdditionalHeadcount);
+        Assert.Equal(13, forecast.EstimatedExpansionCount);
+        Assert.Equal(10 * 20_000_000m + 3 * 5_000_000m, forecast.EstimatedExpansionBudget);
+        Assert.Equal(new[] { "Máy tính", "Switch" }, forecast.ExpansionBreakdown.Select(i => i.CategoryName).ToArray());   // Ordinal
+    }
+
+    [Fact]
+    public async Task GenerateAsync_HeadcountTimesRatioFractional_RoundsUp()
+    {
+        SetupPlans((DeptA, 3));
+        SetupRatios((CatComputer, 0.10m));   // 0,30 → 1 (không được thành 0)
+
+        var forecast = Assert.Single((await GenerateForDeptA()).Forecasts);
+
+        Assert.Equal(1, Assert.Single(forecast.ExpansionBreakdown).Quantity);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_HeadcountTimesRatioHalf_RoundsUpToOne()
+    {
+        SetupPlans((DeptA, 5));
+        SetupRatios((CatComputer, 0.10m));   // 0,50 → 1 (không phải làm tròn ngân hàng về 0)
+
+        var forecast = Assert.Single((await GenerateForDeptA()).Forecasts);
+
+        Assert.Equal(1, Assert.Single(forecast.ExpansionBreakdown).Quantity);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_HeadcountTimesRatioExactInteger_DoesNotRoundUpFurther()
+    {
+        SetupPlans((DeptA, 5));
+        SetupRatios((CatComputer, 2.00m));   // đúng 10 — sai số nhị phân sẽ cho 11
+
+        var forecast = Assert.Single((await GenerateForDeptA()).Forecasts);
+
+        Assert.Equal(10, Assert.Single(forecast.ExpansionBreakdown).Quantity);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_DepartmentWithoutPlan_ExpansionIsZeroAndNoError()
+    {
+        SetupPlans((DeptB, 10));
+        SetupRatios((CatComputer, 1.00m));
+
+        var result = await GenerateForDeptA();
+
+        var forecast = Assert.Single(result.Forecasts);
+        Assert.Equal(0, forecast.EstimatedExpansionCount);
+        Assert.Equal(0m, forecast.EstimatedExpansionBudget);
+        Assert.Empty(forecast.ExpansionBreakdown);
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_NoRatiosConfiguredButHeadcountPositive_AddsWarning()
+    {
+        SetupPlans((DeptA, 4));
+
+        var result = await GenerateForDeptA();
+
+        Assert.Contains(BudgetForecastService.NoRatioWarning, result.Warnings);
+        Assert.Equal(0, Assert.Single(result.Forecasts).EstimatedExpansionCount);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_NoRatiosAndZeroHeadcount_NoWarning()
+    {
+        SetupPlans((DeptA, 0));
+
+        var result = await GenerateForDeptA();
+
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_RatioCategoryWithoutPrice_CountedButExcludedFromExpansionBudgetAndWarned()
+    {
+        SetupPlans((DeptA, 5));
+        SetupRatios((CatComputer, 1.00m), (CatPrinter, 0.20m));   // Máy in không có đơn giá: ⌈1,0⌉ = 1
+
+        var result = await GenerateForDeptA();
+
+        var forecast = Assert.Single(result.Forecasts);
+        Assert.Equal(6, forecast.EstimatedExpansionCount);                       // đếm cả máy in
+        Assert.Equal(5 * 20_000_000m, forecast.EstimatedExpansionBudget);        // không tính máy in
+        var printer = forecast.ExpansionBreakdown.Single(i => i.CategoryId == CatPrinter);
+        Assert.Null(printer.UnitPrice);
+        Assert.Null(printer.Subtotal);
+        Assert.Contains(result.Warnings, w => w.Contains("Máy in") && w.Contains("1 thiết bị"));
+        Assert.Contains("Máy in (1 thiết bị)", forecast.Notes);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_SameCategoryMissingPriceInReplacementAndExpansion_SingleWarningWithSummedCount()
+    {
+        SetupPlans((DeptA, 5), (DeptB, 5));
+        SetupRatios((CatPrinter, 0.40m));   // mỗi phòng ban ⌈2,0⌉ = 2 máy in mua thêm
+        SetupCandidates(
+            Candidate(CatPrinter, "Máy in", Year, DeptA),
+            Candidate(CatPrinter, "Máy in", Year, DeptA),
+            Candidate(CatPrinter, "Máy in", Year, DeptB));   // thay thế: 2 ở IT-A + 1 ở IT-B
+
+        var result = await _sut.GenerateAsync(new GenerateForecastRequestDto { Year = Year });
+
+        var warning = Assert.Single(result.Warnings);                 // đúng MỘT cảnh báo cho cả lần chạy
+        Assert.Contains("Máy in", warning);
+        Assert.Contains("7 thiết bị", warning);                       // (2+2) + (1+2)
+    }
+
+    [Fact]
+    public async Task GenerateAsync_TotalPurchaseCountAndTotalBudget_AreReplacementPlusExpansion()
+    {
+        SetupPlans((DeptA, 5));
+        SetupRatios((CatComputer, 2.00m));
+        SetupCandidates(Candidate(CatComputer, "Máy tính", Year), Candidate(CatSwitch, "Switch", Year));
+
+        var forecast = Assert.Single((await GenerateForDeptA()).Forecasts);
+
+        Assert.Equal(25_000_000m, forecast.EstimatedBudget);                  // E8: chỉ thay thế
+        Assert.Equal(10 * 20_000_000m, forecast.EstimatedExpansionBudget);
+        Assert.Equal(2 + 10, forecast.TotalPurchaseCount);
+        Assert.Equal(25_000_000m + 200_000_000m, forecast.TotalBudget);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_RegenerateExistingRow_UpdatesExpansionColumnsToo()
+    {
+        var existing = new BudgetForecast
+        {
+            Id = 7, Year = Year, DepartmentId = DeptA, EstimatedExpansionCount = 99, EstimatedExpansionBudget = 99m,
+            ExpansionBreakdownJson = "{\"additionalHeadcount\":99,\"items\":[]}",
+        };
+        _repo.Setup(r => r.GetByYearAndDepartmentAsync(Year, DeptA)).ReturnsAsync(existing);
+        SetupPlans((DeptA, 2));
+        SetupRatios((CatComputer, 1.00m));
+
+        await GenerateForDeptA();
+
+        Assert.Equal(2, existing.EstimatedExpansionCount);
+        Assert.Equal(40_000_000m, existing.EstimatedExpansionBudget);
+        Assert.Contains("\"additionalHeadcount\":2", existing.ExpansionBreakdownJson);
+        _repo.Verify(r => r.AddAsync(It.IsAny<BudgetForecast>()), Times.Never);
+        _repo.Verify(r => r.SaveChangesAsync(), Times.Once);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_ZeroHeadcount_WritesEmptyExpansionBreakdownObjectNotNull()
+    {
+        BudgetForecast? added = null;
+        _repo.Setup(r => r.AddAsync(It.IsAny<BudgetForecast>())).Callback<BudgetForecast>(f => added = f).Returns(Task.CompletedTask);
+        SetupRatios((CatComputer, 1.00m));
+
+        await GenerateForDeptA();
+
+        Assert.NotNull(added);
+        Assert.Equal("{\"additionalHeadcount\":0,\"items\":[]}", added!.ExpansionBreakdownJson);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_LoadsPlansRatiosAndCategoriesOnceNotPerDepartment()
+    {
+        SetupPlans((DeptA, 3), (DeptB, 4));
+        SetupRatios((CatComputer, 1.00m));
+
+        await _sut.GenerateAsync(new GenerateForecastRequestDto { Year = Year });   // 2 phòng ban
+
+        _repo.Verify(r => r.GetPlansAsync(Year, null), Times.Once);
+        _repo.Verify(r => r.GetAllRatiosAsync(), Times.Once);
+        _repo.Verify(r => r.GetAllCategoriesAsync(), Times.Once);
+        _repo.Verify(r => r.GetAllPricesAsync(), Times.Once);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_ExpansionAndReplacementTogether_ReplacementPartUnchanged()
+    {
+        // Bảo vệ đường cơ sở: thêm mua thêm không được làm đổi số liệu thay thế.
+        SetupCandidates(Candidate(CatComputer, "Máy tính", Year), Candidate(CatPrinter, "Máy in", Year));
+        var before = Assert.Single((await GenerateForDeptA()).Forecasts);
+
+        SetupPlans((DeptA, 7));
+        SetupRatios((CatComputer, 1.00m));
+        var after = Assert.Single((await GenerateForDeptA()).Forecasts);
+
+        Assert.Equal(before.EstimatedReplacementCount, after.EstimatedReplacementCount);
+        Assert.Equal(before.EstimatedBudget, after.EstimatedBudget);
+    }
+
+    // ---------- Map DTO & danh sách mua sắm ----------
+
+    private void SetupForecastRow(string? expansionJson, int expansionCount = 0, decimal expansionBudget = 0m, string? breakdownJson = null) =>
+        _repo.Setup(r => r.GetByIdWithDetailsAsync(5)).ReturnsAsync(new BudgetForecast
+        {
+            Id = 5, Year = Year, DepartmentId = DeptA, Department = new Department { Id = DeptA, Name = "IT-A" },
+            EstimatedReplacementCount = 3, EstimatedBudget = 60_000_000m,
+            BreakdownJson = breakdownJson, ExpansionBreakdownJson = expansionJson,
+            EstimatedExpansionCount = expansionCount, EstimatedExpansionBudget = expansionBudget,
+        });
+
+    [Fact]
+    public async Task GetByIdAsync_LegacyRowWithNullExpansionJson_ReturnsZeroExpansion()
+    {
+        SetupForecastRow(expansionJson: null);
+
+        var result = await _sut.GetByIdAsync(5);
+
+        Assert.Equal(0, result.AdditionalHeadcount);
+        Assert.Empty(result.ExpansionBreakdown);
+        Assert.Equal(3, result.TotalPurchaseCount);
+        Assert.Equal(60_000_000m, result.TotalBudget);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_CorruptExpansionJson_ReturnsEmptyExpansionWithoutThrowing()
+    {
+        SetupForecastRow(expansionJson: "{không phải json");
+
+        var result = await _sut.GetByIdAsync(5);
+
+        Assert.Empty(result.ExpansionBreakdown);
+        Assert.Equal(0, result.AdditionalHeadcount);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_ExpansionJsonAsPlainArray_DoesNotThrow()
+    {
+        SetupForecastRow(expansionJson: "[]");   // định dạng sai (mảng thay vì object) cũng không được gây 500
+
+        var result = await _sut.GetByIdAsync(5);
+
+        Assert.Empty(result.ExpansionBreakdown);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_ExpansionJsonObject_ParsesHeadcountAndItems()
+    {
+        SetupForecastRow(
+            "{\"additionalHeadcount\":5,\"items\":[{\"categoryId\":10,\"categoryName\":\"Máy tính\",\"devicesPerPerson\":2.0,\"quantity\":10,\"unitPrice\":20000000,\"subtotal\":200000000}]}",
+            expansionCount: 10, expansionBudget: 200_000_000m);
+
+        var result = await _sut.GetByIdAsync(5);
+
+        Assert.Equal(5, result.AdditionalHeadcount);
+        var item = Assert.Single(result.ExpansionBreakdown);
+        Assert.Equal(10, item.Quantity);
+        Assert.Equal(200_000_000m, item.Subtotal);
+        Assert.Equal(13, result.TotalPurchaseCount);
+        Assert.Equal(260_000_000m, result.TotalBudget);
+    }
+
+    [Fact]
+    public void PurchaseSummary_MergesReplacementAndExpansionByCategory()
+    {
+        var breakdown = new List<ForecastBreakdownItemDto>
+        {
+            new() { CategoryId = CatComputer, CategoryName = "Máy tính", AssetCount = 3, UnitPrice = 20_000_000m, Subtotal = 60_000_000m },
+        };
+        var expansion = new List<ExpansionBreakdownItemDto>
+        {
+            new() { CategoryId = CatComputer, CategoryName = "Máy tính", Quantity = 10, UnitPrice = 20_000_000m, Subtotal = 200_000_000m },
+        };
+
+        var item = Assert.Single(BudgetForecastService.BuildPurchaseSummary(breakdown, expansion));
+
+        Assert.Equal((3, 10, 13), (item.ReplacementQuantity, item.ExpansionQuantity, item.TotalQuantity));
+        Assert.Equal(260_000_000m, item.TotalCost);
+    }
+
+    [Fact]
+    public void PurchaseSummary_CategoryOnlyInExpansion_HasZeroReplacementQuantity()
+    {
+        var expansion = new List<ExpansionBreakdownItemDto>
+        {
+            new() { CategoryId = CatSwitch, CategoryName = "Switch", Quantity = 3, UnitPrice = 5_000_000m, Subtotal = 15_000_000m },
+        };
+
+        var item = Assert.Single(BudgetForecastService.BuildPurchaseSummary(new List<ForecastBreakdownItemDto>(), expansion));
+
+        Assert.Equal(0, item.ReplacementQuantity);
+        Assert.Equal(3, item.TotalQuantity);
+        Assert.Equal(15_000_000m, item.TotalCost);
+    }
+
+    [Fact]
+    public void PurchaseSummary_NoUnitPrice_TotalCostIsNull()
+    {
+        var breakdown = new List<ForecastBreakdownItemDto>
+        {
+            new() { CategoryId = CatPrinter, CategoryName = "Máy in", AssetCount = 1 },
+        };
+        var expansion = new List<ExpansionBreakdownItemDto>
+        {
+            new() { CategoryId = CatPrinter, CategoryName = "Máy in", Quantity = 2 },
+        };
+
+        var item = Assert.Single(BudgetForecastService.BuildPurchaseSummary(breakdown, expansion));
+
+        Assert.Equal(3, item.TotalQuantity);   // vẫn đếm số lượng
+        Assert.Null(item.UnitPrice);
+        Assert.Null(item.TotalCost);
+    }
+
+    [Fact]
+    public void PurchaseSummary_IsSortedByCategoryNameOrdinal()
+    {
+        var breakdown = new List<ForecastBreakdownItemDto>
+        {
+            new() { CategoryId = CatComputer, CategoryName = "Máy tính", AssetCount = 1 },
+            new() { CategoryId = CatSwitch, CategoryName = "Switch", AssetCount = 1 },
+            new() { CategoryId = CatPrinter, CategoryName = "Máy in", AssetCount = 1 },
+        };
+
+        var names = BudgetForecastService.BuildPurchaseSummary(breakdown, new List<ExpansionBreakdownItemDto>())
+            .Select(i => i.CategoryName).ToArray();
+
+        Assert.Equal(new[] { "Máy in", "Máy tính", "Switch" }, names);
     }
 }
