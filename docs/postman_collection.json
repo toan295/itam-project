@@ -1179,7 +1179,7 @@
                 }
               }
             },
-            "description": "Tạo/cập nhật dự báo. Bỏ departmentId để tạo 1 dòng cho mỗi phòng ban. Năm hợp lệ: từ năm hiện tại đến +10. Chạy lại cùng (năm, phòng ban) sẽ cập nhật dòng cũ."
+            "description": "Tạo/cập nhật dự báo. Bỏ departmentId để tạo 1 dòng cho mỗi phòng ban. Năm hợp lệ: từ năm hiện tại đến +10. Chạy lại cùng (năm, phòng ban) sẽ cập nhật dòng cũ. Từ Tuần 8 mỗi dòng dự báo có thêm: additionalHeadcount, estimatedExpansionCount, estimatedExpansionBudget, expansionBreakdown (mua thêm = ceil(nhân sự tăng × định mức)), totalPurchaseCount, totalBudget (= thay thế + mua thêm) và purchaseSummary (danh sách mua sắm gộp theo loại). estimatedBudget vẫn CHỈ là phần thay thế. Warnings gộp một dòng cho mỗi loại thiếu đơn giá (cả thay thế lẫn mua thêm) và cảnh báo nếu chưa cấu hình định mức. Sửa kế hoạch/định mức/đơn giá phải bấm generate lại mới có hiệu lực."
           },
           "response": []
         },
