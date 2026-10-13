@@ -85,6 +85,23 @@ public class LifecycleController : ControllerBase
         }
     }
 
+    // M2: route "assets/{assetId:int}" không đụng các route cố định (stats, upcoming, policies...).
+    [HttpGet("assets/{assetId:int}")]
+    [ProducesResponseType(typeof(ApiResponse<AssetLifecycleDetailDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetAssetDetail(int assetId)
+    {
+        try
+        {
+            var result = await _service.GetAssetDetailAsync(assetId);
+            return Ok(ApiResponse<AssetLifecycleDetailDto>.Ok(result));
+        }
+        catch (LifecycleAssetNotFoundException ex)
+        {
+            return NotFound(ApiResponse<object>.Fail(ex.Message));
+        }
+    }
+
     [HttpGet("policies")]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<LifecyclePolicyDto>>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetPolicies()

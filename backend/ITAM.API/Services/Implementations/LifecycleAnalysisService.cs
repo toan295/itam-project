@@ -17,6 +17,7 @@ public class LifecycleAnalysisService : ILifecycleAnalysisService
     public const int MinMaxFailureCount = 1;
     public const int MaxMaxFailureCount = 100;
     public const string DefaultSortBy = "score";
+    public const int TicketDescriptionMaxLength = 200;
 
     private static readonly string[] AgeBucketLabels =
     {
@@ -137,6 +138,54 @@ public class LifecycleAnalysisService : ILifecycleAnalysisService
             Page = page,
             PageSize = pageSize,
             TotalItems = upcomingItems.Count,
+        };
+    }
+
+    // M2: chi tiết vòng đời một tài sản, dùng cùng Evaluate/ngưỡng hiệu lực/điểm ưu tiên như danh sách.
+    public async Task<AssetLifecycleDetailDto> GetAssetDetailAsync(int assetId)
+    {
+        var row = await _repository.GetAssetLifecycleRowAsync(assetId)
+            ?? throw new LifecycleAssetNotFoundException(assetId);
+
+        var today = Today();
+        var item = EvaluateRow(row, await LoadPolicyMapAsync(), today);
+        var tickets = await _repository.GetTicketsByAssetAsync(assetId);
+        var ageYears = LifecycleCalculator.ComputeAgeYears(row.PurchaseDate, today);
+
+        return new AssetLifecycleDetailDto
+        {
+            AssetId = row.AssetId,
+            AssetCode = row.AssetCode,
+            AssetName = row.AssetName,
+            CategoryId = row.CategoryId,
+            CategoryName = row.CategoryName,
+            DepartmentId = row.DepartmentId,
+            DepartmentName = row.DepartmentName,
+            PurchaseDate = row.PurchaseDate,
+            AgeYears = ageYears,
+            WarrantyExpiry = row.WarrantyExpiry,
+            IsUnderWarranty = IsUnderWarranty(row, today),
+            TicketCount = row.TicketCount,
+            FailedTicketCount = row.FailedTicketCount,
+            AppliedMaxAgeYears = item.MaxAgeYears,
+            AppliedMaxFailureCount = item.MaxFailureCount,
+            AgeDueDate = row.PurchaseDate?.AddYears(item.MaxAgeYears),
+            IsOverdueNow = item.Evaluation.IsOverdueNow,
+            IsHighPriority = item.Evaluation.IsHighPriority,
+            DueYear = item.Evaluation.DueYear,
+            Reasons = item.Evaluation.Reasons,
+            PriorityScore = ScoreOf(item, ageYears),
+            ReasonText = ReasonTextOf(item, ageYears),
+            Tickets = tickets
+                .Select(ticket => new AssetTicketSummaryDto
+                {
+                    Id = ticket.Id,
+                    ReportedDate = ticket.ReportedDate,
+                    Status = ticket.Status,
+                    ResolvedDate = ticket.ResolvedDate,
+                    Description = Truncate(ticket.Description, TicketDescriptionMaxLength),
+                })
+                .ToList(),
         };
     }
 
@@ -305,16 +354,37 @@ public class LifecycleAnalysisService : ILifecycleAnalysisService
         var rows = await _repository.GetAssetLifecycleRowsAsync(departmentId);
         var policyByCategory = await LoadPolicyMapAsync();
 
-        return rows
-            .Select(row =>
-            {
-                var thresholds = ResolveThresholds(row.CategoryId, policyByCategory);
-                var evaluation = LifecycleCalculator.Evaluate(
-                    row, thresholds.MaxAgeYears, thresholds.MaxFailureCount, today);
-                return new EvaluatedAsset(row, evaluation, thresholds.MaxAgeYears, thresholds.MaxFailureCount);
-            })
-            .ToList();
+        return rows.Select(row => EvaluateRow(row, policyByCategory, today)).ToList();
     }
+
+    // Một nơi duy nhất áp ngưỡng hiệu lực và gọi Evaluate (danh sách, thống kê và chi tiết một tài sản cùng dùng).
+    private EvaluatedAsset EvaluateRow(
+        AssetLifecycleRow row,
+        IReadOnlyDictionary<int, AssetCategoryLifecyclePolicy> policyByCategory,
+        DateOnly today)
+    {
+        var thresholds = ResolveThresholds(row.CategoryId, policyByCategory);
+        var evaluation = LifecycleCalculator.Evaluate(row, thresholds.MaxAgeYears, thresholds.MaxFailureCount, today);
+        return new EvaluatedAsset(row, evaluation, thresholds.MaxAgeYears, thresholds.MaxFailureCount);
+    }
+
+    private static bool IsUnderWarranty(AssetLifecycleRow row, DateOnly today) =>
+        row.WarrantyExpiry.HasValue && row.WarrantyExpiry.Value >= today;   // L6: chỉ là thông tin
+
+    private static int ScoreOf(EvaluatedAsset item, double? ageYears) =>
+        LifecycleCalculator.ComputePriorityScore(ageYears, item.MaxAgeYears, item.Row.TicketCount, item.MaxFailureCount);
+
+    private static string ReasonTextOf(EvaluatedAsset item, double? ageYears) =>
+        LifecycleCalculator.BuildReasonText(
+            item.Evaluation.Reasons.Contains(LifecycleCalculator.ReasonAgeExceeded),
+            item.Evaluation.Reasons.Contains(LifecycleCalculator.ReasonFailureCountExceeded),
+            ageYears,
+            item.MaxAgeYears,
+            item.Row.TicketCount,
+            item.MaxFailureCount);
+
+    private static string Truncate(string text, int maxLength) =>
+        text.Length <= maxLength ? text : text[..maxLength];
 
     // Một đường duy nhất xác định ai là ứng viên và dựng DTO mở rộng; API hợp đồng và API giao diện dùng chung.
     private async Task<List<ReplacementRecommendationDto>> BuildRecommendationsAsync(
@@ -364,20 +434,10 @@ public class LifecycleAnalysisService : ILifecycleAnalysisService
             IsOverdueNow = item.Evaluation.IsOverdueNow,
             IsHighPriority = item.Evaluation.IsHighPriority,
             DueYear = item.Evaluation.DueYear!.Value,
-            PriorityScore = LifecycleCalculator.ComputePriorityScore(
-                ageYears,
-                item.MaxAgeYears,
-                row.TicketCount,
-                item.MaxFailureCount),
-            ReasonText = LifecycleCalculator.BuildReasonText(
-                item.Evaluation.Reasons.Contains(LifecycleCalculator.ReasonAgeExceeded),
-                item.Evaluation.Reasons.Contains(LifecycleCalculator.ReasonFailureCountExceeded),
-                ageYears,
-                item.MaxAgeYears,
-                row.TicketCount,
-                item.MaxFailureCount),
+            PriorityScore = ScoreOf(item, ageYears),
+            ReasonText = ReasonTextOf(item, ageYears),
             WarrantyExpiry = row.WarrantyExpiry,
-            IsUnderWarranty = row.WarrantyExpiry.HasValue && row.WarrantyExpiry.Value >= today,
+            IsUnderWarranty = IsUnderWarranty(row, today),
             AppliedMaxAgeYears = item.MaxAgeYears,
             AppliedMaxFailureCount = item.MaxFailureCount,
         };
@@ -395,16 +455,10 @@ public class LifecycleAnalysisService : ILifecycleAnalysisService
         CategoryName = item.Row.CategoryName,
         DepartmentId = item.Row.DepartmentId,
         DepartmentName = item.Row.DepartmentName,
-        PurchaseDate = item.Row.PurchaseDate,
         AgeYears = LifecycleCalculator.ComputeAgeYears(item.Row.PurchaseDate, today),
         TicketCount = item.Row.TicketCount,
-        FailedTicketCount = item.Row.FailedTicketCount,
         AgeDueDate = upcoming.AgeDueDate,
         DaysUntilAgeDue = upcoming.DaysUntilAgeDue,
-        AgeDueSoon = upcoming.AgeDueSoon,
-        NearFailureThreshold = upcoming.NearFailureThreshold,
-        AppliedMaxAgeYears = item.MaxAgeYears,
-        AppliedMaxFailureCount = item.MaxFailureCount,
         Reasons = upcoming.Reasons,
         ReasonText = upcoming.ReasonText,
     };
@@ -521,7 +575,6 @@ public class LifecycleAnalysisService : ILifecycleAnalysisService
                     AverageAgeYears = AverageAge(items.Select(item => item.Row), today),
                     AssetsWithAtLeastOneTicket = withTicket,
                     FailureRatio = (double)withTicket / items.Count,
-                    AverageTicketsPerAsset = (double)items.Sum(item => item.Row.TicketCount) / items.Count,
                     OverdueNowCount = items.Count(item => item.Evaluation.IsOverdueNow),
                 };
             })

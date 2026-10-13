@@ -8,6 +8,5 @@ public class LifecycleDepartmentStatsDto
     public double? AverageAgeYears { get; set; }
     public int AssetsWithAtLeastOneTicket { get; set; }
     public double FailureRatio { get; set; }
-    public double AverageTicketsPerAsset { get; set; }
     public int OverdueNowCount { get; set; }
 }

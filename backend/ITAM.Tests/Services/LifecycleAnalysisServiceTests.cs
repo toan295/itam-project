@@ -288,8 +288,8 @@ public class LifecycleAnalysisServiceTests
         var result = await _sut.GetUpcomingAsync(null, null, 12, 1, 20);
 
         Assert.Equal(2, result.TotalItems);
-        Assert.Contains(result.Items, item => item.AssetCode == "AGE" && item.AgeDueSoon);
-        Assert.Contains(result.Items, item => item.AssetCode == "FAIL" && item.NearFailureThreshold);
+        Assert.Contains(result.Items, item => item.AssetCode == "AGE" && item.Reasons.Contains(LifecycleCalculator.ReasonAgeDueSoon));
+        Assert.Contains(result.Items, item => item.AssetCode == "FAIL" && item.Reasons.Contains(LifecycleCalculator.ReasonNearFailureThreshold));
         Assert.DoesNotContain(result.Items, item => item.AssetCode == "OVERDUE");
     }
 
@@ -697,7 +697,6 @@ public class LifecycleAnalysisServiceTests
         Assert.Equal(new[] { LifecycleCalculator.ReasonNearFailureThreshold }, items[1].Reasons);
         Assert.Null(items[1].DaysUntilAgeDue);
         Assert.Equal("Sát ngưỡng lỗi: 2/3 phiếu bảo trì", items[1].ReasonText);
-        Assert.Equal((5, 3), (items[1].AppliedMaxAgeYears, items[1].AppliedMaxFailureCount));
     }
 
     [Fact]
@@ -912,6 +911,134 @@ public class LifecycleAnalysisServiceTests
 
         _repo.Verify(r => r.GetAssetLifecycleRowsAsync(It.IsAny<int?>()), Times.Once);
         _repo.Verify(r => r.GetPoliciesAsync(), Times.Once);
+    }
+
+    // ---------- M2: chi tiết vòng đời một tài sản ----------
+
+    private void SetupTickets(int assetId, params AssetTicketSummaryDto[] tickets) =>
+        _repo.Setup(r => r.GetTicketsByAssetAsync(assetId)).ReturnsAsync(tickets.ToList());
+
+    private void SetupSingleRow(AssetLifecycleRow row) =>
+        _repo.Setup(r => r.GetAssetLifecycleRowAsync(row.AssetId)).ReturnsAsync(row);
+
+    private static AssetTicketSummaryDto Ticket(int id, DateTime reported, string status = "Resolved", string description = "x") => new()
+    {
+        Id = id, ReportedDate = reported, Status = status, Description = description,
+    };
+
+    [Fact]
+    public async Task GetAssetDetailAsync_AssetNotFoundOrDisposed_ThrowsLifecycleAssetNotFoundException()
+    {
+        _repo.Setup(r => r.GetAssetLifecycleRowAsync(99)).ReturnsAsync((AssetLifecycleRow?)null);
+
+        await Assert.ThrowsAsync<LifecycleAssetNotFoundException>(() => _sut.GetAssetDetailAsync(99));
+        _repo.Verify(r => r.GetTicketsByAssetAsync(It.IsAny<int>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetAssetDetailAsync_NotYetOverdue_ReturnsDetailWithIsOverdueNowFalse()
+    {
+        var row = Row("A1", CatComputer, Today.AddYears(-2), tickets: 1);
+        row.AssetId = 7;
+        SetupSingleRow(row);
+        SetupTickets(7);
+
+        var detail = await _sut.GetAssetDetailAsync(7);
+
+        Assert.False(detail.IsOverdueNow);
+        Assert.False(detail.IsHighPriority);
+        Assert.Equal(Year + 3, detail.DueYear);
+        Assert.Empty(detail.Reasons);
+        Assert.Equal(string.Empty, detail.ReasonText);
+        Assert.Equal(Today.AddYears(-2).AddYears(5), detail.AgeDueDate);
+        Assert.Equal((5, 3), (detail.AppliedMaxAgeYears, detail.AppliedMaxFailureCount));
+        Assert.InRange(detail.PriorityScore, 16, 21);   // max(2/5, 1/3) = 0,4 → 20
+    }
+
+    [Fact]
+    public async Task GetAssetDetailAsync_OverdueAsset_MatchesListRecommendationExactly()
+    {
+        // Cùng một đường quyết định: chi tiết phải trùng điểm, lý do, ngưỡng với dòng tương ứng trong danh sách đề xuất.
+        SetupPolicies(new AssetCategoryLifecyclePolicy { CategoryId = CatSwitch, MaxAgeYears = 7, MaxFailureCount = 4 });
+        var row = Row("SW", CatSwitch, Today.AddYears(-8), tickets: 4, warranty: Today.AddMonths(2));
+        row.AssetId = 11;
+        SetupRows(row);
+        SetupSingleRow(row);
+        SetupTickets(11);
+
+        var listItem = Assert.Single((await _sut.GetCurrentReplacementCandidatesAsync(null, null, "score", 1, 20)).Items);
+        var detail = await _sut.GetAssetDetailAsync(11);
+
+        Assert.Equal(
+            (listItem.PriorityScore, listItem.ReasonText, listItem.IsOverdueNow, listItem.IsHighPriority, (int?)listItem.DueYear,
+             listItem.AppliedMaxAgeYears, listItem.AppliedMaxFailureCount, listItem.IsUnderWarranty),
+            (detail.PriorityScore, detail.ReasonText, detail.IsOverdueNow, detail.IsHighPriority, detail.DueYear,
+             detail.AppliedMaxAgeYears, detail.AppliedMaxFailureCount, detail.IsUnderWarranty));
+        Assert.Equal(listItem.Reasons, detail.Reasons);
+        Assert.Equal((7, 4), (detail.AppliedMaxAgeYears, detail.AppliedMaxFailureCount));
+    }
+
+    [Fact]
+    public async Task GetAssetDetailAsync_NoPurchaseDateAndFewTickets_HasNullDueYearAndNullAgeDueDate()
+    {
+        var row = Row("A1", CatComputer, null, tickets: 1);
+        row.AssetId = 5;
+        SetupSingleRow(row);
+        SetupTickets(5);
+
+        var detail = await _sut.GetAssetDetailAsync(5);
+
+        Assert.Null(detail.DueYear);
+        Assert.Null(detail.AgeDueDate);
+        Assert.Null(detail.AgeYears);
+        Assert.False(detail.IsOverdueNow);
+    }
+
+    [Fact]
+    public async Task GetAssetDetailAsync_TicketsKeptInRepositoryOrderAndDescriptionCutTo200()
+    {
+        var row = Row("A1", CatComputer, Today.AddYears(-1), tickets: 3);
+        row.AssetId = 8;
+        SetupSingleRow(row);
+        SetupTickets(8,
+            Ticket(3, new DateTime(2026, 9, 1), "Pending", new string('x', 500)),
+            Ticket(2, new DateTime(2026, 5, 1), "Failed", new string('y', 200)),
+            Ticket(1, new DateTime(2025, 1, 1), "Resolved", "ngắn"));
+
+        var detail = await _sut.GetAssetDetailAsync(8);
+
+        Assert.Equal(new[] { 3, 2, 1 }, detail.Tickets.Select(t => t.Id));
+        Assert.Equal(200, detail.Tickets[0].Description.Length);
+        Assert.Equal(200, detail.Tickets[1].Description.Length);   // đúng 200 không bị cắt thêm
+        Assert.Equal("ngắn", detail.Tickets[2].Description);
+        Assert.Equal(new[] { "Pending", "Failed", "Resolved" }, detail.Tickets.Select(t => t.Status));
+    }
+
+    [Fact]
+    public async Task GetAssetDetailAsync_AssetWithoutTickets_ReturnsEmptyList()
+    {
+        var row = Row("A1", CatComputer, Today.AddYears(-1));
+        row.AssetId = 9;
+        SetupSingleRow(row);
+        SetupTickets(9);
+
+        Assert.Empty((await _sut.GetAssetDetailAsync(9)).Tickets);
+    }
+
+    [Fact]
+    public async Task GetAssetDetailAsync_FixedNumberOfRepositoryCalls()
+    {
+        var row = Row("A1", CatComputer, Today.AddYears(-6), tickets: 2);
+        row.AssetId = 10;
+        SetupSingleRow(row);
+        SetupTickets(10);
+
+        await _sut.GetAssetDetailAsync(10);
+
+        _repo.Verify(r => r.GetAssetLifecycleRowAsync(10), Times.Once);
+        _repo.Verify(r => r.GetTicketsByAssetAsync(10), Times.Once);
+        _repo.Verify(r => r.GetPoliciesAsync(), Times.Once);
+        _repo.Verify(r => r.GetAssetLifecycleRowsAsync(It.IsAny<int?>()), Times.Never);   // không nạp cả danh sách
     }
 
     // ---------- Chính sách ----------

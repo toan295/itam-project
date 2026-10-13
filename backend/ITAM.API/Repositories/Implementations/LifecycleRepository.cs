@@ -16,20 +16,29 @@ public class LifecycleRepository : ILifecycleRepository
         _context = context;
     }
 
+    // D3: tài sản đã thanh lý (Disposed) không tham gia phân tích vòng đời — loại ngay ở truy vấn để
+    // mọi thống kê, danh sách đề xuất và dự báo ngân sách đều không bao giờ thấy chúng.
+    private IQueryable<Asset> ActiveAssets() =>
+        _context.Assets.AsNoTracking().Where(asset => asset.Status != AssetStatus.Disposed);
+
     public async Task<IReadOnlyList<AssetLifecycleRow>> GetAssetLifecycleRowsAsync(int? departmentId)
     {
-        // D3: tài sản đã thanh lý (Disposed) không tham gia phân tích vòng đời — loại ngay ở truy vấn để
-        // mọi thống kê, danh sách đề xuất và dự báo ngân sách đều không bao giờ thấy chúng.
-        // Projection bên dưới tự JOIN Category/Department nên không cần Include.
-        var assetQuery = _context.Assets
-            .AsNoTracking()
-            .Where(asset => asset.Status != AssetStatus.Disposed);
-
+        var assetQuery = ActiveAssets();
         if (departmentId.HasValue)
         {
             assetQuery = assetQuery.Where(asset => asset.DepartmentId == departmentId.Value);
         }
 
+        return await LoadRowsAsync(assetQuery);
+    }
+
+    public async Task<AssetLifecycleRow?> GetAssetLifecycleRowAsync(int assetId) =>
+        (await LoadRowsAsync(ActiveAssets().Where(asset => asset.Id == assetId))).FirstOrDefault();
+
+    // Dùng chung cho danh sách và một tài sản: cùng một câu projection nên không thể lệch nhau.
+    private async Task<List<AssetLifecycleRow>> LoadRowsAsync(IQueryable<Asset> assetQuery)
+    {
+        // Projection bên dưới tự JOIN Category/Department nên không cần Include.
         var rows = await assetQuery
             .OrderBy(asset => asset.Id)
             .Select(asset => new AssetLifecycleRow
@@ -80,6 +89,36 @@ public class LifecycleRepository : ILifecycleRepository
         }
 
         return rows;
+    }
+
+    public async Task<IReadOnlyList<AssetTicketSummaryDto>> GetTicketsByAssetAsync(int assetId)
+    {
+        var tickets = await _context.MaintenanceTickets
+            .AsNoTracking()
+            .Where(ticket => ticket.AssetId == assetId)
+            .OrderByDescending(ticket => ticket.ReportedDate)
+            .ThenByDescending(ticket => ticket.Id)
+            .Select(ticket => new
+            {
+                ticket.Id,
+                ticket.ReportedDate,
+                ticket.Status,
+                ticket.ResolvedDate,
+                ticket.IssueDescription,
+            })
+            .ToListAsync();
+
+        // Status chuyển thành chuỗi ở bộ nhớ (cùng quy ước chuỗi như module Bảo trì), mô tả cắt ở Service.
+        return tickets
+            .Select(ticket => new AssetTicketSummaryDto
+            {
+                Id = ticket.Id,
+                ReportedDate = ticket.ReportedDate,
+                Status = ticket.Status.ToString(),
+                ResolvedDate = ticket.ResolvedDate,
+                Description = ticket.IssueDescription,
+            })
+            .ToList();
     }
 
     public async Task<IReadOnlyList<TicketTrendPointDto>> GetTicketCountByYearAsync(

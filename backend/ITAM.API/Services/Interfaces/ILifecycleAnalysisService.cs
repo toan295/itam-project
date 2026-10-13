@@ -22,6 +22,9 @@ public interface ILifecycleAnalysisService
         int page,
         int pageSize);
 
+    // M2: chi tiết một tài sản (404 nếu không tồn tại/đã thanh lý → LifecycleAssetNotFoundException).
+    Task<AssetLifecycleDetailDto> GetAssetDetailAsync(int assetId);
+
     Task<LifecycleStatsDto> GetStatsAsync(int? departmentId);
     Task<IReadOnlyList<LifecyclePolicyDto>> GetPoliciesAsync();
     Task<LifecyclePolicyDto> UpsertPolicyAsync(int categoryId, UpsertLifecyclePolicyRequestDto dto);

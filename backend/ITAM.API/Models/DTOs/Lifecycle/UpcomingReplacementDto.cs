@@ -1,5 +1,6 @@
 namespace ITAM.API.Models.DTOs.Lifecycle;
 
+// Danh sách "sắp tới hạn" (B2): tài sản CHƯA vượt ngưỡng nhưng sắp đủ tuổi hoặc sát ngưỡng lỗi.
 public class UpcomingReplacementDto
 {
     public int AssetId { get; set; }
@@ -9,16 +10,10 @@ public class UpcomingReplacementDto
     public string CategoryName { get; set; } = null!;
     public int DepartmentId { get; set; }
     public string DepartmentName { get; set; } = null!;
-    public DateOnly? PurchaseDate { get; set; }
     public double? AgeYears { get; set; }
     public int TicketCount { get; set; }
-    public int FailedTicketCount { get; set; }
-    public DateOnly? AgeDueDate { get; set; }
-    public int? DaysUntilAgeDue { get; set; }          // chỉ có giá trị khi AgeDueSoon (ngày đủ tuổi nằm trong cửa sổ); ngược lại null
-    public bool AgeDueSoon { get; set; }
-    public bool NearFailureThreshold { get; set; }
-    public int AppliedMaxAgeYears { get; set; }
-    public int AppliedMaxFailureCount { get; set; }
+    public DateOnly? AgeDueDate { get; set; }        // PurchaseDate + ngưỡng tuổi hiệu lực; null khi không có PurchaseDate
+    public int? DaysUntilAgeDue { get; set; }        // chỉ có giá trị khi AgeDueSoon (ngày đủ tuổi nằm trong cửa sổ); ngược lại null
     public IReadOnlyList<string> Reasons { get; set; } = Array.Empty<string>();   // chỉ "AgeDueSoon"/"NearFailureThreshold" — không dịch
     public string ReasonText { get; set; } = string.Empty;
 }
