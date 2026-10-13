@@ -1608,7 +1608,27 @@
                 }
               ]
             },
-            "description": "Cảnh báo sớm: tài sản CHƯA vượt ngưỡng nhưng (a) đủ tuổi trong vòng N tháng tới (reasons: AgeDueSoon, kèm ageDueDate/daysUntilAgeDue) hoặc (b) còn đúng 1 phiếu nữa chạm ngưỡng lỗi (NearFailureThreshold, phải có ≥ 1 phiếu). Sắp xếp: daysUntilAgeDue tăng dần (null cuối) rồi assetCode."
+            "description": "Cảnh báo sớm: tài sản CHƯA vượt ngưỡng nhưng (a) đủ tuổi trong vòng N tháng tới (reasons: AgeDueSoon, kèm ageDueDate/daysUntilAgeDue) hoặc (b) còn đúng 1 phiếu nữa chạm ngưỡng lỗi (NearFailureThreshold, phải có ≥ 1 phiếu). Sắp xếp: daysUntilAgeDue tăng dần (null cuối) rồi assetCode. Mỗi dòng: assetId/assetCode/assetName, categoryName, departmentName, ageYears, ticketCount, ageDueDate, daysUntilAgeDue (chỉ có khi sắp đủ tuổi), reasons, reasonText."
+          },
+          "response": []
+        },
+        {
+          "name": "Asset Lifecycle Detail (Admin IT)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lifecycle/assets/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lifecycle",
+                "assets",
+                "1"
+              ]
+            },
+            "description": "Chi tiết vòng đời MỘT tài sản (kể cả khi chưa vượt ngưỡng: isOverdueNow=false, dueYear có thể null): thông tin tài sản, tuổi, bảo hành, ngưỡng áp dụng, ageDueDate, priorityScore, reasonText và lịch sử phiếu bảo trì (mới nhất trước, mô tả cắt 200 ký tự). 404 nếu tài sản không tồn tại hoặc đã thanh lý (Disposed)."
           },
           "response": []
         },
