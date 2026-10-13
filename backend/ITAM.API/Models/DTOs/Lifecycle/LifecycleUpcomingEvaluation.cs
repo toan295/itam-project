@@ -7,6 +7,6 @@ public class LifecycleUpcomingEvaluation
     public bool NearFailureThreshold { get; set; }
     public DateOnly? AgeDueDate { get; set; }
     public int? DaysUntilAgeDue { get; set; }
-    public IReadOnlyList<string> ReasonCodes { get; set; } = Array.Empty<string>();
+    public IReadOnlyList<string> Reasons { get; set; } = Array.Empty<string>();
     public string ReasonText { get; set; } = string.Empty;
 }

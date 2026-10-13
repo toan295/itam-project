@@ -9,4 +9,5 @@ public class TopFailingAssetDto
     public string DepartmentName { get; set; } = null!;
     public int TicketCount { get; set; }
     public int FailedTicketCount { get; set; }
+    public double? AgeYears { get; set; }
 }

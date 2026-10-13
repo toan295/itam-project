@@ -65,46 +65,44 @@ public static class LifecycleCalculator
         };
     }
 
-    // Điểm chỉ phục vụ xếp hạng; không dùng để quyết định tài sản có phải ứng viên hay không.
-    // Tài liệu Tuần 8 không khóa trọng số cụ thể, nên chia đều 50/50 giữa tuổi và số phiếu bảo trì.
+    // L1: điểm ưu tiên 0–100 chỉ để XẾP HẠNG, không dùng để quyết định tài sản có phải ứng viên hay không
+    // (việc đó do Evaluate — ngày lịch — quyết định). severity = max(tỷ lệ tuổi, tỷ lệ lỗi), KHÔNG chặn trần ở 1:
+    // đúng ngưỡng ⇒ 50, gấp đôi ngưỡng trở lên ⇒ 100. ageYears là số thực (chia 365,25) nên chỉ dùng để xếp hạng.
     public static int ComputePriorityScore(
         double? ageYears,
-        int ticketCount,
         int maxAgeYears,
+        int ticketCount,
         int maxFailureCount)
     {
         ValidateThresholds(maxAgeYears, maxFailureCount);
 
-        var ageRatio = ageYears.HasValue
-            ? Math.Clamp(ageYears.Value / maxAgeYears, 0d, 1d)
-            : 0d;
-        var failureRatio = Math.Clamp(ticketCount / (double)maxFailureCount, 0d, 1d);
+        var ageRatio = ageYears.HasValue ? ageYears.Value / maxAgeYears : 0d;
+        var failureRatio = (double)ticketCount / maxFailureCount;
+        var severity = Math.Max(ageRatio, failureRatio);
 
-        var rawScore = (ageRatio * 50d) + (failureRatio * 50d);
-        var rounded = Math.Round(rawScore, MidpointRounding.AwayFromZero);
-        return Math.Clamp((int)rounded, 0, 100);
+        var rounded = Math.Round(50d * severity, MidpointRounding.AwayFromZero);
+        return (int)Math.Clamp(rounded, 0d, 100d);
     }
 
-    public static string BuildReplacementReasonText(
-        AssetLifecycleRow row,
+    // L7: chuỗi lý do đúng khuôn (số thập phân dùng dấu phẩy kiểu vi-VN). Cờ vượt ngưỡng lấy từ Evaluate
+    // (một nơi duy nhất quyết định) — hàm này không tự đánh giá lại.
+    public static string BuildReasonText(
+        bool ageExceeded,
+        bool failureExceeded,
+        double? ageYears,
         int maxAgeYears,
-        int maxFailureCount,
-        DateOnly today)
+        int ticketCount,
+        int maxFailureCount)
     {
-        ValidateThresholds(maxAgeYears, maxFailureCount);
-
         var parts = new List<string>(2);
-        var ageDueDate = row.PurchaseDate?.AddYears(maxAgeYears);
-        if (ageDueDate.HasValue && ageDueDate.Value <= today)
+        if (ageExceeded)
         {
-            var ageYears = ComputeAgeYears(row.PurchaseDate, today);
-            var ageText = ageYears.HasValue ? ageYears.Value.ToString("0.0", ViCulture) : "—";
-            parts.Add($"Quá tuổi: {ageText} năm / ngưỡng {maxAgeYears} năm");
+            parts.Add($"Quá tuổi: {(ageYears ?? 0d).ToString("0.0", ViCulture)} năm (ngưỡng {maxAgeYears} năm)");
         }
 
-        if (row.TicketCount >= maxFailureCount)
+        if (failureExceeded)
         {
-            parts.Add($"Lỗi nhiều: {row.TicketCount}/{maxFailureCount} phiếu bảo trì");
+            parts.Add($"Lỗi nhiều: {ticketCount} phiếu bảo trì (ngưỡng {maxFailureCount} phiếu)");
         }
 
         return string.Join("; ", parts);
@@ -145,7 +143,7 @@ public static class LifecycleCalculator
         {
             reasonCodes.Add(ReasonAgeDueSoon);
             reasonParts.Add(
-                $"Sắp đủ tuổi thay thế: còn {daysUntilAgeDue} ngày (ngày {ageDueDate!.Value:dd/MM/yyyy})");
+                $"Sắp đủ tuổi thay thế: còn {daysUntilAgeDue} ngày (ngày {ageDueDate!.Value.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)})");
         }
 
         if (nearFailureThreshold)
@@ -160,7 +158,7 @@ public static class LifecycleCalculator
             NearFailureThreshold = nearFailureThreshold,
             AgeDueDate = ageDueDate,
             DaysUntilAgeDue = daysUntilAgeDue,
-            ReasonCodes = reasonCodes,
+            Reasons = reasonCodes,
             ReasonText = string.Join("; ", reasonParts),
         };
     }

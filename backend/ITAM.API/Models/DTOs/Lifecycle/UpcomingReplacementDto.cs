@@ -14,11 +14,11 @@ public class UpcomingReplacementDto
     public int TicketCount { get; set; }
     public int FailedTicketCount { get; set; }
     public DateOnly? AgeDueDate { get; set; }
-    public int? DaysUntilAgeDue { get; set; }
+    public int? DaysUntilAgeDue { get; set; }          // chỉ có giá trị khi AgeDueSoon (ngày đủ tuổi nằm trong cửa sổ); ngược lại null
     public bool AgeDueSoon { get; set; }
     public bool NearFailureThreshold { get; set; }
     public int AppliedMaxAgeYears { get; set; }
     public int AppliedMaxFailureCount { get; set; }
-    public IReadOnlyList<string> ReasonCodes { get; set; } = Array.Empty<string>();
+    public IReadOnlyList<string> Reasons { get; set; } = Array.Empty<string>();   // chỉ "AgeDueSoon"/"NearFailureThreshold" — không dịch
     public string ReasonText { get; set; } = string.Empty;
 }
