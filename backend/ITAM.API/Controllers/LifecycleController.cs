@@ -34,19 +34,55 @@ public class LifecycleController : ControllerBase
     }
 
     [HttpGet("replacement-candidates")]
-    [ProducesResponseType(typeof(ApiResponse<PagedResultDto<AssetReplacementCandidateDto>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<PagedResultDto<ReplacementRecommendationDto>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetReplacementCandidates(
         [FromQuery] int? departmentId = null,
         [FromQuery] int? categoryId = null,
+        [FromQuery] string sortBy = "score",
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
-        var result = await _service.GetCurrentReplacementCandidatesAsync(
-            departmentId,
-            categoryId,
-            page,
-            pageSize);
-        return Ok(ApiResponse<PagedResultDto<AssetReplacementCandidateDto>>.Ok(result));
+        try
+        {
+            var result = await _service.GetCurrentReplacementCandidatesAsync(
+                departmentId,
+                categoryId,
+                sortBy,
+                page,
+                pageSize);
+            return Ok(ApiResponse<PagedResultDto<ReplacementRecommendationDto>>.Ok(result));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<object>.Fail(ex.Message));
+        }
+    }
+
+    [HttpGet("upcoming")]
+    [ProducesResponseType(typeof(ApiResponse<PagedResultDto<UpcomingReplacementDto>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetUpcoming(
+        [FromQuery] int? departmentId = null,
+        [FromQuery] int? categoryId = null,
+        [FromQuery] int months = 12,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
+    {
+        try
+        {
+            var result = await _service.GetUpcomingAsync(
+                departmentId,
+                categoryId,
+                months,
+                page,
+                pageSize);
+            return Ok(ApiResponse<PagedResultDto<UpcomingReplacementDto>>.Ok(result));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<object>.Fail(ex.Message));
+        }
     }
 
     [HttpGet("policies")]

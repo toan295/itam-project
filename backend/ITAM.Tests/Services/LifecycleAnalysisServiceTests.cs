@@ -28,6 +28,8 @@ public class LifecycleAnalysisServiceTests
             Options.Create(new LifecycleOptions { DefaultMaxAgeYears = 5, DefaultMaxFailureCount = 3 }));
 
         _repo.Setup(r => r.GetPoliciesAsync()).ReturnsAsync(new List<AssetCategoryLifecyclePolicy>());
+        _repo.Setup(r => r.GetTicketCountByYearAsync(It.IsAny<int?>(), It.IsAny<int>()))
+            .ReturnsAsync(new List<TicketTrendPointDto>());
         _repo.Setup(r => r.GetCategoriesAsync()).ReturnsAsync(new List<AssetCategory>
         {
             new() { Id = CatComputer, Name = "Máy tính" },
@@ -248,6 +250,56 @@ public class LifecycleAnalysisServiceTests
         Assert.Equal(0, result.TotalItems);
     }
 
+    [Fact]
+    public async Task GetCurrentReplacementCandidatesAsync_InvalidSortBy_ThrowsArgumentException()
+    {
+        SetupRows(Row("A1", CatComputer, Today.AddYears(-6)));
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _sut.GetCurrentReplacementCandidatesAsync(null, null, "unknown", 1, 20));
+    }
+
+    [Fact]
+    public async Task GetCurrentReplacementCandidatesAsync_SortByFailures_UsesTicketCountThenAssetCode()
+    {
+        SetupRows(
+            Row("B", CatComputer, Today.AddYears(-6), tickets: 4),
+            Row("A", CatComputer, Today.AddYears(-6), tickets: 4),
+            Row("C", CatComputer, Today.AddYears(-6), tickets: 3));
+
+        var result = await _sut.GetCurrentReplacementCandidatesAsync(null, null, "failures", 1, 20);
+
+        Assert.Equal(new[] { "A", "B", "C" }, result.Items.Select(item => item.AssetCode));
+    }
+
+    // ---------- GetUpcomingAsync ----------
+
+    [Fact]
+    public async Task GetUpcomingAsync_ReturnsOnlyNotOverdueUpcomingAssets()
+    {
+        SetupRows(
+            Row("OVERDUE", CatComputer, Today.AddYears(-6)),
+            Row("AGE", CatComputer, Today.AddYears(-5).AddMonths(3)),
+            Row("FAIL", CatComputer, null, tickets: 2),
+            Row("NONE", CatComputer, Today.AddYears(-1)));
+
+        var result = await _sut.GetUpcomingAsync(null, null, 12, 1, 20);
+
+        Assert.Equal(2, result.TotalItems);
+        Assert.Contains(result.Items, item => item.AssetCode == "AGE" && item.AgeDueSoon);
+        Assert.Contains(result.Items, item => item.AssetCode == "FAIL" && item.NearFailureThreshold);
+        Assert.DoesNotContain(result.Items, item => item.AssetCode == "OVERDUE");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(61)]
+    public async Task GetUpcomingAsync_MonthsOutsideRange_ThrowsArgumentException(int months)
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _sut.GetUpcomingAsync(null, null, months, 1, 20));
+    }
+
     // ---------- GetStatsAsync ----------
 
     [Fact]
@@ -349,6 +401,40 @@ public class LifecycleAnalysisServiceTests
 
         Assert.Equal(new[] { 1, 1, 1, 1, 1 }, stats.AgeBuckets.Select(b => b.Count));
         Assert.Equal(stats.TotalAssets, stats.AgeBuckets.Sum(b => b.Count));
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_MedianAgeAndExtendedAgeBuckets_AreCalculated()
+    {
+        SetupRows(
+            Row("A1", CatComputer, Today.AddYears(-1), tickets: 1),
+            Row("A2", CatComputer, Today.AddYears(-3), tickets: 0),
+            Row("A3", CatComputer, Today.AddYears(-5), tickets: 2));
+
+        var stats = await _sut.GetStatsAsync(null);
+
+        Assert.InRange(stats.MedianAgeYears!.Value, 2.98, 3.02);
+        Assert.Equal(stats.TotalAssets, stats.AgeBuckets.Sum(bucket => bucket.Count));
+        Assert.Equal(2, stats.AgeBuckets.Sum(bucket => bucket.AssetsWithAtLeastOneTicket));
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_TicketTrend_FillsFiveYearsIncludingZeros()
+    {
+        SetupRows(Row("A1", CatComputer, Today.AddYears(-1)));
+        _repo.Setup(r => r.GetTicketCountByYearAsync(null, Year - 4))
+            .ReturnsAsync(new List<TicketTrendPointDto>
+            {
+                new() { Year = Year - 2, TicketCount = 4 },
+                new() { Year = Year, TicketCount = 2 },
+            });
+
+        var stats = await _sut.GetStatsAsync(null);
+
+        Assert.Equal(5, stats.TicketTrend.Count);
+        Assert.Equal(4, stats.TicketTrend.Single(point => point.Year == Year - 2).TicketCount);
+        Assert.Equal(0, stats.TicketTrend.Single(point => point.Year == Year - 1).TicketCount);
+        Assert.Equal(2, stats.TicketTrend.Single(point => point.Year == Year).TicketCount);
     }
 
     // ---------- Chính sách ----------

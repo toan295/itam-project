@@ -10,6 +10,7 @@ public class AssetLifecycleRow
     public int DepartmentId { get; set; }
     public string DepartmentName { get; set; } = null!;
     public DateOnly? PurchaseDate { get; set; }
+    public DateOnly? WarrantyExpiry { get; set; }
     public int TicketCount { get; set; }
     public int FailedTicketCount { get; set; }
 }

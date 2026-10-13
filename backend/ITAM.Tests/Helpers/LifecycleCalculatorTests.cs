@@ -167,6 +167,66 @@ public class LifecycleCalculatorTests
         Assert.False(LifecycleCalculator.Evaluate(Row(null, 4), 5, 3, Today).IsHighPriority);
     }
 
+    // ---- Tuần 8: điểm ưu tiên / cảnh báo sớm / nhóm tuổi ----
+
+    [Fact]
+    public void ComputePriorityScore_UsesAgeAndTicketCountAndClampsTo100()
+    {
+        var score = LifecycleCalculator.ComputePriorityScore(6d, 4, 5, 3);
+
+        Assert.Equal(100, score);
+    }
+
+    [Fact]
+    public void ComputePriorityScore_MissingPurchaseDate_StillUsesTicketSignal()
+    {
+        var score = LifecycleCalculator.ComputePriorityScore(null, 2, 5, 4);
+
+        Assert.Equal(25, score);
+    }
+
+    [Fact]
+    public void EvaluateUpcoming_AgeDueWithinWindow_ReturnsExactReasonText()
+    {
+        var row = Row(Today.AddYears(-5).AddMonths(3), 0);
+
+        var result = LifecycleCalculator.EvaluateUpcoming(row, 5, 3, 6, Today);
+
+        Assert.True(result.AgeDueSoon);
+        Assert.False(result.NearFailureThreshold);
+        Assert.Contains(LifecycleCalculator.ReasonAgeDueSoon, result.ReasonCodes);
+        Assert.StartsWith("Sắp đủ tuổi thay thế: còn ", result.ReasonText);
+    }
+
+    [Fact]
+    public void EvaluateUpcoming_OneTicketBelowThreshold_ReturnsNearFailureReason()
+    {
+        var result = LifecycleCalculator.EvaluateUpcoming(Row(null, 2), 5, 3, 12, Today);
+
+        Assert.False(result.AgeDueSoon);
+        Assert.True(result.NearFailureThreshold);
+        Assert.Equal("Sát ngưỡng lỗi: 2/3 phiếu bảo trì", result.ReasonText);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(61)]
+    public void EvaluateUpcoming_MonthsOutsideRange_ThrowsArgumentException(int months)
+    {
+        Assert.Throws<ArgumentException>(() =>
+            LifecycleCalculator.EvaluateUpcoming(Row(null, 0), 5, 3, months, Today));
+    }
+
+    [Fact]
+    public void GetAgeBucketIndex_UsesCalendarBoundaries()
+    {
+        Assert.Equal(0, LifecycleCalculator.GetAgeBucketIndex(Today.AddYears(-1).AddDays(1), Today));
+        Assert.Equal(1, LifecycleCalculator.GetAgeBucketIndex(Today.AddYears(-1), Today));
+        Assert.Equal(2, LifecycleCalculator.GetAgeBucketIndex(Today.AddYears(-3), Today));
+        Assert.Equal(3, LifecycleCalculator.GetAgeBucketIndex(Today.AddYears(-5), Today));
+        Assert.Equal(4, LifecycleCalculator.GetAgeBucketIndex(null, Today));
+    }
+
     // ---- Ngưỡng không hợp lệ ----
 
     [Theory]
