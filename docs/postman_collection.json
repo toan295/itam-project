@@ -1513,7 +1513,8 @@
                   "disabled": true
                 }
               ]
-            }
+            },
+            "description": "Thống kê vòng đời (loại Disposed). Ngoài các trường cũ, Tuần 8 thêm: medianAgeYears; ageBuckets đúng 5 nhóm ('< 1 năm','1–3 năm','3–5 năm','≥ 5 năm','Không rõ ngày mua', xếp theo ngày lịch) kèm assetsWithAtLeastOneTicket/failureRatio/averageTicketsPerAsset (nhóm rỗng = 0, không NaN; tổng count = totalAssets); byDepartment (chỉ phòng ban có tài sản); topFailingAssets (tối đa 10, bỏ tài sản 0 phiếu); ticketTrend (5 năm gần nhất). Không có tài sản → 200 với số 0/null và danh sách rỗng."
           },
           "response": []
         },
@@ -1523,7 +1524,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/lifecycle/replacement-candidates?departmentId=1&categoryId=1&page=1&pageSize=20",
+              "raw": "{{baseUrl}}/lifecycle/replacement-candidates?departmentId=1&categoryId=1&sortBy=score&page=1&pageSize=20",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1543,6 +1544,12 @@
                   "disabled": true
                 },
                 {
+                  "key": "sortBy",
+                  "value": "score",
+                  "disabled": false,
+                  "description": "score (mặc định) | age | failures | code; giá trị khác → 400"
+                },
+                {
                   "key": "page",
                   "value": "1",
                   "disabled": false
@@ -1553,7 +1560,55 @@
                   "disabled": false
                 }
               ]
-            }
+            },
+            "description": "Đề xuất thay thế (chỉ tài sản ĐÃ vượt ngưỡng). Mỗi dòng có priorityScore 0–100 (= round(50 × max(tuổi/ngưỡng tuổi, phiếu/ngưỡng lỗi)); chỉ để xếp hạng), reasonText, appliedMaxAgeYears/appliedMaxFailureCount, warrantyExpiry, isUnderWarranty (chỉ là thông tin, không loại tài sản). sortBy: score → điểm ↓, tuổi ↓, mã; age → tuổi ↓ (null cuối); failures → số phiếu ↓; code → mã ↑. sortBy sai → 400."
+          },
+          "response": []
+        },
+        {
+          "name": "Upcoming Replacements (Admin IT)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lifecycle/upcoming?departmentId=1&categoryId=1&months=12&page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lifecycle",
+                "upcoming"
+              ],
+              "query": [
+                {
+                  "key": "departmentId",
+                  "value": "1",
+                  "disabled": true
+                },
+                {
+                  "key": "categoryId",
+                  "value": "1",
+                  "disabled": true
+                },
+                {
+                  "key": "months",
+                  "value": "12",
+                  "disabled": false,
+                  "description": "1–60, mặc định 12; ngoài khoảng → 400"
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Cảnh báo sớm: tài sản CHƯA vượt ngưỡng nhưng (a) đủ tuổi trong vòng N tháng tới (reasons: AgeDueSoon, kèm ageDueDate/daysUntilAgeDue) hoặc (b) còn đúng 1 phiếu nữa chạm ngưỡng lỗi (NearFailureThreshold, phải có ≥ 1 phiếu). Sắp xếp: daysUntilAgeDue tăng dần (null cuối) rồi assetCode."
           },
           "response": []
         },
