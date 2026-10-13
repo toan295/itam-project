@@ -179,7 +179,7 @@
                 <h5 class="mb-3">Theo phòng ban</h5>
                 <div class="table-responsive">
                   <table class="eaims-table">
-                    <thead><tr><th>Phòng ban</th><th>Số TS</th><th>Tuổi TB</th><th>Tỷ lệ lỗi</th><th>Phiếu TB</th><th>Cần thay</th></tr></thead>
+                    <thead><tr><th>Phòng ban</th><th>Số TS</th><th>Tuổi TB</th><th>Tỷ lệ lỗi</th><th>Cần thay</th></tr></thead>
                     <tbody id="departmentStatsBody"></tbody>
                   </table>
                 </div>
@@ -232,6 +232,43 @@
         </div>
       </div>
     </main>
+  </div>
+
+  <!-- Modal chi tiết vòng đời một tài sản (M2) -->
+  <div class="modal fade" id="assetDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="assetDetailTitle">Chi tiết vòng đời</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div id="assetDetailError" class="alert alert-danger d-none"></div>
+          <div id="assetDetailBody">
+            <dl class="row mb-3">
+              <dt class="col-sm-4">Loại / Phòng ban</dt><dd class="col-sm-8" id="adCategoryDept"></dd>
+              <dt class="col-sm-4">Ngày mua / Tuổi</dt><dd class="col-sm-8" id="adPurchaseAge"></dd>
+              <dt class="col-sm-4">Bảo hành</dt><dd class="col-sm-8" id="adWarranty"></dd>
+              <dt class="col-sm-4">Ngưỡng áp dụng</dt><dd class="col-sm-8" id="adThresholds"></dd>
+              <dt class="col-sm-4">Ngày đủ tuổi thay thế</dt><dd class="col-sm-8" id="adAgeDue"></dd>
+              <dt class="col-sm-4">Trạng thái</dt><dd class="col-sm-8" id="adStatus"></dd>
+              <dt class="col-sm-4">Điểm ưu tiên</dt><dd class="col-sm-8" id="adScore"></dd>
+              <dt class="col-sm-4">Lý do</dt><dd class="col-sm-8" id="adReason"></dd>
+            </dl>
+            <h6 class="mb-2">Lịch sử phiếu bảo trì <span class="text-muted fw-normal small" id="adTicketCount"></span></h6>
+            <div class="table-responsive">
+              <table class="eaims-table">
+                <thead><tr><th>Mã phiếu</th><th>Ngày báo</th><th>Trạng thái</th><th>Ngày xử lý</th><th>Mô tả</th></tr></thead>
+                <tbody id="adTicketsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

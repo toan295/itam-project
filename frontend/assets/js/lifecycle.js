@@ -29,6 +29,18 @@ function formatPercent(value) {
   return `${oneDecimalFormatter.format(Number(value || 0) * 100)}%`;
 }
 
+// Mã tài sản bấm được để mở chi tiết vòng đời (M2).
+function assetLink(item) {
+  return `<button type="button" class="btn btn-link p-0 fw-semibold text-decoration-none" data-asset-id="${item.assetId}">${escapeHtml(item.assetCode)}</button>`;
+}
+
+function formatDateTime(value) {
+  if (!value) return "—";
+  // API trả giờ UTC không kèm "Z" -> thêm "Z" để trình duyệt đổi đúng sang giờ địa phương.
+  const date = new Date(/(Z|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString("vi-VN");
+}
+
 function formatDateOnly(value) {
   if (!value) return "—";
   const parts = String(value).split("-");
@@ -132,7 +144,7 @@ function renderAgeBuckets(items) {
 function renderDepartmentStats(items) {
   const body = document.getElementById("departmentStatsBody");
   if (!items.length) {
-    body.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Không có dữ liệu.</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Không có dữ liệu.</td></tr>';
     return;
   }
 
@@ -142,7 +154,6 @@ function renderDepartmentStats(items) {
       <td>${item.assetCount}</td>
       <td>${formatOneDecimal(item.averageAgeYears)}</td>
       <td>${formatPercent(item.failureRatio)}</td>
-      <td>${formatOneDecimal(item.averageTicketsPerAsset)}</td>
       <td>${item.overdueNowCount}</td>
     </tr>`).join("");
 }
@@ -156,7 +167,7 @@ function renderTopFailing(items) {
 
   body.innerHTML = items.map((item) => `
     <tr>
-      <td class="fw-semibold">${escapeHtml(item.assetCode)}</td>
+      <td>${assetLink(item)}</td>
       <td>${escapeHtml(item.assetName)}</td>
       <td>${escapeHtml(item.categoryName)}</td>
       <td>${escapeHtml(item.departmentName)}</td>
@@ -222,7 +233,7 @@ function renderCandidates(items) {
 
   body.innerHTML = items.map((item) => `
     <tr>
-      <td class="fw-semibold">${escapeHtml(item.assetCode)}${warrantyBadge(item)}</td>
+      <td>${assetLink(item)}${warrantyBadge(item)}</td>
       <td>${escapeHtml(item.assetName)}</td>
       <td>${escapeHtml(item.categoryName)}</td>
       <td>${escapeHtml(item.departmentName)}</td>
@@ -264,7 +275,7 @@ function renderUpcoming(items) {
 
   body.innerHTML = items.map((item) => `
     <tr>
-      <td class="fw-semibold">${escapeHtml(item.assetCode)}</td>
+      <td>${assetLink(item)}</td>
       <td>${escapeHtml(item.assetName)}</td>
       <td>${escapeHtml(item.categoryName)}</td>
       <td>${escapeHtml(item.departmentName)}</td>
@@ -381,6 +392,86 @@ document.getElementById("loadUpcomingBtn").addEventListener("click", () => {
   loadUpcoming(1).catch((err) => showError(err.message));
 });
 
+// ---------- Chi tiết vòng đời một tài sản (M2) ----------
+
+const assetDetailModal = bootstrap.Modal.getOrCreateInstance(document.getElementById("assetDetailModal"));
+
+const TICKET_STATUS = {
+  Pending: ["Đang xử lý", "text-bg-warning"],
+  Resolved: ["Đã xử lý", "text-bg-success"],
+  Failed: ["Không sửa được", "text-bg-danger"],
+};
+
+let assetDetailRequestId = 0;
+
+async function openAssetDetail(assetId) {
+  const requestId = ++assetDetailRequestId;   // bỏ qua phản hồi cũ nếu người dùng bấm tài sản khác quá nhanh
+  const errorEl = document.getElementById("assetDetailError");
+  errorEl.classList.add("d-none");
+  document.getElementById("assetDetailBody").classList.add("d-none");
+  document.getElementById("assetDetailTitle").textContent = "Đang tải chi tiết vòng đời...";
+  assetDetailModal.show();
+
+  try {
+    const detail = await api.get(`/lifecycle/assets/${assetId}`);
+    if (requestId !== assetDetailRequestId) return;
+    renderAssetDetail(detail);
+    document.getElementById("assetDetailBody").classList.remove("d-none");
+  } catch (err) {
+    if (requestId !== assetDetailRequestId) return;
+    document.getElementById("assetDetailTitle").textContent = "Chi tiết vòng đời";
+    errorEl.textContent = err.message;
+    errorEl.classList.remove("d-none");
+  }
+}
+
+function renderAssetDetail(d) {
+  const setText = (id, value) => { document.getElementById(id).textContent = value; };
+
+  setText("assetDetailTitle", `${d.assetCode} — ${d.assetName}`);
+  setText("adCategoryDept", `${d.categoryName} / ${d.departmentName}`);
+  setText("adPurchaseAge", d.purchaseDate
+    ? `${formatDateOnly(d.purchaseDate)} (${formatOneDecimal(d.ageYears)} năm)`
+    : "Chưa có ngày mua");
+  document.getElementById("adWarranty").innerHTML = d.warrantyExpiry
+    ? `${formatDateOnly(d.warrantyExpiry)} ${d.isUnderWarranty
+        ? '<span class="badge text-bg-success" title="Còn bảo hành — cân nhắc sửa/đổi trả trước khi thay">Còn bảo hành</span>'
+        : '<span class="badge text-bg-secondary">Hết bảo hành</span>'}`
+    : "Không có thông tin bảo hành";
+  setText("adThresholds", `${d.appliedMaxAgeYears} năm / ${d.appliedMaxFailureCount} phiếu bảo trì`);
+  setText("adAgeDue", d.ageDueDate ? formatDateOnly(d.ageDueDate) : "—");
+
+  const status = d.isOverdueNow
+    ? `<span class="badge text-bg-danger">Đã vượt ngưỡng${d.isHighPriority ? " (cả tuổi và số phiếu)" : ""}</span>`
+    : '<span class="badge text-bg-success">Chưa vượt ngưỡng</span>';
+  document.getElementById("adStatus").innerHTML =
+    `${status} <span class="text-muted small ms-1">${d.dueYear ? `Năm đến hạn: ${d.dueYear}` : "Chưa xác định năm đến hạn (thiếu ngày mua)"}</span>`;
+  document.getElementById("adScore").innerHTML = `${priorityBar(d.priorityScore)}
+    <div class="text-muted small">Chỉ dùng để xếp hạng, không quyết định có thay thế hay không.</div>`;
+  setText("adReason", d.reasonText || "Chưa vượt ngưỡng nào.");
+
+  setText("adTicketCount", `(${d.tickets.length} phiếu, ${d.failedTicketCount} không sửa được)`);
+  document.getElementById("adTicketsBody").innerHTML = d.tickets.length
+    ? d.tickets.map((t) => {
+        const [label, css] = TICKET_STATUS[t.status] || [t.status, "text-bg-secondary"];
+        return `
+        <tr>
+          <td>#${t.id}</td>
+          <td class="text-nowrap">${escapeHtml(formatDateTime(t.reportedDate))}</td>
+          <td><span class="badge ${css}">${escapeHtml(label)}</span></td>
+          <td class="text-nowrap">${escapeHtml(formatDateTime(t.resolvedDate))}</td>
+          <td>${escapeHtml(t.description || "—")}</td>
+        </tr>`;
+      }).join("")
+    : '<tr><td colspan="5" class="text-center text-muted py-3">Tài sản chưa có phiếu bảo trì nào.</td></tr>';
+}
+
+document.addEventListener("click", (event) => {
+  const link = event.target.closest("[data-asset-id]");
+  if (link) openAssetDetail(Number(link.dataset.assetId));
+});
+
+// ---------- Khởi động ----------
 if (session?.role !== "Admin IT") {
   document.getElementById("forbiddenAlert").textContent = "Chỉ Admin IT được phép xem và cấu hình Vòng đời tài sản.";
   document.getElementById("forbiddenAlert").classList.remove("d-none");
