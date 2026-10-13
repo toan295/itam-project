@@ -6,6 +6,7 @@ namespace ITAM.API.Repositories.Interfaces;
 public interface ILifecycleRepository
 {
     Task<IReadOnlyList<AssetLifecycleRow>> GetAssetLifecycleRowsAsync(int? departmentId);
+    Task<IReadOnlyList<TicketTrendPointDto>> GetTicketCountByYearAsync(int? departmentId, int fromYear);
     Task<IReadOnlyList<AssetCategoryLifecyclePolicy>> GetPoliciesAsync();
     Task<IReadOnlyList<AssetCategory>> GetCategoriesAsync();
     Task<AssetCategory?> GetCategoryByIdAsync(int categoryId);

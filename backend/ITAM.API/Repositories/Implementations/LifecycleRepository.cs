@@ -42,6 +42,7 @@ public class LifecycleRepository : ILifecycleRepository
                 DepartmentId = asset.DepartmentId,
                 DepartmentName = asset.Department.Name,
                 PurchaseDate = asset.PurchaseDate,
+                WarrantyExpiry = asset.WarrantyExpiry,
                 TicketCount = 0,
                 FailedTicketCount = 0,
             })
@@ -79,6 +80,31 @@ public class LifecycleRepository : ILifecycleRepository
         }
 
         return rows;
+    }
+
+    public async Task<IReadOnlyList<TicketTrendPointDto>> GetTicketCountByYearAsync(
+        int? departmentId,
+        int fromYear)
+    {
+        var query = _context.MaintenanceTickets
+            .AsNoTracking()
+            .Where(ticket => ticket.Asset.Status != AssetStatus.Disposed)
+            .Where(ticket => ticket.ReportedDate.Year >= fromYear);
+
+        if (departmentId.HasValue)
+        {
+            query = query.Where(ticket => ticket.Asset.DepartmentId == departmentId.Value);
+        }
+
+        return await query
+            .GroupBy(ticket => ticket.ReportedDate.Year)
+            .Select(group => new TicketTrendPointDto
+            {
+                Year = group.Key,
+                TicketCount = group.Count(),
+            })
+            .OrderBy(point => point.Year)
+            .ToListAsync();
     }
 
     public async Task<IReadOnlyList<AssetCategoryLifecyclePolicy>> GetPoliciesAsync() =>

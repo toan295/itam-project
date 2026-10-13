@@ -16,7 +16,7 @@
       <div class="page-header">
         <div>
           <h1>Vòng đời tài sản</h1>
-          <p>Phân tích tuổi thiết bị, lịch sử bảo trì và đề xuất các tài sản cần thay thế.</p>
+          <p>Phân tích tuổi thiết bị, lịch sử bảo trì, xếp hạng đề xuất thay thế và cảnh báo sắp tới hạn.</p>
         </div>
       </div>
 
@@ -39,6 +39,15 @@
                   <option value="">-- Tất cả --</option>
                 </select>
               </div>
+              <div class="col-md-4 col-lg-3">
+                <label class="form-label">Sắp xếp đề xuất theo</label>
+                <select class="form-select" id="sortBy">
+                  <option value="score">Điểm ưu tiên</option>
+                  <option value="age">Tuổi tài sản</option>
+                  <option value="failures">Số phiếu bảo trì</option>
+                  <option value="code">Mã tài sản</option>
+                </select>
+              </div>
               <div class="col-auto">
                 <button class="btn btn-primary" type="submit"><i class="bi bi-search"></i> Lọc</button>
               </div>
@@ -50,28 +59,35 @@
         </div>
 
         <div class="row g-3 mb-3">
-          <div class="col-sm-6 col-xl-3">
+          <div class="col-sm-6 col-xl">
             <div class="eaims-card h-100"><div class="card-body">
               <div class="text-muted small">Tổng tài sản</div>
               <div class="fs-3 fw-bold" id="statTotalAssets">0</div>
               <div class="small text-muted" id="statUnknownPurchase">0 tài sản chưa có ngày mua</div>
             </div></div>
           </div>
-          <div class="col-sm-6 col-xl-3">
+          <div class="col-sm-6 col-xl">
             <div class="eaims-card h-100"><div class="card-body">
               <div class="text-muted small">Tuổi trung bình</div>
               <div class="fs-3 fw-bold" id="statAverageAge">—</div>
               <div class="small text-muted">năm</div>
             </div></div>
           </div>
-          <div class="col-sm-6 col-xl-3">
+          <div class="col-sm-6 col-xl">
+            <div class="eaims-card h-100"><div class="card-body">
+              <div class="text-muted small">Tuổi trung vị</div>
+              <div class="fs-3 fw-bold" id="statMedianAge">—</div>
+              <div class="small text-muted">năm</div>
+            </div></div>
+          </div>
+          <div class="col-sm-6 col-xl">
             <div class="eaims-card h-100"><div class="card-body">
               <div class="text-muted small">Tỷ lệ thiết bị từng lỗi</div>
               <div class="fs-3 fw-bold" id="statFailureRatio">0%</div>
               <div class="small text-muted"><span id="statAverageTickets">0</span> phiếu TB/thiết bị</div>
             </div></div>
           </div>
-          <div class="col-sm-6 col-xl-3">
+          <div class="col-sm-6 col-xl">
             <div class="eaims-card h-100"><div class="card-body">
               <div class="text-muted small">Cần thay thế</div>
               <div class="fs-3 fw-bold text-danger" id="statOverdue">0</div>
@@ -96,19 +112,103 @@
 
         <div class="eaims-card mb-3">
           <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-              <h5 class="mb-0">Đề xuất thay thế</h5>
-              <span class="text-muted small" id="candidateTotalLabel"></span>
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+              <div>
+                <h5 class="mb-0">Đề xuất thay thế</h5>
+                <span class="text-muted small" id="candidateTotalLabel"></span>
+              </div>
+              <span class="text-muted small">Điểm ưu tiên chỉ dùng để xếp hạng; điều kiện đề xuất vẫn theo ngưỡng vòng đời.</span>
             </div>
             <div class="table-responsive">
               <table class="eaims-table">
                 <thead><tr>
-                  <th>Mã tài sản</th><th>Tên</th><th>Loại</th><th>Phòng ban</th><th>Tuổi</th><th>Phiếu bảo trì</th><th>Lý do</th>
+                  <th>Mã tài sản</th><th>Tên</th><th>Loại</th><th>Phòng ban</th><th>Tuổi</th><th>Phiếu bảo trì</th><th>Điểm ưu tiên</th><th>Lý do</th>
                 </tr></thead>
                 <tbody id="candidateBody"></tbody>
               </table>
             </div>
             <nav class="mt-3"><ul class="pagination mb-0 justify-content-end" id="pagination"></ul></nav>
+          </div>
+        </div>
+
+        <div class="eaims-card mb-3">
+          <div class="card-body">
+            <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
+              <div>
+                <h5 class="mb-1">Sắp tới hạn</h5>
+                <div class="text-muted small">Cảnh báo sớm cho tài sản chưa vượt ngưỡng nhưng sắp đủ tuổi hoặc sát ngưỡng lỗi.</div>
+                <div class="text-muted small" id="upcomingTotalLabel"></div>
+              </div>
+              <div style="min-width: 220px;">
+                <label class="form-label mb-1">Trong vòng N tháng tới</label>
+                <div class="input-group input-group-sm">
+                  <input type="number" min="1" max="60" value="12" class="form-control" id="upcomingMonths">
+                  <button class="btn btn-outline-primary" type="button" id="loadUpcomingBtn">Xem</button>
+                </div>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="eaims-table">
+                <thead><tr>
+                  <th>Mã</th><th>Tên</th><th>Loại</th><th>Phòng ban</th><th>Tuổi</th><th>Số phiếu</th><th>Ngày đủ tuổi</th><th>Còn (ngày)</th><th>Lý do</th>
+                </tr></thead>
+                <tbody id="upcomingBody"></tbody>
+              </table>
+            </div>
+            <nav class="mt-3"><ul class="pagination mb-0 justify-content-end" id="upcomingPagination"></ul></nav>
+          </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+          <div class="col-xl-6">
+            <div class="eaims-card h-100">
+              <div class="card-body">
+                <h5 class="mb-3">Phân bố theo nhóm tuổi</h5>
+                <div class="table-responsive">
+                  <table class="eaims-table">
+                    <thead><tr><th>Nhóm</th><th>Số TS</th><th>Số TS từng lỗi</th><th>Tỷ lệ lỗi</th><th>Phiếu TB</th></tr></thead>
+                    <tbody id="ageBucketsBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-xl-6">
+            <div class="eaims-card h-100">
+              <div class="card-body">
+                <h5 class="mb-3">Theo phòng ban</h5>
+                <div class="table-responsive">
+                  <table class="eaims-table">
+                    <thead><tr><th>Phòng ban</th><th>Số TS</th><th>Tuổi TB</th><th>Tỷ lệ lỗi</th><th>Phiếu TB</th><th>Cần thay</th></tr></thead>
+                    <tbody id="departmentStatsBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="eaims-card mb-3">
+          <div class="card-body">
+            <h5 class="mb-3">Top 10 thiết bị lỗi nhiều nhất</h5>
+            <div class="table-responsive">
+              <table class="eaims-table">
+                <thead><tr><th>Mã</th><th>Tên</th><th>Loại</th><th>Phòng ban</th><th>Tổng phiếu</th><th>Phiếu lỗi</th></tr></thead>
+                <tbody id="topFailingBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="eaims-card mb-3">
+          <div class="card-body">
+            <h5 class="mb-3">Xu hướng phiếu bảo trì 5 năm gần nhất</h5>
+            <div class="table-responsive">
+              <table class="eaims-table">
+                <thead><tr><th>Năm</th><th>Số phiếu</th></tr></thead>
+                <tbody id="ticketTrendBody"></tbody>
+              </table>
+            </div>
           </div>
         </div>
 
@@ -128,13 +228,6 @@
                 <tbody id="policyBody"></tbody>
               </table>
             </div>
-          </div>
-        </div>
-
-        <div class="eaims-card">
-          <div class="card-body">
-            <h5 class="mb-3">Phân bố tuổi tài sản</h5>
-            <div class="row g-2" id="ageBuckets"></div>
           </div>
         </div>
       </div>
