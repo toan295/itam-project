@@ -67,8 +67,11 @@ function currentSortBy() {
   return document.getElementById("sortBy").value || "score";
 }
 
+// Khoảng cảnh báo hợp lệ 1–60 tháng (khớp backend); trả null nếu người dùng nhập sai để báo lỗi ngay thay vì chờ 400.
 function currentUpcomingMonths() {
-  return Number(document.getElementById("upcomingMonths").value || 12);
+  const raw = document.getElementById("upcomingMonths").value.trim();
+  const months = raw === "" ? 12 : Number(raw);
+  return Number.isInteger(months) && months >= 1 && months <= 60 ? months : null;
 }
 
 async function loadStats() {
@@ -136,7 +139,7 @@ function renderDepartmentStats(items) {
   body.innerHTML = items.map((item) => `
     <tr>
       <td class="fw-semibold">${escapeHtml(item.departmentName)}</td>
-      <td>${item.totalAssets}</td>
+      <td>${item.assetCount}</td>
       <td>${formatOneDecimal(item.averageAgeYears)}</td>
       <td>${formatPercent(item.failureRatio)}</td>
       <td>${formatOneDecimal(item.averageTicketsPerAsset)}</td>
@@ -147,7 +150,7 @@ function renderDepartmentStats(items) {
 function renderTopFailing(items) {
   const body = document.getElementById("topFailingBody");
   if (!items.length) {
-    body.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Chưa có tài sản phát sinh phiếu bảo trì.</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Chưa có tài sản phát sinh phiếu bảo trì.</td></tr>';
     return;
   }
 
@@ -157,6 +160,7 @@ function renderTopFailing(items) {
       <td>${escapeHtml(item.assetName)}</td>
       <td>${escapeHtml(item.categoryName)}</td>
       <td>${escapeHtml(item.departmentName)}</td>
+      <td>${formatOneDecimal(item.ageYears)}</td>
       <td>${item.ticketCount}</td>
       <td>${item.failedTicketCount}</td>
     </tr>`).join("");
@@ -241,6 +245,9 @@ function buildUpcomingQuery(page) {
 }
 
 async function loadUpcoming(page = 1) {
+  if (currentUpcomingMonths() === null) {
+    throw new Error("Số tháng cảnh báo phải là số nguyên từ 1 đến 60.");
+  }
   const result = await api.get(`/lifecycle/upcoming?${buildUpcomingQuery(page)}`);
   currentUpcomingPage = result.page;
   renderUpcoming(result.items || []);
