@@ -317,7 +317,7 @@ function buildDocumentHtml(doc) {
     th, td { border: 1px solid #000; padding: 6px 5px; text-align: center; vertical-align: middle; }
     td.left { text-align: left; }
     .sign { display: flex; justify-content: space-between; margin-top: 18px; text-align: center; }
-    .sign > div { width: 32%; } .sign .space { height: 90px; } .sign .italic { font-style: italic; }
+    .sign > div { width: 40%; } .sign .space { height: 90px; } .sign .italic { font-style: italic; }
     .toolbar { position: fixed; top: 8px; right: 12px; } @media print { .toolbar { display: none; } }
   </style></head><body>
   <div class="toolbar"><button onclick="window.print()">In</button></div>
@@ -343,11 +343,10 @@ function buildDocumentHtml(doc) {
   ${doc.note ? `<p>Ghi chú: ${escapeHtml(doc.note)}</p>` : ""}
   <p>Bên A cam đoan rằng toàn bộ tài sản đã được bàn giao đầy đủ, đúng số lượng, chất lượng. Kể từ ngày ${date.short}, số tài sản trên
      sẽ do Bên B (${escapeHtml(receiverName)}) chịu trách nhiệm quản lý.</p>
-  <p>Biên bản được lập thành 03 bản, mỗi bên giữ một bản.</p>
+  <p>Biên bản được lập thành 02 bản, mỗi bên giữ một bản.</p>
   <div class="sign">
     <div><p class="bold">Bên giao (Bên A)</p><p class="italic">(Ký, ghi rõ họ tên)</p><div class="space"></div><p class="bold">${escapeHtml(doc.giver.fullName || "")}</p></div>
     <div><p class="bold">Bên nhận (Bên B)</p><p class="italic">(Ký, ghi rõ họ tên)</p><div class="space"></div><p class="bold">${escapeHtml(doc.receiver.fullName || "")}</p></div>
-    <div><p class="bold">Bên làm chứng</p><p class="italic">(Ký, ghi rõ họ tên)</p><div class="space"></div></div>
   </div>
   <script>window.onload = () => window.print();<\/script></body></html>`;
 }
