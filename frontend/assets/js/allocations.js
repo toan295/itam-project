@@ -146,14 +146,19 @@ function renderOverdue(items) {
 
   section.classList.remove("d-none");
   document.getElementById("overdueCount").textContent = `${items.length} tài sản cần chú ý`;
-  document.getElementById("overdueList").innerHTML = items.map((item) => {
+  const renderItem = (item) => {
     const badge = item.daysSinceLastMaintenance >= 365 ? "danger" : "warning";
     const last = item.lastMaintenanceDate || "Chưa từng bảo trì";
-    return `<div class="d-flex justify-content-between border-top py-2">
-      <span><strong>${escapeHtml(item.assetCode)}</strong> - ${escapeHtml(item.assetName)} · ${escapeHtml(item.recipientName)} · ${escapeHtml(item.departmentName)}</span>
-      <span class="badge text-bg-${badge}">${item.daysSinceLastMaintenance} ngày · ${escapeHtml(last)}</span>
+    return `<div class="d-flex flex-column flex-md-row justify-content-between gap-1 border-top py-2">
+      <span class="text-truncate"><strong>${escapeHtml(item.assetCode)}</strong> - ${escapeHtml(item.assetName)} · ${escapeHtml(item.recipientName)} · ${escapeHtml(item.departmentName)}</span>
+      <span class="badge text-bg-${badge} align-self-start flex-shrink-0">${item.daysSinceLastMaintenance} ngày · ${escapeHtml(last)}</span>
     </div>`;
-  }).join("");
+  };
+  document.getElementById("overduePreview").innerHTML = items.slice(0, 2).map(renderItem).join("");
+  document.getElementById("overdueAllList").innerHTML = items.map(renderItem).join("");
+  const toggle = document.getElementById("toggleOverdueBtn");
+  toggle.classList.toggle("d-none", items.length <= 2);
+  toggle.textContent = `Xem tất cả ${items.length} cảnh báo`;
 }
 
 async function searchAssets(keyword = "") {

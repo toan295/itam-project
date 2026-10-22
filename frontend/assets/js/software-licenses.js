@@ -27,6 +27,11 @@ function initPage() {
     e.preventDefault();
     loadLicenses();
   });
+  document.getElementById("resetLicenseFilter").addEventListener("click", () => {
+    document.getElementById("searchText").value = "";
+    document.getElementById("licenseStatus").value = "";
+    loadLicenses();
+  });
   document.getElementById("licenseForm").addEventListener("submit", submitLicenseForm);
   document.getElementById("assignForm").addEventListener("submit", submitAssignForm);
 
@@ -61,7 +66,16 @@ async function loadWarnings() {
       el.classList.add("d-none");
       return;
     }
-    el.textContent = `⚠️ Có ${items.length} license sẽ hết hạn trong 30 ngày tới: ${items.map((i) => i.softwareName).join(", ")}.`;
+    const renderItem = (item) => `<div class="d-flex flex-column flex-md-row justify-content-between gap-1 border-top py-2">
+      <span class="text-truncate"><strong>${escapeHtml(item.softwareName)}</strong> · <code>${escapeHtml(item.licenseKey)}</code></span>
+      <span class="badge text-bg-warning align-self-start flex-shrink-0">Hết hạn ${escapeHtml(item.expiryDate)}</span>
+    </div>`;
+    document.getElementById("warningCount").textContent = `${items.length} license trong 30 ngày tới`;
+    document.getElementById("warningPreview").innerHTML = items.slice(0, 2).map(renderItem).join("");
+    document.getElementById("allWarningsList").innerHTML = items.map(renderItem).join("");
+    const toggle = document.getElementById("toggleWarningsBtn");
+    toggle.classList.toggle("d-none", items.length <= 2);
+    toggle.textContent = `Xem tất cả ${items.length} thông báo`;
     el.classList.remove("d-none");
   } catch {
     // Không chặn trang nếu cảnh báo lỗi — chỉ bảng chính mới cần báo lỗi rõ.
@@ -76,7 +90,15 @@ async function loadLicenses() {
 
   try {
     const result = await api.get(`/software-licenses?${params}`);
-    renderTable(result.items);
+    const status = document.getElementById("licenseStatus").value;
+    const filtered = (result.items || []).filter((item) => {
+      if (status === "expired") return item.isExpired;
+      if (status === "expiring") return item.isExpiringSoon;
+      if (status === "usage") return item.isNearUsageLimit;
+      if (status === "normal") return !item.isExpired && !item.isExpiringSoon && !item.isNearUsageLimit;
+      return true;
+    });
+    renderTable(filtered);
   } catch (err) {
     showError(err.message);
     renderTable([]);

@@ -27,7 +27,9 @@
             <strong><i class="bi bi-exclamation-triangle"></i> Cảnh báo quá hạn bảo trì</strong>
             <span class="small" id="overdueCount"></span>
           </div>
-          <div id="overdueList" class="small"></div>
+          <div id="overduePreview" class="small"></div>
+          <button class="btn btn-sm btn-outline-warning mt-2 d-none" id="toggleOverdueBtn" type="button" data-bs-toggle="collapse" data-bs-target="#overdueAllWrap" aria-expanded="false" aria-controls="overdueAllWrap">Xem tất cả cảnh báo</button>
+          <div class="collapse mt-2" id="overdueAllWrap"><div id="overdueAllList" class="small"></div></div>
         </div>
       </div>
 

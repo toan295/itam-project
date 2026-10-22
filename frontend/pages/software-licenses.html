@@ -22,7 +22,15 @@
       </div>
 
       <div id="forbiddenAlert" class="alert alert-warning d-none"></div>
-      <div id="warningBanner" class="alert alert-warning d-none"></div>
+      <div id="warningBanner" class="alert alert-warning d-none">
+        <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
+          <strong><i class="bi bi-exclamation-triangle"></i> License sắp hết hạn</strong>
+          <span class="small flex-shrink-0" id="warningCount"></span>
+        </div>
+        <div id="warningPreview" class="small"></div>
+        <button class="btn btn-sm btn-outline-warning mt-2 d-none" id="toggleWarningsBtn" type="button" data-bs-toggle="collapse" data-bs-target="#allWarningsWrap" aria-expanded="false" aria-controls="allWarningsWrap">Xem tất cả thông báo</button>
+        <div class="collapse mt-2" id="allWarningsWrap"><div id="allWarningsList" class="small"></div></div>
+      </div>
       <div id="errorAlert" class="alert alert-danger d-none"></div>
 
       <div id="licenseContent">
@@ -33,7 +41,18 @@
                 <label class="form-label">Tìm kiếm</label>
                 <input class="form-control" id="searchText" placeholder="Tên phần mềm hoặc LicenseKey" style="width: 260px">
               </div>
+              <div class="col-auto">
+                <label class="form-label">Trạng thái</label>
+                <select class="form-select" id="licenseStatus">
+                  <option value="">Tất cả trạng thái</option>
+                  <option value="expired">Đã hết hạn</option>
+                  <option value="expiring">Sắp hết hạn</option>
+                  <option value="usage">Gần giới hạn</option>
+                  <option value="normal">Bình thường</option>
+                </select>
+              </div>
               <div class="col-auto"><button class="btn btn-primary" type="submit"><i class="bi bi-search"></i> Tìm</button></div>
+              <div class="col-auto"><button class="btn btn-outline-secondary" type="button" id="resetLicenseFilter">Xoá lọc</button></div>
             </form>
           </div>
         </div>
