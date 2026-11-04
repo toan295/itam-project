@@ -75,6 +75,45 @@ async function loadFilterOptions() {
   }
 }
 
+if (session.role === "Admin IT") {
+  document.getElementById("assetImportTools").style.display = "";
+}
+
+document.getElementById("downloadAssetTemplateBtn").addEventListener("click", async () => {
+  try {
+    await api.download("/assets/import/template", "mau-import-tai-san.xlsx");
+  } catch (err) {
+    showError(err.message);
+  }
+});
+
+document.getElementById("assetImportForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const file = document.getElementById("assetImportFile").files[0];
+  if (!file) return;
+  const button = document.getElementById("assetImportSubmitBtn");
+  const resultEl = document.getElementById("assetImportResult");
+  button.disabled = true;
+  resultEl.classList.add("d-none");
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    const result = await api.upload("/assets/import", formData);
+    const errors = result.errors || [];
+    resultEl.className = `alert ${result.failedRows ? "alert-warning" : "alert-success"} mt-3`;
+    resultEl.innerHTML = `<strong>Import hoàn tất:</strong> ${result.successRows}/${result.totalRows} dòng thành công, ${result.failedRows} dòng lỗi.` +
+      (errors.length ? `<ul class="mb-0 mt-2">${errors.map((item) => `<li>${item.row ? `Dòng ${item.row}: ` : ""}${escapeHtml(item.message)}</li>`).join("")}</ul>` : "");
+    await loadAssets(1);
+  } catch (err) {
+    resultEl.className = "alert alert-danger mt-3";
+    resultEl.textContent = err.message;
+  } finally {
+    resultEl.classList.remove("d-none");
+    button.disabled = false;
+    document.getElementById("assetImportFile").value = "";
+  }
+});
+
 function fillSelect(elementId, items, placeholder) {
   const select = document.getElementById(elementId);
   const previousValue = select.value;

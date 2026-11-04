@@ -114,6 +114,7 @@ builder.Services.AddScoped<IExclusiveSection, ExclusiveSection>(); // khoá dòn
 // Module Quản lý tài sản CNTT (Assets) — Tuần 3-4, Lâm Toàn.
 builder.Services.AddScoped<IAssetRepository, AssetRepository>();
 builder.Services.AddScoped<IAssetService, AssetService>();
+builder.Services.AddScoped<ITAM.API.Services.Implementations.AssetImportService>();
 builder.Services.AddScoped<IValidator<CreateAssetRequestDto>, CreateAssetRequestValidator>();
 builder.Services.AddScoped<IValidator<UpdateAssetRequestDto>, UpdateAssetRequestValidator>();
 

@@ -21,28 +21,40 @@
       </div>
 
       <div class="row g-3 mb-4">
-        <div class="col-6 col-lg-3">
+        <div class="col-6 col-lg-2">
           <div class="stat-card">
             <div class="icon-box tint-primary"><i class="bi bi-laptop"></i></div>
             <div><div class="value" id="statAssets">–</div><div class="label">Tổng số tài sản</div></div>
           </div>
         </div>
-        <div class="col-6 col-lg-3">
+        <div class="col-6 col-lg-2">
           <div class="stat-card">
             <div class="icon-box tint-slate"><i class="bi bi-tags"></i></div>
             <div><div class="value" id="statCategories">–</div><div class="label">Loại tài sản</div></div>
           </div>
         </div>
-        <div class="col-6 col-lg-3">
+        <div class="col-6 col-lg-2">
           <div class="stat-card">
             <div class="icon-box tint-info"><i class="bi bi-key"></i></div>
             <div><div class="value" id="statLicenses">–</div><div class="label">Giấy phép phần mềm</div></div>
           </div>
         </div>
-        <div class="col-6 col-lg-3">
+        <div class="col-6 col-lg-2">
           <div class="stat-card">
             <div class="icon-box tint-warning"><i class="bi bi-exclamation-triangle"></i></div>
             <div><div class="value" id="statExpiring">–</div><div class="label">License sắp hết hạn (30 ngày)</div></div>
+          </div>
+        </div>
+        <div class="col-6 col-lg-2" data-roles="Admin IT,Manager">
+          <div class="stat-card">
+            <div class="icon-box tint-success"><i class="bi bi-box-arrow-up-right"></i></div>
+            <div><div class="value" id="statActiveAllocations">–</div><div class="label">Đang cấp phát</div></div>
+          </div>
+        </div>
+        <div class="col-6 col-lg-2" data-roles="Admin IT">
+          <div class="stat-card">
+            <div class="icon-box tint-danger"><i class="bi bi-arrow-repeat"></i></div>
+            <div><div class="value" id="statReplacementCandidates">–</div><div class="label">Đề xuất thay thế</div></div>
           </div>
         </div>
       </div>
@@ -157,17 +169,23 @@
 
       api.get("/asset-categories").then((r) => document.getElementById("statCategories").textContent = r.length).catch(() => {});
 
-      if (session.role === "Admin IT") {
-        api.get("/software-licenses?page=1&pageSize=1").then((r) => document.getElementById("statLicenses").textContent = r.totalItems).catch(() => {});
-        api.get("/software-licenses/expiring-soon?days=30").then((items) => {
-          document.getElementById("statExpiring").textContent = items.length;
-          renderExpiringList(items);
-        }).catch(() => {});
-      } else {
+      api.get("/dashboard/summary").then((summary) => {
+        if (summary.activeAllocations !== null) document.getElementById("statActiveAllocations").textContent = summary.activeAllocations;
+        if (session.role === "Admin IT") {
+          document.getElementById("statLicenses").textContent = summary.softwareLicenseCount;
+          document.getElementById("statExpiring").textContent = summary.expiringSoftwareLicenses;
+          document.getElementById("statReplacementCandidates").textContent = summary.replacementCandidates;
+          renderExpiringList(summary.expiringSoftwareLicenseItems || []);
+        }
+      }).catch(() => {});
+
+      if (session.role !== "Admin IT") {
         document.getElementById("statLicenses").textContent = "🔒";
         document.getElementById("statExpiring").textContent = "🔒";
         document.getElementById("expiringList").innerHTML =
           '<div class="empty-state py-4"><i class="bi bi-lock"></i><div class="title">Chỉ Admin IT xem được mục này</div></div>';
+      } else {
+        document.getElementById("expiringList").innerHTML = '<div class="text-muted small">Đang tải thống kê…</div>';
       }
 
       function renderStatusChart(items) {
@@ -202,9 +220,11 @@
           el.innerHTML = '<div class="empty-state py-4"><i class="bi bi-check-circle"></i><div class="title">Không có license nào sắp hết hạn</div></div>';
           return;
         }
-        const today = new Date();
         el.innerHTML = items.slice(0, 6).map((item) => {
-          const daysLeft = Math.ceil((new Date(item.expiryDate) - today) / 86400000);
+          const today = new Date();
+          const todayUtc = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+          const [year, month, day] = item.expiryDate.split("-").map(Number);
+          const daysLeft = Math.ceil((Date.UTC(year, month - 1, day) - todayUtc) / 86400000);
           const badge = item.isExpired
             ? '<span class="badge-soft danger"><i class="bi bi-x-circle"></i> Đã hết hạn</span>'
             : `<span class="badge-soft warning"><i class="bi bi-clock"></i> Còn ${daysLeft} ngày</span>`;

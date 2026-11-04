@@ -63,7 +63,7 @@ async function apiRequest(path, options = {}) {
     res = await fetch(`${API_BASE_URL}${path}`, {
       ...options,
       headers: {
-        "Content-Type": "application/json",
+        ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
         Authorization: `Bearer ${getToken() || ""}`,
         ...(options.headers || {}),
       },
@@ -110,7 +110,26 @@ async function apiRequest(path, options = {}) {
 const api = {
   get: (path) => apiRequest(path, { method: "GET" }),
   post: (path, data) => apiRequest(path, { method: "POST", body: JSON.stringify(data) }),
+  upload: (path, formData) => apiRequest(path, { method: "POST", body: formData }),
   put: (path, data) => apiRequest(path, { method: "PUT", body: JSON.stringify(data) }),
   patch: (path, data) => apiRequest(path, { method: "PATCH", body: JSON.stringify(data) }),
   del: (path) => apiRequest(path, { method: "DELETE" }),
+  download: async (path, fileName) => {
+    let response;
+    try {
+      response = await fetch(`${API_BASE_URL}${path}`, { headers: { Authorization: `Bearer ${getToken() || ""}` } });
+    } catch {
+      throw new Error("Không thể kết nối tới API. Kiểm tra API đã chạy và đúng cổng trong api-client.js.");
+    }
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.message || `Không tải được file (mã ${response.status}).`);
+    }
+    const objectUrl = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = fileName;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  },
 };
