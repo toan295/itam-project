@@ -11,6 +11,8 @@ public class UpdateTicketStatusRequestValidator : AbstractValidator<UpdateTicket
         RuleFor(x => x.Status)
             .NotEmpty().WithMessage("Trạng thái không được để trống.")
             .Must(s => s is "Resolved" or "Failed").WithMessage("Trạng thái chỉ được là Resolved hoặc Failed.");
-        RuleFor(x => x.Notes).MaximumLength(1000).WithMessage("Ghi chú không được vượt quá 1000 ký tự.");
+        RuleFor(x => x.Notes)
+            .NotEmpty().WithMessage("Vui lòng nhập kết quả xử lý (việc đã làm hoặc lý do không xử lý được).")
+            .MaximumLength(1000).WithMessage("Kết quả xử lý không được vượt quá 1000 ký tự.");
     }
 }

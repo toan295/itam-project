@@ -18,6 +18,7 @@ public class ReturnAssetAllocationValidator : AbstractValidator<ReturnAssetAlloc
             .WithMessage("Tình trạng tài sản phải là Good hoặc Damaged.");
 
         RuleFor(x => x.ReturnNote)
-            .MaximumLength(500).WithMessage("Ghi chú thu hồi không được vượt quá 500 ký tự.");
+            .MaximumLength(500).WithMessage("Ghi chú thu hồi không được vượt quá 500 ký tự.")
+            .Must(v => string.IsNullOrEmpty(v) || v.Trim().Length > 0).WithMessage("Ghi chú thu hồi không được chỉ chứa khoảng trắng.");
     }
 }

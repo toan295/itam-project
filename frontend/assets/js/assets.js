@@ -1,9 +1,9 @@
 const session = requireAuth("login.html");
 renderNav({ active: "assets", basePath: "../" });
 
-const canCreateOrEdit = session.role === "Admin IT" || session.role === "Manager";
+const canCreateOrEdit = can("assets.create") || can("assets.update");
 const canDispose = session.role === "Admin IT"; // chỉ Admin IT được khôi phục tài sản đã thanh lý.
-const canStartDisposal = session.role === "Technician"; // Technician mở quy trình thanh lý (kiểm tra -> đề xuất).
+const canStartDisposal = can("disposals.inspect"); // Technician mở quy trình thanh lý (kiểm tra -> đề xuất).
 
 let currentPage = 1;
 let assetModal;
@@ -84,37 +84,61 @@ function fillSelect(elementId, items, placeholder) {
   select.value = previousValue;
 }
 
-function buildSearchParams(page) {
-  const params = new URLSearchParams({ page, pageSize: 10 });
-  const fields = ["keyword", "status", "warrantyStatus", "departmentId", "categoryId", "purchaseYear"];
-  for (const field of fields) {
-    const value = document.getElementById(field).value.trim();
-    if (value) {
-      params.set(field, value);
-    }
+// Năm mua chỉ chọn từ danh sách (từ năm nay lùi về MIN_PURCHASE_YEAR) — không cho gõ tự do để khỏi nhập sai.
+const MIN_PURCHASE_YEAR = 1990;
+(function fillPurchaseYears() {
+  const select = document.getElementById("purchaseYear");
+  for (let y = new Date().getFullYear(); y >= MIN_PURCHASE_YEAR; y--) {
+    select.insertAdjacentHTML("beforeend", `<option value="${y}">${y}</option>`);
   }
-  return params;
+})();
+
+const FILTER_IDS = ["keyword", "status", "warrantyStatus", "departmentId", "categoryId", "purchaseYear",
+  "warrantyExpiringInDays", "allocationState", "purchasedFrom", "sort"];
+
+function buildSearchParams(page) {
+  return filterBar.params(FILTER_IDS, { page, pageSize: 10 });
+}
+
+let loadSeq = 0; // chỉ nhận kết quả của lần tải mới nhất — tránh kết quả cũ (về chậm) đè lên bộ lọc mới.
+
+function renderLoading() {
+  document.getElementById("assetTableBody").innerHTML =
+    `<tr><td colspan="7" class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Đang tải...</td></tr>`;
 }
 
 async function loadAssets(page = 1) {
+  const seq = ++loadSeq;
   currentPage = page;
   clearError();
+  renderLoading();
   try {
     const result = await api.get(`/assets/search?${buildSearchParams(page)}`);
+    if (seq !== loadSeq) return;
+    // Đang ở trang vượt quá tổng số trang (vd xoá/lọc làm danh sách ngắn lại) -> quay về trang cuối thay vì hiện trống.
+    if (result.items.length === 0 && page > 1 && result.totalPages > 0) {
+      loadAssets(result.totalPages);
+      return;
+    }
     renderTable(result.items);
     renderPagination(result.page, result.totalPages);
     document.getElementById("totalItemsLabel").textContent = `Tổng cộng: ${result.totalItems} tài sản`;
   } catch (err) {
+    if (seq !== loadSeq) return;
     showError(err.message);
-    renderTable([]);
+    renderTable([], true);
     renderPagination(1, 0);
     document.getElementById("totalItemsLabel").textContent = "";
   }
 }
 
-function renderTable(items) {
+function renderTable(items, loadFailed = false) {
   currentItems = items;
   const tbody = document.getElementById("assetTableBody");
+  if (loadFailed) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><i class="bi bi-exclamation-triangle"></i><div class="title">Không tải được danh sách tài sản</div><button class="btn btn-sm btn-outline-primary mt-2" onclick="loadAssets(currentPage)"><i class="bi bi-arrow-clockwise"></i> Thử lại</button></div></td></tr>`;
+    return;
+  }
   if (items.length === 0) {
     tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><i class="bi bi-inbox"></i><div class="title">Không có tài sản phù hợp</div>Thử điều chỉnh bộ lọc hoặc thêm tài sản mới.</div></td></tr>`;
     return;
@@ -123,7 +147,7 @@ function renderTable(items) {
   tbody.innerHTML = items.map((a) => `
     <tr>
       <td class="fw-semibold">${escapeHtml(a.assetCode)}</td>
-      <td>${escapeHtml(a.name)}</td>
+      <td>${escapeHtml(a.name)}${a.serialNumber ? `<div class="text-muted small">Serial: ${escapeHtml(a.serialNumber)}</div>` : ""}</td>
       <td>${escapeHtml(a.categoryName)}</td>
       <td>${escapeHtml(a.departmentName)}</td>
       <td><span class="badge-soft ${STATUS_BADGE_CLASSES[a.status] || "slate"}"><i class="bi ${STATUS_ICONS[a.status] || "bi-question-circle"}"></i> ${STATUS_LABELS[a.status] || a.status}</span></td>
@@ -159,12 +183,14 @@ function applyStatusPermissions(currentStatus) {
 function openCreateModal() {
   document.getElementById("assetForm").reset();
   document.getElementById("assetId").value = "";
+  document.getElementById("assetVersion").value = "";
   document.getElementById("assetModalTitle").textContent = "Thêm tài sản";
   document.getElementById("formStatusWrapper").style.display = "none";
   if (session.role === "Manager") {
     document.getElementById("formDepartmentId").value = String(session.departmentId);
   }
   clearModalError();
+  document.querySelectorAll("#assetForm [data-date-vi]").forEach((i) => DateVi.validate(i));
   assetModal.show();
 }
 
@@ -174,6 +200,7 @@ function openEditModal(id) {
 
   document.getElementById("assetForm").reset();
   document.getElementById("assetId").value = asset.id;
+  document.getElementById("assetVersion").value = asset.version ?? "";
   document.getElementById("assetModalTitle").textContent = `Sửa tài sản ${asset.assetCode}`;
   document.getElementById("assetCode").value = asset.assetCode;
   document.getElementById("assetName").value = asset.name;
@@ -182,8 +209,8 @@ function openEditModal(id) {
   document.getElementById("serialNumber").value = asset.serialNumber || "";
   document.getElementById("specification").value = asset.specification || "";
   document.getElementById("operatingSystem").value = asset.operatingSystem || "";
-  document.getElementById("purchaseDate").value = asset.purchaseDate || "";
-  document.getElementById("warrantyExpiry").value = asset.warrantyExpiry || "";
+  DateVi.set(document.getElementById("purchaseDate"), asset.purchaseDate);
+  DateVi.set(document.getElementById("warrantyExpiry"), asset.warrantyExpiry);
   document.getElementById("formStatusWrapper").style.display = "block";
   document.getElementById("formStatus").value = asset.status;
   applyStatusPermissions(asset.status);
@@ -196,45 +223,70 @@ if (!canCreateOrEdit) {
   document.getElementById("openCreateBtn").style.display = "none";
 }
 
-document.getElementById("assetForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  clearModalError();
-
-  const id = document.getElementById("assetId").value;
-  const payload = {
-    assetCode: document.getElementById("assetCode").value.trim(),
-    name: document.getElementById("assetName").value.trim(),
-    categoryId: Number(document.getElementById("formCategoryId").value),
-    departmentId: Number(document.getElementById("formDepartmentId").value),
-    serialNumber: document.getElementById("serialNumber").value.trim() || null,
-    specification: document.getElementById("specification").value.trim() || null,
-    operatingSystem: document.getElementById("operatingSystem").value.trim() || null,
-    purchaseDate: document.getElementById("purchaseDate").value || null,
-    warrantyExpiry: document.getElementById("warrantyExpiry").value || null,
-  };
-
-  try {
-    if (id) {
-      payload.status = document.getElementById("formStatus").value;
-      await api.put(`/assets/${id}`, payload);
-    } else {
-      await api.post("/assets", payload);
-    }
-    assetModal.hide();
-    loadAssets(currentPage);
-  } catch (err) {
-    showModalError(err.message);
+// Kiểm tra phía trình duyệt trước khi gửi (server vẫn kiểm tra lại): trường bắt buộc, ngày hợp lệ, hạn bảo hành sau ngày mua.
+function validateAssetForm(payload) {
+  const errors = [];
+  if (!payload.assetCode) errors.push("Mã tài sản không được để trống.");
+  if (!payload.name) errors.push("Tên tài sản không được để trống.");
+  if (!payload.categoryId) errors.push("Phải chọn loại tài sản.");
+  if (!payload.departmentId) errors.push("Phải chọn phòng ban.");
+  for (const [id, label] of [["purchaseDate", "Ngày mua"], ["warrantyExpiry", "Hạn bảo hành"]]) {
+    if (!DateVi.validate(document.getElementById(id))) errors.push(`${label} không hợp lệ (nhập dạng dd/mm/yyyy).`);
   }
-});
+  if (payload.purchaseDate && payload.purchaseDate < `${MIN_PURCHASE_YEAR}-01-01`) errors.push(`Ngày mua không được trước năm ${MIN_PURCHASE_YEAR}.`);
+  if (payload.purchaseDate && payload.purchaseDate > new Date(Date.now() + 86400000).toISOString().slice(0, 10)) errors.push("Ngày mua không được ở tương lai.");
+  if (payload.purchaseDate && payload.warrantyExpiry && payload.warrantyExpiry < payload.purchaseDate) errors.push("Hạn bảo hành phải từ ngày mua trở về sau.");
+  return errors;
+}
 
-document.getElementById("filterForm").addEventListener("submit", (e) => {
+const assetForm = document.getElementById("assetForm");
+const assetGuard = guardUnsavedChanges(document.getElementById("assetModal"), assetForm);
+
+assetForm.addEventListener("submit", (e) => {
   e.preventDefault();
-  loadAssets(1);
+  runLocked(assetForm, async () => {
+    clearModalError();
+
+    const id = document.getElementById("assetId").value;
+    const payload = {
+      assetCode: document.getElementById("assetCode").value.trim(),
+      name: document.getElementById("assetName").value.trim(),
+      categoryId: Number(document.getElementById("formCategoryId").value),
+      departmentId: Number(document.getElementById("formDepartmentId").value),
+      serialNumber: document.getElementById("serialNumber").value.trim() || null,
+      specification: document.getElementById("specification").value.trim() || null,
+      operatingSystem: document.getElementById("operatingSystem").value.trim() || null,
+      purchaseDate: DateVi.value(document.getElementById("purchaseDate")) || null,
+      warrantyExpiry: DateVi.value(document.getElementById("warrantyExpiry")) || null,
+    };
+
+    const errors = validateAssetForm(payload);
+    if (errors.length) {
+      showModalError(errors.join(" "));
+      return;
+    }
+
+    try {
+      if (id) {
+        payload.status = document.getElementById("formStatus").value;
+        const version = document.getElementById("assetVersion").value;
+        if (version) payload.version = Number(version);
+        await api.put(`/assets/${id}`, payload);
+      } else {
+        await api.post("/assets", payload);
+      }
+      assetGuard.markClean();
+      assetModal.hide();
+      loadAssets(currentPage);
+    } catch (err) {
+      showModalError(err.message);
+      if (err.status === 409 && id) loadAssets(currentPage); // dữ liệu đã đổi: làm mới danh sách nền để mở lại thấy bản mới.
+    }
+  });
 });
 
-document.getElementById("resetFilterBtn").addEventListener("click", () => {
-  document.getElementById("filterForm").reset();
-  loadAssets(1);
+const filterBar = initFilterBar({
+  fields: FILTER_IDS, uncounted: ["sort"], textFields: ["keyword"], onChange: () => loadAssets(1),
 });
 
 assetModal = new bootstrap.Modal(document.getElementById("assetModal"));

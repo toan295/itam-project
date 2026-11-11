@@ -12,17 +12,24 @@ Table Departments {
   Id int [pk, increment]
   Name varchar(100) [not null]
   Description varchar(255)
+  IsDeleted boolean [not null, default: false, note: 'xoa mem: bam Xoa tren giao dien chi danh dau, dong van con trong CSDL']
+  DeletedAt datetime
+  ActiveName varchar(100) [unique, note: 'cot sinh tu dong (Name neu chua xoa, nguoc lai NULL) de tao lai cung ten sau khi xoa mem']
 }
 
 Table Users {
   Id int [pk, increment]
   FullName varchar(100) [not null]
   Email varchar(150) [not null, unique]
+  Phone varchar(20) [note: 'so dien thoai da chuan hoa, nullable (tai khoan cu)']
   PasswordHash varchar(255) [not null]
   RoleId int [not null]
   DepartmentId int [not null]
   IsActive boolean [not null, default: true]
-  MustChangePassword boolean [not null, default: false, note: 'true khi dang dung mat khau mac dinh do Admin cap/dat lai - bat buoc doi truoc khi dung he thong']
+  MustChangePassword boolean [not null, default: false, note: 'true chi voi Admin IT dau tien tao tu cau hinh Bootstrap - bat buoc doi mat khau truoc khi dung he thong']
+  PendingActivation bool [not null, default: false, note: 'tai khoan moi tao hoac vua duoc Admin dat lai mat khau: cho nguoi dung bam lien ket va tu dat mat khau; chua dang nhap duoc']
+  IsDeleted boolean [not null, default: false, note: 'xoa mem: giu dong de nhat ky/phieu con ten nguoi thuc hien; email doi thanh deleted.{id}.{time}@deleted.invalid']
+  DeletedAt datetime
   CreatedAt datetime [not null, default: `now()`]
 
   indexes {
@@ -33,7 +40,10 @@ Table Users {
 
 Table AssetCategories {
   Id int [pk, increment]
-  Name varchar(100) [not null, unique, note: 'may tinh, man hinh, may in, switch/router, thiet bi luu tru...']
+  Name varchar(100) [not null, note: 'may tinh, man hinh, may in, switch/router, thiet bi luu tru...']
+  IsDeleted boolean [not null, default: false, note: 'xoa mem']
+  DeletedAt datetime
+  ActiveName varchar(100) [unique, note: 'cot sinh tu dong: Name neu chua xoa, nguoc lai NULL']
 }
 
 Table AssetCategoryLifecyclePolicies {
@@ -41,6 +51,9 @@ Table AssetCategoryLifecyclePolicies {
   CategoryId int [not null, unique]
   MaxAgeYears int [not null, note: 'Nguong tuoi toi da theo loai tai san']
   MaxFailureCount int [not null, note: 'Nguong tong so phieu bao tri (moi trang thai) theo loai tai san']
+  Version int [not null, default: 1, note: 'Optimistic concurrency, tu tang moi lan sua; client gui lai khi sua/xoa (409 neu lech)']
+  UpdatedAt datetime(6) [null, note: 'UTC; null = dong co truoc khi theo doi']
+  UpdatedByUserId int [null, note: 'Nguoi tao/sua gan nhat (khong co FK, ten lay tu Users)']
 
   Note: 'Chi luu nguong override. Loai khong co dong rieng se dung LifecycleOptions trong appsettings.json'
 }
@@ -63,16 +76,20 @@ Table Assets {
     CategoryId
     DepartmentId
     Status
-  }
+    Version int [not null, default: 1, note: 'so phien ban - tu tang moi lan sua; client gui lai de chong ghi de (409)']
+}
 }
 
 Table SoftwareLicenses {
   Id int [pk, increment]
   SoftwareName varchar(150) [not null]
-  LicenseKey varchar(255) [not null, unique]
+  LicenseKey varchar(255) [not null]
   ExpiryDate date [not null]
   MaxUsage int [not null]
   Notes varchar(500)
+  IsDeleted boolean [not null, default: false, note: 'xoa mem']
+  DeletedAt datetime
+  ActiveLicenseKey varchar(255) [unique, note: 'cot sinh tu dong: LicenseKey neu chua xoa, nguoc lai NULL']
 
   indexes {
     ExpiryDate
@@ -99,14 +116,32 @@ Table MaintenanceTickets {
   Status tinyint [not null, note: '0=Pending,1=Resolved,2=Failed']
   Priority tinyint [not null, note: '0=Low,1=Normal,2=High,3=Urgent; danh sach sap gap nhat truoc']
   TechnicianId int [note: 'nullable - co the chua gan luc moi tao phieu']
+  ReportedByUserId int [note: 'nguoi tao phieu (nhan vien bao loi/Admin/Manager); null = phieu cu']
   ReportedDate datetime [not null, default: `now()`]
   ResolvedDate datetime
   Notes varchar(1000)
+  Version int [not null, default: 1, note: 'so phien ban - tu tang moi lan sua; client gui lai de chong ghi de (409)']
 
   indexes {
     AssetId
     TechnicianId
     Status
+  }
+}
+
+Table MaintenanceTicketHistories {
+  Id int [pk, increment]
+  TicketId int [not null]
+  Action varchar(30) [not null, note: 'Created|Assigned|Reassigned|PriorityChanged|Resolved|Failed|AutoCreated|AutoClosed']
+  FromValue varchar(200)
+  ToValue varchar(200)
+  Reason varchar(1000)
+  ActorUserId int
+  ActorName varchar(100)
+  CreatedAt datetime [not null]
+
+  indexes {
+    (TicketId, CreatedAt)
   }
 }
 
@@ -131,22 +166,37 @@ Table AssetAllocations {
   indexes {
     AssetId
     DepartmentId
-  }
+    RecipientPosition varchar(100) [note: 'chuc danh nguoi nhan LUC GIAO (ban chup)']
+  ActiveAssetId int [unique, note: '= AssetId khi dang giu, NULL khi da thu hoi; unique => moi tai san toi da 1 phan bo dang hieu luc']
+}
 }
 
 Table AuditLogs {
   Id bigint [pk, increment]
   UserId int [not null]
-  Action varchar(50) [not null, note: 'Create/Update/Delete']
+  Action varchar(50) [not null, note: 'Create/Update/Delete/Assign/...']
   EntityName varchar(100) [not null]
   EntityId int [not null]
-  OldValue text
-  NewValue text
-  Timestamp datetime [not null, default: `now()`]
+  OldValue text [note: 'chi cac truong thuc su doi (truoc)']
+  NewValue text [note: 'chi cac truong thuc su doi (sau)']
+  Timestamp datetime [not null, default: `now()`, note: 'UTC, do chinh xac micro-giay']
+  Outcome varchar(20) [not null, default: 'Success', note: 'Success | Rejected | Failed']
+  StatusCode int
+  Message varchar(500) [note: 'ly do tu choi / that bai']
+  Detail text [note: 'yeu cau nguoi dung da gui (da che mat khau/token)']
+  RequestId varchar(64)
+  IpAddress varchar(45)
+  ActorName varchar(150) [note: 'ban chup ho ten luc xay ra']
+  ActorRole varchar(50) [note: 'ban chup vai tro luc xay ra']
+  RowHash varchar(64) [note: 'HMAC-SHA256 noi dung; NULL o ban ghi cu']
+
+  Note: 'Chi-them: trigger trg_AuditLogs_no_update / trg_AuditLogs_no_delete chan UPDATE/DELETE'
 
   indexes {
     UserId
     Timestamp
+    (EntityName, EntityId)
+    Outcome
   }
 }
 
@@ -161,7 +211,10 @@ Table BudgetForecasts {
   GeneratedAt datetime [note: 'lan tao/cap nhat du bao gan nhat (UTC), nullable']
   EstimatedExpansionCount int [not null, default: 0, note: 'so thiet bi can MUA THEM theo ke hoach mo rong phong ban (Tuan 8)']
   EstimatedExpansionBudget decimal(18,2) [not null, default: 0, note: 'VND - chi phan mua them. EstimatedBudget van chi la phan THAY THE; tong tinh khi map DTO']
-  ExpansionBreakdownJson longtext [note: 'object { additionalHeadcount, items[] } (JSON camelCase), nullable - dong cu truoc Tuan 8 = null']
+  ExpansionBreakdownJson longtext [note: 'object { baselineHeadcount, additionalHeadcount, projectedHeadcount, items[] } (JSON camelCase), nullable - dong cu truoc Tuan 8 = null']
+  Revision int [not null, default: 1, note: 'tang moi khi tao lai lam doi ket qua; dau vao y het thi khong ghi gi']
+  InputsHash varchar(64) [note: 'SHA-256 cua InputsJson; null = dong cu chua luu anh chup dau vao']
+  InputsJson longtext [note: 'anh chup dau vao luc tao: nhan su hien tai, ke hoach, dinh muc, don gia, ton kho, danh sach tai san den han (dung de bao du bao da cu va giai thich vi sao khac)']
   IsDeleted boolean [not null, default: false, note: 'xoa mem - chi an tren giao dien, dong van con trong DB']
   DeletedAt datetime [note: 'thoi diem xoa mem (UTC), nullable']
 
@@ -175,6 +228,9 @@ Table BudgetForecasts {
 Table AssetCategoryReferencePrices {
   CategoryId int [pk, note: 'vua la PK vua la FK - moi loai toi da 1 don gia']
   UnitPrice decimal(18,2) [not null, note: 'VND, > 0']
+  Version int [not null, default: 1, note: 'optimistic concurrency; client gui lai khi sua/xoa (409 neu lech)']
+  UpdatedAt datetime(6) [note: 'UTC']
+  UpdatedByUserId int
   IsDeleted boolean [not null, default: false, note: 'xoa mem - nhap lai don gia se khoi phuc']
   DeletedAt datetime [note: 'thoi diem xoa mem (UTC), nullable']
 
@@ -185,9 +241,11 @@ Table DepartmentExpansionPlans {
   Id int [pk, increment]
   Year int [not null]
   DepartmentId int [not null]
-  AdditionalHeadcount int [not null, note: 'so nhan su tang them TRONG nam do (khong cong don), 0..5000']
+  AdditionalHeadcount int [not null, note: 'thay doi RONG nhan su TRONG nam do (khong cong don), am = giam, -5000..5000']
   Notes varchar(500)
   UpdatedAt datetime [not null, note: 'UTC']
+  UpdatedByUserId int
+  Version int [not null, default: 1, note: 'optimistic concurrency']
 
   indexes {
     (Year, DepartmentId) [unique, note: 'moi (nam, phong ban) toi da 1 ke hoach']
@@ -199,30 +257,31 @@ Table DepartmentExpansionPlans {
 Table AssetCategoryDeviceRatios {
   CategoryId int [pk, note: 'vua la PK vua la FK - moi loai toi da 1 dinh muc']
   DevicesPerPerson decimal(6,2) [not null, note: '0,01..20,00']
+  Version int [not null, default: 1, note: 'optimistic concurrency']
+  UpdatedAt datetime(6) [note: 'UTC']
+  UpdatedByUserId int
 
   Note: 'Dinh muc so thiet bi tren moi nhan su theo loai tai san (toan he thong) - UC-17'
 }
 
-Table SystemSettings {
-  Id int [pk, increment]
-  Key varchar(100) [not null, unique, note: 'vd: DefaultPassword']
-  Value varchar(500) [not null]
-  UpdatedAt datetime [not null]
-
-  Note: 'Cau hinh key-value do Admin IT chinh luc chay; hien chi luu mat khau mac dinh (key DefaultPassword)'
-}
-
 Table Employees {
   Id int [pk, increment]
-  EmployeeCode varchar(20) [not null, unique, note: 'NV0001... sinh tu dong theo Id']
+  EmployeeCode varchar(20) [not null, note: 'NV0001... sinh tu dong theo Id; duy nhat qua ActiveEmployeeCode']
   FullName varchar(100) [not null]
   DepartmentId int [not null]
   Position varchar(100) [note: 'Chuc danh']
+  Email varchar(150) [note: 'email nhan thu xac nhan thong tin ca nhan; null = nhan vien cu chua bo sung']
+  Phone varchar(20) [note: 'so dien thoai da chuan hoa']
+  UserId int [unique, note: 'tai khoan dang nhap (vai tro Employee) cua nhan vien; null = chua cap']
   IsActive boolean [not null]
   CreatedAt datetime [not null]
+  IsDeleted boolean [not null, default: false, note: 'xoa mem']
+  DeletedAt datetime
+  ActiveEmployeeCode varchar(20) [unique, note: 'cot sinh tu dong: EmployeeCode neu chua xoa']
+  ActiveDeptFullName varchar(120) [unique, note: 'cot sinh tu dong: DepartmentId|FullName neu chua xoa (duy nhat trong phong ban)']
 
   indexes {
-    (DepartmentId, FullName) [unique]
+    DepartmentId
     FullName
   }
 
@@ -231,8 +290,12 @@ Table Employees {
 
 Table DisposalStatuses {
   Id int [pk, increment]
-  Code varchar(50) [not null, unique, note: 'Inspected|Proposed|Approved|Rejected|Completed (he thong) hoac custom-xxxx (Admin them)']
-  Name varchar(100) [not null, unique]
+  Code varchar(50) [not null, note: 'Inspected|Proposed|Approved|Rejected|Completed (he thong) hoac custom-xxxx (Admin them)']
+  Name varchar(100) [not null]
+  IsDeleted boolean [not null, default: false, note: 'xoa mem']
+  DeletedAt datetime
+  ActiveCode varchar(50) [unique, note: 'cot sinh tu dong: Code neu chua xoa']
+  ActiveName varchar(100) [unique, note: 'cot sinh tu dong: Name neu chua xoa']
   Description varchar(255)
   Color varchar(20) [not null, note: 'success|warning|danger|info|slate']
   SortOrder int [not null]
@@ -265,7 +328,8 @@ Table DisposalRequests {
     AssetId
     StatusId
     SubStatusId
-  }
+    ActiveAssetId int [unique, note: '= AssetId khi phieu con dang xu ly, NULL khi ket thuc (Tu choi/Hoan tat); unique => moi tai san toi da 1 phieu dang mo']
+}
 
   Note: 'Luong: Technician kiem tra -> de xuat -> Manager duyet/tu choi -> Admin IT thanh ly -> hoan tat'
 }
@@ -278,8 +342,11 @@ Table ImportLogs {
   SuccessRows int [not null]
   FailedRows int [not null]
   ImportedAt datetime [not null, default: `now()`]
+  Mode varchar(20) [not null, default: 'skip-errors', note: 'skip-errors | all-or-nothing']
+  FileSha256 varchar(64) [note: 'SHA-256 noi dung file, phat hien import lai dung file da dung; co index']
+  ErrorsJson longtext [note: 'cac dong bi bo qua va ly do (toi da 500 dong dau), JSON camelCase']
 
-  Note: 'Uu tien Should - MoSCoW'
+  Note: 'Chuc nang Import tai san da bi go (11/11/2026); bang giu lai de bao toan lich su, khong con ghi them.'
 }
 
 Ref: Users.RoleId > Roles.Id
@@ -308,7 +375,40 @@ Ref: DisposalRequests.ProposedByUserId > Users.Id
 Ref: DisposalRequests.ReviewedByUserId > Users.Id
 Ref: DisposalRequests.CompletedByUserId > Users.Id
 
+Table RolePermissions {
+  RoleId int [not null, note: 'vai tro duoc cap quyen']
+  PermissionCode varchar(80) [not null, note: 'ma quyen trong PermissionCatalog (vd assets.create); danh muc quyen nam o code']
+  indexes {
+    (RoleId, PermissionCode) [pk]
+  }
+  Note: 'Ma tran phan quyen vai tro x chuc nang, chinh duoc tren giao dien Phan quyen. Employee bi khoa (khong sua).'
+}
+
+Table AccountActivations {
+  Id int [pk, increment]
+  UserId int [not null, note: 'tai khoan nhan vien cho kich hoat']
+  TokenHash varchar(64) [not null, unique, note: 'SHA-256 cua token trong email (khong luu token goc)']
+  EmailTo varchar(150) [not null, note: 'dia chi da gui toi']
+  Reason varchar(30) [not null, note: 'Created | Resent | Reset']
+  Status tinyint [not null, note: '0 Pending | 1 Activated | 2 Superseded']
+  CreatedAt datetime [not null]
+  ExpiresAt datetime [not null, note: 'mac dinh 3 ngay (Email:ActivationValidDays)']
+  SentAt datetime [note: 'null = chua gui duoc (xem SendError)']
+  SendError varchar(500)
+  ActivatedAt datetime
+  indexes {
+    (UserId, CreatedAt)
+  }
+  Note: 'Lien ket kich hoat / dat lai mat khau: nguoi dung bam lien ket va tu dat mat khau (khong co mat khau mac dinh).'
+}
+
+Ref: AccountActivations.UserId > Users.Id [delete: cascade]
+Ref: RolePermissions.RoleId > Roles.Id [delete: cascade]
 Ref: Employees.DepartmentId > Departments.Id
+Ref: Employees.UserId - Users.Id
+Ref: MaintenanceTickets.ReportedByUserId > Users.Id
 Ref: AssetAllocations.EmployeeId > Employees.Id
 Ref: AssetAllocations.HandedOverByUserId > Users.Id
 Ref: AssetAllocations.ReceivedByUserId > Users.Id
+
+Ref: MaintenanceTicketHistories.TicketId > MaintenanceTickets.Id [delete: cascade]

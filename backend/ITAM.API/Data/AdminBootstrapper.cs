@@ -14,7 +14,7 @@ public static class AdminBootstrapper
 {
     private const int BCryptWorkFactor = 11;
     private const string AdminRoleName = "Admin IT";
-    private static readonly string[] RoleNames = { AdminRoleName, "Manager", "Technician" };
+    private static readonly string[] RoleNames = { AdminRoleName, "Manager", "Technician", "Employee" };
 
     public static async Task RunAsync(AppDbContext db, IConfiguration configuration, ILogger logger)
     {

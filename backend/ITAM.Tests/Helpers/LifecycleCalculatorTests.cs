@@ -17,9 +17,15 @@ public class LifecycleCalculatorTests
     }
 
     [Fact]
-    public void ComputeAgeYears_PurchaseDateInFuture_ReturnsZero()
+    public void ComputeAgeYears_PurchaseDateInFuture_ReturnsNullBecauseDataIsInvalid()
     {
-        Assert.Equal(0d, LifecycleCalculator.ComputeAgeYears(Today.AddDays(30), Today));
+        Assert.Null(LifecycleCalculator.ComputeAgeYears(Today.AddDays(30), Today));
+    }
+
+    [Fact]
+    public void ComputeAgeYears_PurchaseDateToday_ReturnsZeroNotNull()
+    {
+        Assert.Equal(0d, LifecycleCalculator.ComputeAgeYears(Today, Today));
     }
 
     [Fact]
@@ -302,9 +308,46 @@ public class LifecycleCalculatorTests
     }
 
     [Fact]
-    public void GetAgeBucketIndex_PurchaseDateInFuture_IsInUnderOneBucket()
+    public void GetAgeBucketIndex_PurchaseDateInFuture_GoesToUnknownBucket()
     {
-        Assert.Equal(0, LifecycleCalculator.GetAgeBucketIndex(Today.AddDays(40), Today));
+        Assert.Equal(4, LifecycleCalculator.GetAgeBucketIndex(Today.AddDays(40), Today));
+    }
+
+    [Fact]
+    public void Evaluate_PurchaseDateInFuture_IsNotAgeBasedAndHasNoDueYearFromAge()
+    {
+        var result = LifecycleCalculator.Evaluate(Row(Today.AddYears(4).AddMonths(10), 0), 5, 3, Today);
+
+        Assert.False(result.IsOverdueNow);
+        Assert.Null(result.DueYear);
+    }
+
+    [Fact]
+    public void EvaluateUpcoming_PurchaseDateInFuture_IsNeverAgeDueSoon()
+    {
+        // Mua "tương lai 4 năm 10 tháng" + ngưỡng 5 năm = rơi vào cửa sổ 12 tháng nếu coi là hợp lệ.
+        var result = LifecycleCalculator.EvaluateUpcoming(Row(Today.AddYears(4).AddMonths(10), 0), 5, 3, 12, Today);
+
+        Assert.False(result.AgeDueSoon);
+        Assert.Null(result.AgeDueDate);
+    }
+
+    // ---- Giải trình điểm ưu tiên ----
+
+    [Theory]
+    [InlineData(6.5, 5, 1, 3, 65, "Age")]        // 6,5/5 = 1,3 -> 65
+    [InlineData(2.0, 5, 3, 3, 50, "Failures")]   // đúng ngưỡng phiếu -> 50
+    [InlineData(5.0, 5, 3, 3, 50, "Both")]
+    [InlineData(null, 5, 0, 3, 0, "None")]
+    [InlineData(12.0, 5, 0, 3, 100, "Age")]      // kẹp trần 100
+    public void ExplainPriorityScore_BreaksScoreIntoComponents(double? age, int maxAge, int tickets, int maxFailures, int score, string drivenBy)
+    {
+        var breakdown = LifecycleCalculator.ExplainPriorityScore(age, maxAge, tickets, maxFailures);
+
+        Assert.Equal(score, breakdown.Score);
+        Assert.Equal(drivenBy, breakdown.DrivenBy);
+        Assert.Equal(Math.Max(breakdown.AgeRatio, breakdown.FailureRatio), breakdown.Severity);
+        Assert.Equal(score, LifecycleCalculator.ComputePriorityScore(age, maxAge, tickets, maxFailures));
     }
 
     // ---- Tuần 8, L3: sắp tới hạn ----

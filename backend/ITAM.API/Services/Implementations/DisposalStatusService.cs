@@ -8,6 +8,8 @@ namespace ITAM.API.Services.Implementations;
 
 public class DisposalStatusService : IDisposalStatusService
 {
+    private const int FirstCustomSortOrder = 6;
+
     private readonly IDisposalStatusRepository _repo;
     private readonly IAuditLogService _auditLogService;
 
@@ -32,7 +34,7 @@ public class DisposalStatusService : IDisposalStatusService
             Name = name,
             Description = string.IsNullOrWhiteSpace(dto.Description) ? null : dto.Description.Trim(),
             Color = dto.Color,
-            SortOrder = dto.SortOrder,
+            SortOrder = await ResolveCustomSortOrderAsync(dto.SortOrder),
             IsSystem = false,
         };
 
@@ -56,7 +58,11 @@ public class DisposalStatusService : IDisposalStatusService
         status.Name = name;
         status.Description = string.IsNullOrWhiteSpace(dto.Description) ? null : dto.Description.Trim();
         status.Color = dto.Color;
-        status.SortOrder = dto.SortOrder;
+        // Bước chính giữ thứ tự cố định theo luồng (1–5); chỉ trạng thái phụ đổi được thứ tự hiển thị.
+        if (!status.IsSystem)
+        {
+            status.SortOrder = dto.SortOrder.HasValue ? ValidateCustomSortOrder(dto.SortOrder.Value) : status.SortOrder;
+        }
 
         await _auditLogService.RecordAsync(currentUserId, "Update", "DisposalStatus", status.Id, oldValue, ToSnapshot(status));
         await _repo.SaveChangesAsync();
@@ -112,6 +118,16 @@ public class DisposalStatusService : IDisposalStatusService
 
         return await GetAllAsync();
     }
+
+    // Thứ tự 1–5 dành cho 5 bước chính của luồng; trạng thái phụ bắt đầu từ 6 và mặc định xếp cuối danh sách.
+    private async Task<int> ResolveCustomSortOrderAsync(int? requested) =>
+        requested.HasValue ? ValidateCustomSortOrder(requested.Value) : Math.Max(FirstCustomSortOrder, await _repo.GetMaxSortOrderAsync() + 1);
+
+    private static int ValidateCustomSortOrder(int value) =>
+        value >= FirstCustomSortOrder
+            ? value
+            : throw new DisposalConflictException(
+                $"Thứ tự của trạng thái phụ phải từ {FirstCustomSortOrder} trở lên (1–{FirstCustomSortOrder - 1} dành cho các bước chính của quy trình).");
 
     private async Task EnsureNameAvailableAsync(string name, int? excludeId)
     {

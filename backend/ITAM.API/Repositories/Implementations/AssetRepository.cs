@@ -1,3 +1,4 @@
+using ITAM.API.Repositories.Models;
 using ITAM.API.Data;
 using ITAM.API.Models.Entities;
 using ITAM.API.Models.Enums;
@@ -92,54 +93,78 @@ public class AssetRepository : IAssetRepository
         return (items, total);
     }
 
-    public async Task<(List<Asset> Items, int TotalItems)> SearchAsync(
-        string? keyword,
-        int? departmentId,
-        int? categoryId,
-        AssetStatus? status,
-        int? purchaseYear,
-        bool? isUnderWarranty,
-        int? orAssignedTechnicianId,
-        int page,
-        int pageSize)
+    public async Task<(List<Asset> Items, int TotalItems)> SearchAsync(AssetQueryCriteria c, int page, int pageSize)
     {
         var query = _db.Assets.AsNoTracking().Include(a => a.Category).Include(a => a.Department).AsQueryable();
 
-        if (!string.IsNullOrWhiteSpace(keyword))
+        if (!string.IsNullOrWhiteSpace(c.Keyword))
         {
-            query = query.Where(a => a.Name.Contains(keyword) || a.AssetCode.Contains(keyword));
+            var keyword = c.Keyword.Trim();
+            query = query.Where(a => a.Name.Contains(keyword) || a.AssetCode.Contains(keyword)
+                || (a.SerialNumber != null && a.SerialNumber.Contains(keyword)));
         }
 
-        query = ApplyDepartmentScope(query, departmentId, orAssignedTechnicianId);
+        query = ApplyDepartmentScope(query, c.DepartmentId, c.OrAssignedTechnicianId);
 
-        if (categoryId.HasValue)
+        if (c.CategoryId.HasValue)
         {
-            query = query.Where(a => a.CategoryId == categoryId.Value);
+            query = query.Where(a => a.CategoryId == c.CategoryId.Value);
         }
 
-        if (status.HasValue)
+        if (c.Status.HasValue)
         {
-            query = query.Where(a => a.Status == status.Value);
+            query = query.Where(a => a.Status == c.Status.Value);
         }
 
-        if (purchaseYear.HasValue)
+        if (c.PurchaseYear.HasValue)
         {
-            query = query.Where(a => a.PurchaseDate != null && a.PurchaseDate.Value.Year == purchaseYear.Value);
+            query = query.Where(a => a.PurchaseDate != null && a.PurchaseDate.Value.Year == c.PurchaseYear.Value);
+        }
+
+        if (c.PurchasedFrom.HasValue)
+        {
+            query = query.Where(a => a.PurchaseDate != null && a.PurchaseDate.Value >= c.PurchasedFrom.Value);
+        }
+
+        if (c.PurchasedTo.HasValue)
+        {
+            query = query.Where(a => a.PurchaseDate != null && a.PurchaseDate.Value <= c.PurchasedTo.Value);
         }
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        if (isUnderWarranty == true)
+        if (c.IsUnderWarranty == true)
         {
             query = query.Where(a => a.WarrantyExpiry != null && a.WarrantyExpiry.Value >= today);
         }
-        else if (isUnderWarranty == false)
+        else if (c.IsUnderWarranty == false)
         {
             query = query.Where(a => a.WarrantyExpiry != null && a.WarrantyExpiry.Value < today);
         }
 
+        if (c.WarrantyExpiringInDays.HasValue)
+        {
+            var limit = today.AddDays(c.WarrantyExpiringInDays.Value);
+            query = query.Where(a => a.WarrantyExpiry != null && a.WarrantyExpiry.Value >= today && a.WarrantyExpiry.Value <= limit);
+        }
+
+        if (c.IsAllocated.HasValue)
+        {
+            // Cùng định nghĩa "đang giữ" với EmployeeRepository.HasOpenAllocationAsync: phân bổ đang mở, chưa thu hồi.
+            var allocated = c.IsAllocated.Value;
+            query = query.Where(a => a.AssetAllocations.Any(x => x.Status == AllocationStatus.Allocated && x.ReturnedDate == null) == allocated);
+        }
+
         var total = await query.CountAsync();
-        var items = await query
-            .OrderBy(a => a.AssetCode)
+        var ordered = c.Sort switch
+        {
+            "name" => query.OrderBy(a => a.Name),
+            "purchaseDate" => query.OrderByDescending(a => a.PurchaseDate),
+            "warrantyExpiry" => query.OrderBy(a => a.WarrantyExpiry == null).ThenBy(a => a.WarrantyExpiry),
+            "newest" => query.OrderByDescending(a => a.Id),
+            _ => query.OrderBy(a => a.AssetCode),
+        };
+        var items = await ordered
+            .ThenBy(a => a.AssetCode)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();

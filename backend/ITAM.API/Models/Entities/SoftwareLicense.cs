@@ -9,5 +9,9 @@ public class SoftwareLicense
     public int MaxUsage { get; set; }
     public string? Notes { get; set; }
 
+    // Xoá mềm: bấm "Xoá" trên giao diện chỉ đánh dấu dòng này, dữ liệu vẫn còn trong CSDL (và không hiện lại khi chạy lại hệ thống).
+    public bool IsDeleted { get; set; }
+    public DateTime? DeletedAt { get; set; }
+
     public ICollection<AssetSoftwareLicense> AssetSoftwareLicenses { get; set; } = new List<AssetSoftwareLicense>();
 }

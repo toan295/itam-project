@@ -8,9 +8,15 @@ public interface ISoftwareLicenseService
     Task<PagedResultDto<SoftwareLicenseResponseDto>> GetPagedAsync(
         int page = 1,
         int pageSize = 20,
-        string? search = null);
+        string? search = null,
+        string? state = null,
+        DateOnly? expiryFrom = null,
+        DateOnly? expiryTo = null,
+        string? sortBy = null,
+        string? assignment = null);
 
     Task<SoftwareLicenseResponseDto> GetByIdAsync(int id);
+    Task<IReadOnlyList<LicenseAssignmentDto>> GetAssignmentsAsync(int id);
     Task<SoftwareLicenseResponseDto> CreateAsync(CreateSoftwareLicenseDto dto);
     Task<SoftwareLicenseResponseDto> UpdateAsync(int id, UpdateSoftwareLicenseDto dto);
     Task DeleteAsync(int id);

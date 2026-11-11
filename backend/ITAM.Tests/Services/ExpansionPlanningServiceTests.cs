@@ -15,7 +15,7 @@ public class ExpansionPlanningServiceTests
     private const int CatComputer = 10;
     private const int CatPrinter = 11;
 
-    private static readonly int Year = DateTime.UtcNow.Year;
+    private static readonly int Year = ITAM.API.Helpers.VietnamTime.Today().Year;
 
     private readonly Mock<IBudgetForecastRepository> _repo = new();
     private readonly ExpansionPlanningService _sut;
@@ -23,6 +23,8 @@ public class ExpansionPlanningServiceTests
     public ExpansionPlanningServiceTests()
     {
         _sut = new ExpansionPlanningService(_repo.Object);
+        _repo.Setup(r => r.GetActiveEmployeeCountsAsync()).ReturnsAsync(new Dictionary<int, int>());
+        _repo.Setup(r => r.GetUserNamesAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new Dictionary<int, string>());
 
         _repo.Setup(r => r.GetAllDepartmentsAsync())
             .ReturnsAsync(new List<(int Id, string Name)> { (DeptA, "IT-A"), (DeptB, "IT-B") });
@@ -104,10 +106,10 @@ public class ExpansionPlanningServiceTests
     public async Task UpsertPlanAsync_ExistingPlan_UpdatesAndRefreshesUpdatedAt()
     {
         var old = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var existing = new DepartmentExpansionPlan { Id = 5, Year = Year, DepartmentId = DeptA, AdditionalHeadcount = 2, UpdatedAt = old };
+        var existing = new DepartmentExpansionPlan { Id = 5, Year = Year, DepartmentId = DeptA, AdditionalHeadcount = 2, UpdatedAt = old, Version = 1 };
         _repo.Setup(r => r.GetPlanAsync(Year, DeptA)).ReturnsAsync(existing);
 
-        var result = await _sut.UpsertPlanAsync(Year, DeptA, new UpsertExpansionPlanRequestDto { AdditionalHeadcount = 9 });
+        var result = await _sut.UpsertPlanAsync(Year, DeptA, new UpsertExpansionPlanRequestDto { AdditionalHeadcount = 9, Version = 1 });
 
         Assert.Equal(9, existing.AdditionalHeadcount);
         Assert.True(existing.UpdatedAt > old);
@@ -126,7 +128,7 @@ public class ExpansionPlanningServiceTests
     }
 
     [Theory]
-    [InlineData(-1)]
+    [InlineData(-5001)]
     [InlineData(5001)]
     public async Task UpsertPlanAsync_HeadcountOutOfRange_ThrowsArgumentException(int headcount)
     {
@@ -139,7 +141,7 @@ public class ExpansionPlanningServiceTests
     {
         _repo.Setup(r => r.GetPlanAsync(Year, DeptA)).ReturnsAsync((DepartmentExpansionPlan?)null);
 
-        await Assert.ThrowsAsync<ExpansionPlanNotFoundException>(() => _sut.DeletePlanAsync(Year, DeptA));
+        await Assert.ThrowsAsync<ExpansionPlanNotFoundException>(() => _sut.DeletePlanAsync(Year, DeptA, 1));
     }
 
     [Fact]
@@ -148,7 +150,7 @@ public class ExpansionPlanningServiceTests
         var plan = new DepartmentExpansionPlan { Year = Year, DepartmentId = DeptA };
         _repo.Setup(r => r.GetPlanAsync(Year, DeptA)).ReturnsAsync(plan);
 
-        await _sut.DeletePlanAsync(Year, DeptA);
+        await _sut.DeletePlanAsync(Year, DeptA, 1);
 
         _repo.Verify(r => r.RemovePlan(plan), Times.Once);
         _repo.Verify(r => r.SaveChangesAsync(), Times.Once);
@@ -193,10 +195,10 @@ public class ExpansionPlanningServiceTests
     [Fact]
     public async Task UpsertRatioAsync_ExistingRatio_UpdatesInsteadOfAdding()
     {
-        var existing = new AssetCategoryDeviceRatio { CategoryId = CatComputer, DevicesPerPerson = 1m };
+        var existing = new AssetCategoryDeviceRatio { CategoryId = CatComputer, DevicesPerPerson = 1m, Version = 1 };
         _repo.Setup(r => r.GetRatioAsync(CatComputer)).ReturnsAsync(existing);
 
-        await _sut.UpsertRatioAsync(CatComputer, new UpsertDeviceRatioRequestDto { DevicesPerPerson = 2m });
+        await _sut.UpsertRatioAsync(CatComputer, new UpsertDeviceRatioRequestDto { DevicesPerPerson = 2m, Version = 1 });
 
         Assert.Equal(2m, existing.DevicesPerPerson);
         _repo.Verify(r => r.AddRatioAsync(It.IsAny<AssetCategoryDeviceRatio>()), Times.Never);
@@ -218,7 +220,7 @@ public class ExpansionPlanningServiceTests
     {
         _repo.Setup(r => r.GetRatioAsync(CatComputer)).ReturnsAsync((AssetCategoryDeviceRatio?)null);
 
-        await Assert.ThrowsAsync<DeviceRatioNotFoundException>(() => _sut.DeleteRatioAsync(CatComputer));
+        await Assert.ThrowsAsync<DeviceRatioNotFoundException>(() => _sut.DeleteRatioAsync(CatComputer, 1));
     }
 
     // ---- Validator ----
@@ -253,9 +255,9 @@ public class ExpansionPlanningServiceTests
     }
 
     [Fact]
-    public void UpsertExpansionPlan_NegativeHeadcount_Fails()
+    public void UpsertExpansionPlan_HeadcountBelowMinus5000_Fails()
     {
-        var result = new UpsertExpansionPlanRequestValidator().Validate(new UpsertExpansionPlanRequestDto { AdditionalHeadcount = -1 });
+        var result = new UpsertExpansionPlanRequestValidator().Validate(new UpsertExpansionPlanRequestDto { AdditionalHeadcount = -5001 });
         Assert.False(result.IsValid);
     }
 
@@ -281,5 +283,100 @@ public class ExpansionPlanningServiceTests
         var result = new UpsertExpansionPlanRequestValidator().Validate(
             new UpsertExpansionPlanRequestDto { AdditionalHeadcount = 1, Notes = new string('x', 501) });
         Assert.False(result.IsValid);
+    }
+
+    // ---- Phiên bản, giảm nhân sự, nhân sự hiện tại ----
+
+    [Fact]
+    public async Task UpsertPlanAsync_NegativeNetChange_IsAccepted()
+    {
+        _repo.Setup(r => r.GetPlanAsync(Year, DeptA)).ReturnsAsync((DepartmentExpansionPlan?)null);
+
+        var result = await _sut.UpsertPlanAsync(Year, DeptA, new UpsertExpansionPlanRequestDto { AdditionalHeadcount = -3 });
+
+        Assert.Equal(-3, result.AdditionalHeadcount);
+    }
+
+    [Fact]
+    public async Task UpsertPlanAsync_ExistingPlanWithoutOrWithStaleVersion_Conflicts()
+    {
+        var existing = new DepartmentExpansionPlan { Year = Year, DepartmentId = DeptA, AdditionalHeadcount = 2, Version = 4 };
+        _repo.Setup(r => r.GetPlanAsync(Year, DeptA)).ReturnsAsync(existing);
+
+        await Assert.ThrowsAsync<ForecastInputConflictException>(() =>
+            _sut.UpsertPlanAsync(Year, DeptA, new UpsertExpansionPlanRequestDto { AdditionalHeadcount = 9 }));
+        await Assert.ThrowsAsync<ForecastInputConflictException>(() =>
+            _sut.UpsertPlanAsync(Year, DeptA, new UpsertExpansionPlanRequestDto { AdditionalHeadcount = 9, Version = 3 }));
+
+        Assert.Equal(2, existing.AdditionalHeadcount);
+        _repo.Verify(r => r.SaveChangesAsync(), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpsertPlanAsync_VersionGivenButPlanAlreadyDeleted_Conflicts()
+    {
+        _repo.Setup(r => r.GetPlanAsync(Year, DeptA)).ReturnsAsync((DepartmentExpansionPlan?)null);
+
+        await Assert.ThrowsAsync<ForecastInputConflictException>(() =>
+            _sut.UpsertPlanAsync(Year, DeptA, new UpsertExpansionPlanRequestDto { AdditionalHeadcount = 1, Version = 1 }));
+    }
+
+    [Fact]
+    public async Task UpsertPlanAsync_SameValues_DoesNotSave()
+    {
+        var existing = new DepartmentExpansionPlan { Year = Year, DepartmentId = DeptA, AdditionalHeadcount = 2, Notes = "a", Version = 2 };
+        _repo.Setup(r => r.GetPlanAsync(Year, DeptA)).ReturnsAsync(existing);
+
+        await _sut.UpsertPlanAsync(Year, DeptA, new UpsertExpansionPlanRequestDto { AdditionalHeadcount = 2, Notes = "a", Version = 2 });
+
+        _repo.Verify(r => r.SaveChangesAsync(), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpsertPlanAsync_ConcurrencyExceptionOnSave_Conflicts()
+    {
+        var existing = new DepartmentExpansionPlan { Year = Year, DepartmentId = DeptA, AdditionalHeadcount = 2, Version = 2 };
+        _repo.Setup(r => r.GetPlanAsync(Year, DeptA)).ReturnsAsync(existing);
+        _repo.Setup(r => r.SaveChangesAsync()).ThrowsAsync(new DbUpdateConcurrencyException());
+
+        await Assert.ThrowsAsync<ForecastInputConflictException>(() =>
+            _sut.UpsertPlanAsync(Year, DeptA, new UpsertExpansionPlanRequestDto { AdditionalHeadcount = 5, Version = 2 }));
+    }
+
+    [Fact]
+    public async Task GetPlansAsync_ReportsCurrentStaffAndProjectedHeadcount()
+    {
+        _repo.Setup(r => r.GetActiveEmployeeCountsAsync()).ReturnsAsync(new Dictionary<int, int> { [DeptA] = 10, [DeptB] = 2 });
+        _repo.Setup(r => r.GetPlansAsync(Year, null)).ReturnsAsync(new List<DepartmentExpansionPlan>
+        {
+            new() { Year = Year, DepartmentId = DeptA, AdditionalHeadcount = -3, UpdatedAt = DateTime.UtcNow },
+            new() { Year = Year, DepartmentId = DeptB, AdditionalHeadcount = -5, UpdatedAt = DateTime.UtcNow },
+        });
+
+        var result = await _sut.GetPlansAsync(Year, null);
+
+        Assert.Equal((10, 7), (result[0].BaselineHeadcount, result[0].ProjectedHeadcount));
+        Assert.Equal((2, 0), (result[1].BaselineHeadcount, result[1].ProjectedHeadcount));   // không âm
+    }
+
+    [Fact]
+    public async Task DeleteRatioAsync_MissingOrStaleVersion_IsRefused()
+    {
+        var ratio = new AssetCategoryDeviceRatio { CategoryId = CatComputer, DevicesPerPerson = 1m, Version = 3 };
+        _repo.Setup(r => r.GetRatioAsync(CatComputer)).ReturnsAsync(ratio);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _sut.DeleteRatioAsync(CatComputer));
+        await Assert.ThrowsAsync<ForecastInputConflictException>(() => _sut.DeleteRatioAsync(CatComputer, 2));
+        _repo.Verify(r => r.RemoveRatio(It.IsAny<AssetCategoryDeviceRatio>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpsertRatioAsync_DuplicateCreate_ConflictsInsteadOfFailing()
+    {
+        _repo.Setup(r => r.GetRatioAsync(CatComputer)).ReturnsAsync((AssetCategoryDeviceRatio?)null);
+        _repo.Setup(r => r.SaveChangesAsync()).ThrowsAsync(new DbUpdateException("dup"));
+
+        await Assert.ThrowsAsync<ForecastInputConflictException>(() =>
+            _sut.UpsertRatioAsync(CatComputer, new UpsertDeviceRatioRequestDto { DevicesPerPerson = 1m }));
     }
 }

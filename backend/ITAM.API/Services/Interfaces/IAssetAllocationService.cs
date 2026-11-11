@@ -26,7 +26,15 @@ public interface IAssetAllocationService
         string? currentUserRole,
         int? currentUserDepartmentId,
         string? keyword = null,
-        int? employeeId = null);
+        int? employeeId = null,
+        int? categoryId = null,
+        DateOnly? allocatedFrom = null,
+        DateOnly? allocatedTo = null,
+        string? handoverCondition = null,
+        string? returnCondition = null,
+        int? holdingOverDays = null,
+        string? sort = null,
+        string? departmentScope = null);
 
     Task<AssetAllocationResponseDto> GetByIdAsync(
         int id,
@@ -43,5 +51,6 @@ public interface IAssetAllocationService
     Task<IReadOnlyList<OverdueAllocationDto>> GetOverdueAsync(
         int thresholdDays,
         string? currentUserRole,
-        int? currentUserDepartmentId);
+        int? currentUserDepartmentId,
+        string? severity = null);
 }

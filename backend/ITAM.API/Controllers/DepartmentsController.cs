@@ -1,3 +1,4 @@
+using ITAM.API.Authorization;
 using FluentValidation;
 using ITAM.API.Models.DTOs;
 using ITAM.API.Models.DTOs.Departments;
@@ -51,7 +52,7 @@ public class DepartmentsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin IT")]
+    [HasPermission(Permissions.DepartmentsManage)]
     public async Task<IActionResult> Create(CreateDepartmentRequestDto dto)
     {
         var validation = await _createValidator.ValidateAsync(dto);
@@ -74,7 +75,7 @@ public class DepartmentsController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Roles = "Admin IT")]
+    [HasPermission(Permissions.DepartmentsManage)]
     public async Task<IActionResult> Update(int id, UpdateDepartmentRequestDto dto)
     {
         var validation = await _updateValidator.ValidateAsync(dto);
@@ -100,7 +101,7 @@ public class DepartmentsController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = "Admin IT")]
+    [HasPermission(Permissions.DepartmentsManage)]
     public async Task<IActionResult> Delete(int id)
     {
         try

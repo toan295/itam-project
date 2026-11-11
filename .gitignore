@@ -33,3 +33,13 @@ Thumbs.db
 
 ## ----- 7. Nếu sau này frontend cài thêm gói qua npm -----
 node_modules/
+
+## ----- Hộp thư thử (email lưu ra file khi chưa cấu hình SMTP) -----
+**/App_Data/
+
+## ----- Tài liệu nội bộ không đưa lên GitHub -----
+CLAUDE.md
+docs/*.md
+docs/weekly-plans/
+docs/reports/
+docs/reference/

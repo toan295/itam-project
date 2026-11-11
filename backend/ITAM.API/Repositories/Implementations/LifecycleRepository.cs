@@ -21,12 +21,17 @@ public class LifecycleRepository : ILifecycleRepository
     private IQueryable<Asset> ActiveAssets() =>
         _context.Assets.AsNoTracking().Where(asset => asset.Status != AssetStatus.Disposed);
 
-    public async Task<IReadOnlyList<AssetLifecycleRow>> GetAssetLifecycleRowsAsync(int? departmentId)
+    public async Task<IReadOnlyList<AssetLifecycleRow>> GetAssetLifecycleRowsAsync(int? departmentId, int? categoryId)
     {
         var assetQuery = ActiveAssets();
         if (departmentId.HasValue)
         {
             assetQuery = assetQuery.Where(asset => asset.DepartmentId == departmentId.Value);
+        }
+
+        if (categoryId.HasValue)
+        {
+            assetQuery = assetQuery.Where(asset => asset.CategoryId == categoryId.Value);
         }
 
         return await LoadRowsAsync(assetQuery);
@@ -123,7 +128,8 @@ public class LifecycleRepository : ILifecycleRepository
 
     public async Task<IReadOnlyList<TicketTrendPointDto>> GetTicketCountByYearAsync(
         int? departmentId,
-        int fromYear)
+        int fromYear,
+        int? categoryId)
     {
         var query = _context.MaintenanceTickets
             .AsNoTracking()
@@ -135,6 +141,11 @@ public class LifecycleRepository : ILifecycleRepository
             query = query.Where(ticket => ticket.Asset.DepartmentId == departmentId.Value);
         }
 
+        if (categoryId.HasValue)
+        {
+            query = query.Where(ticket => ticket.Asset.CategoryId == categoryId.Value);
+        }
+
         return await query
             .GroupBy(ticket => ticket.ReportedDate.Year)
             .Select(group => new TicketTrendPointDto
@@ -144,6 +155,20 @@ public class LifecycleRepository : ILifecycleRepository
             })
             .OrderBy(point => point.Year)
             .ToListAsync();
+    }
+
+    public async Task<IReadOnlyDictionary<int, string>> GetUserNamesAsync(IEnumerable<int> userIds)
+    {
+        var ids = userIds.Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return new Dictionary<int, string>();
+        }
+
+        return await _context.Users
+            .AsNoTracking()
+            .Where(user => ids.Contains(user.Id))
+            .ToDictionaryAsync(user => user.Id, user => user.FullName);
     }
 
     public async Task<IReadOnlyList<AssetCategoryLifecyclePolicy>> GetPoliciesAsync() =>

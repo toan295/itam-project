@@ -16,4 +16,5 @@ public class AssetResponseDto
     public DateOnly? PurchaseDate { get; set; }
     public DateOnly? WarrantyExpiry { get; set; }
     public bool IsUnderWarranty { get; set; }
+    public int Version { get; set; }
 }

@@ -22,6 +22,61 @@ namespace ITAM.API.Data.Migrations
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
 
+            modelBuilder.Entity("ITAM.API.Models.Entities.AccountActivation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("ActivatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("EmailTo")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("SendError")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<byte>("Status")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "CreatedAt");
+
+                    b.ToTable("AccountActivations");
+                });
+
             modelBuilder.Entity("ITAM.API.Models.Entities.Asset", b =>
                 {
                     b.Property<int>("Id")
@@ -67,6 +122,12 @@ namespace ITAM.API.Data.Migrations
                     b.Property<byte>("Status")
                         .HasColumnType("tinyint unsigned");
 
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
                     b.Property<DateOnly?>("WarrantyExpiry")
                         .HasColumnType("date");
 
@@ -91,6 +152,9 @@ namespace ITAM.API.Data.Migrations
                         .HasColumnType("int");
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("ActiveAssetId")
+                        .HasColumnType("int");
 
                     b.Property<DateOnly>("AllocatedDate")
                         .HasColumnType("date");
@@ -132,6 +196,10 @@ namespace ITAM.API.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
 
+                    b.Property<string>("RecipientPosition")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
                     b.Property<byte?>("ReturnCondition")
                         .HasColumnType("tinyint unsigned");
 
@@ -146,6 +214,9 @@ namespace ITAM.API.Data.Migrations
                         .HasColumnType("tinyint unsigned");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ActiveAssetId")
+                        .IsUnique();
 
                     b.HasIndex("AssetId");
 
@@ -168,6 +239,18 @@ namespace ITAM.API.Data.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("ActiveName")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)")
+                        .HasComputedColumnSql("CASE WHEN `IsDeleted` = 0 THEN `Name` END", true);
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -175,7 +258,7 @@ namespace ITAM.API.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Name")
+                    b.HasIndex("ActiveName")
                         .IsUnique();
 
                     b.ToTable("AssetCategories");
@@ -188,6 +271,18 @@ namespace ITAM.API.Data.Migrations
 
                     b.Property<decimal>("DevicesPerPerson")
                         .HasColumnType("decimal(6,2)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
 
                     b.HasKey("CategoryId");
 
@@ -211,6 +306,18 @@ namespace ITAM.API.Data.Migrations
                     b.Property<int>("MaxFailureCount")
                         .HasColumnType("int");
 
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
                     b.HasKey("Id");
 
                     b.HasIndex("CategoryId")
@@ -232,6 +339,18 @@ namespace ITAM.API.Data.Migrations
 
                     b.Property<decimal>("UnitPrice")
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
 
                     b.HasKey("CategoryId");
 
@@ -278,6 +397,17 @@ namespace ITAM.API.Data.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("varchar(50)");
 
+                    b.Property<string>("ActorName")
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
+
+                    b.Property<string>("ActorRole")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("Detail")
+                        .HasColumnType("longtext");
+
                     b.Property<int>("EntityId")
                         .HasColumnType("int");
 
@@ -286,11 +416,37 @@ namespace ITAM.API.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
 
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("varchar(45)");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
                     b.Property<string>("NewValue")
                         .HasColumnType("longtext");
 
                     b.Property<string>("OldValue")
                         .HasColumnType("longtext");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasDefaultValue("Success");
+
+                    b.Property<string>("RequestId")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("RowHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<int?>("StatusCode")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("Timestamp")
                         .HasColumnType("datetime(6)");
@@ -300,9 +456,13 @@ namespace ITAM.API.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Outcome");
+
                     b.HasIndex("Timestamp");
 
                     b.HasIndex("UserId");
+
+                    b.HasIndex("EntityName", "EntityId");
 
                     b.ToTable("AuditLogs");
                 });
@@ -342,12 +502,24 @@ namespace ITAM.API.Data.Migrations
                     b.Property<DateTime?>("GeneratedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("InputsHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("InputsJson")
+                        .HasColumnType("longtext");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<string>("Notes")
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
+
+                    b.Property<int>("Revision")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
 
                     b.Property<int>("Year")
                         .HasColumnType("int");
@@ -370,9 +542,21 @@ namespace ITAM.API.Data.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("ActiveName")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)")
+                        .HasComputedColumnSql("CASE WHEN `IsDeleted` = 0 THEN `Name` END", true);
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("Description")
                         .HasMaxLength(255)
                         .HasColumnType("varchar(255)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -381,7 +565,7 @@ namespace ITAM.API.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Name")
+                    b.HasIndex("ActiveName")
                         .IsUnique();
 
                     b.ToTable("Departments");
@@ -408,6 +592,15 @@ namespace ITAM.API.Data.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
                     b.Property<int>("Year")
                         .HasColumnType("int");
 
@@ -428,6 +621,9 @@ namespace ITAM.API.Data.Migrations
                         .HasColumnType("int");
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("ActiveAssetId")
+                        .HasColumnType("int");
 
                     b.Property<int>("AssetId")
                         .HasColumnType("int");
@@ -488,6 +684,9 @@ namespace ITAM.API.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ActiveAssetId")
+                        .IsUnique();
+
                     b.HasIndex("AssetId");
 
                     b.HasIndex("CompletedByUserId");
@@ -513,6 +712,18 @@ namespace ITAM.API.Data.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("ActiveCode")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)")
+                        .HasComputedColumnSql("CASE WHEN `IsDeleted` = 0 THEN `Code` END", true);
+
+                    b.Property<string>("ActiveName")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)")
+                        .HasComputedColumnSql("CASE WHEN `IsDeleted` = 0 THEN `Name` END", true);
+
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -523,9 +734,15 @@ namespace ITAM.API.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("Description")
                         .HasMaxLength(255)
                         .HasColumnType("varchar(255)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<bool>("IsSystem")
                         .HasColumnType("tinyint(1)");
@@ -540,10 +757,10 @@ namespace ITAM.API.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Code")
+                    b.HasIndex("ActiveCode")
                         .IsUnique();
 
-                    b.HasIndex("Name")
+                    b.HasIndex("ActiveName")
                         .IsUnique();
 
                     b.ToTable("DisposalStatuses");
@@ -555,6 +772,7 @@ namespace ITAM.API.Data.Migrations
                             Code = "Inspected",
                             Color = "info",
                             Description = "Technician đã kiểm tra tài sản",
+                            IsDeleted = false,
                             IsSystem = true,
                             Name = "Đã kiểm tra",
                             SortOrder = 1
@@ -565,6 +783,7 @@ namespace ITAM.API.Data.Migrations
                             Code = "Proposed",
                             Color = "warning",
                             Description = "Technician đề xuất thanh lý, chờ Manager duyệt",
+                            IsDeleted = false,
                             IsSystem = true,
                             Name = "Đã đề xuất",
                             SortOrder = 2
@@ -575,6 +794,7 @@ namespace ITAM.API.Data.Migrations
                             Code = "Approved",
                             Color = "success",
                             Description = "Manager đã duyệt, chờ Admin IT thực hiện thanh lý",
+                            IsDeleted = false,
                             IsSystem = true,
                             Name = "Đã duyệt",
                             SortOrder = 3
@@ -585,6 +805,7 @@ namespace ITAM.API.Data.Migrations
                             Code = "Rejected",
                             Color = "danger",
                             Description = "Manager từ chối đề xuất",
+                            IsDeleted = false,
                             IsSystem = true,
                             Name = "Từ chối",
                             SortOrder = 4
@@ -595,6 +816,7 @@ namespace ITAM.API.Data.Migrations
                             Code = "Completed",
                             Color = "slate",
                             Description = "Admin IT đã thanh lý, tài sản chuyển sang Đã thanh lý",
+                            IsDeleted = false,
                             IsSystem = true,
                             Name = "Hoàn tất",
                             SortOrder = 5
@@ -609,11 +831,30 @@ namespace ITAM.API.Data.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("ActiveDeptFullName")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)")
+                        .HasComputedColumnSql("CASE WHEN `IsDeleted` = 0 THEN CONCAT(`DepartmentId`, '|', `FullName`) END", true);
+
+                    b.Property<string>("ActiveEmployeeCode")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasComputedColumnSql("CASE WHEN `IsDeleted` = 0 THEN `EmployeeCode` END", true);
+
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<int>("DepartmentId")
                         .HasColumnType("int");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
 
                     b.Property<string>("EmployeeCode")
                         .IsRequired()
@@ -628,18 +869,33 @@ namespace ITAM.API.Data.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
                     b.Property<string>("Position")
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
 
+                    b.Property<int?>("UserId")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("EmployeeCode")
+                    b.HasIndex("ActiveDeptFullName")
                         .IsUnique();
+
+                    b.HasIndex("ActiveEmployeeCode")
+                        .IsUnique();
+
+                    b.HasIndex("DepartmentId");
 
                     b.HasIndex("FullName");
 
-                    b.HasIndex("DepartmentId", "FullName")
+                    b.HasIndex("UserId")
                         .IsUnique();
 
                     b.ToTable("Employees");
@@ -653,6 +909,9 @@ namespace ITAM.API.Data.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("ErrorsJson")
+                        .HasColumnType("longtext");
+
                     b.Property<int>("FailedRows")
                         .HasColumnType("int");
 
@@ -661,11 +920,22 @@ namespace ITAM.API.Data.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("varchar(255)");
 
+                    b.Property<string>("FileSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
                     b.Property<DateTime>("ImportedAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<int>("ImportedBy")
                         .HasColumnType("int");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasDefaultValue("skip-errors");
 
                     b.Property<int>("SuccessRows")
                         .HasColumnType("int");
@@ -674,6 +944,8 @@ namespace ITAM.API.Data.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("FileSha256");
 
                     b.HasIndex("ImportedBy");
 
@@ -703,6 +975,9 @@ namespace ITAM.API.Data.Migrations
                     b.Property<byte>("Priority")
                         .HasColumnType("tinyint unsigned");
 
+                    b.Property<int?>("ReportedByUserId")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("ReportedDate")
                         .HasColumnType("datetime(6)");
 
@@ -715,17 +990,70 @@ namespace ITAM.API.Data.Migrations
                     b.Property<int?>("TechnicianId")
                         .HasColumnType("int");
 
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
                     b.HasKey("Id");
 
                     b.HasIndex("AssetId");
 
                     b.HasIndex("Priority");
 
+                    b.HasIndex("ReportedByUserId");
+
                     b.HasIndex("Status");
 
                     b.HasIndex("TechnicianId");
 
                     b.ToTable("MaintenanceTickets");
+                });
+
+            modelBuilder.Entity("ITAM.API.Models.Entities.MaintenanceTicketHistory", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("ActorName")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<int?>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("FromValue")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<int>("TicketId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ToValue")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TicketId", "CreatedAt");
+
+                    b.ToTable("MaintenanceTicketHistories");
                 });
 
             modelBuilder.Entity("ITAM.API.Models.Entities.Role", b =>
@@ -749,6 +1077,20 @@ namespace ITAM.API.Data.Migrations
                     b.ToTable("Roles");
                 });
 
+            modelBuilder.Entity("ITAM.API.Models.Entities.RolePermission", b =>
+                {
+                    b.Property<int>("RoleId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PermissionCode")
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
+                    b.HasKey("RoleId", "PermissionCode");
+
+                    b.ToTable("RolePermissions");
+                });
+
             modelBuilder.Entity("ITAM.API.Models.Entities.SoftwareLicense", b =>
                 {
                     b.Property<int>("Id")
@@ -757,8 +1099,20 @@ namespace ITAM.API.Data.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("ActiveLicenseKey")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasComputedColumnSql("CASE WHEN `IsDeleted` = 0 THEN `LicenseKey` END", true);
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<DateOnly>("ExpiryDate")
                         .HasColumnType("date");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("LicenseKey")
                         .IsRequired()
@@ -779,41 +1133,12 @@ namespace ITAM.API.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ActiveLicenseKey")
+                        .IsUnique();
+
                     b.HasIndex("ExpiryDate");
 
-                    b.HasIndex("LicenseKey")
-                        .IsUnique();
-
                     b.ToTable("SoftwareLicenses");
-                });
-
-            modelBuilder.Entity("ITAM.API.Models.Entities.SystemSetting", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Key")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Value")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Key")
-                        .IsUnique();
-
-                    b.ToTable("SystemSettings");
                 });
 
             modelBuilder.Entity("ITAM.API.Models.Entities.User", b =>
@@ -825,6 +1150,9 @@ namespace ITAM.API.Data.Migrations
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<int>("DepartmentId")
@@ -843,6 +1171,9 @@ namespace ITAM.API.Data.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<bool>("MustChangePassword")
                         .HasColumnType("tinyint(1)");
 
@@ -850,6 +1181,13 @@ namespace ITAM.API.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("varchar(255)");
+
+                    b.Property<bool>("PendingActivation")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
 
                     b.Property<int>("RoleId")
                         .HasColumnType("int");
@@ -864,6 +1202,17 @@ namespace ITAM.API.Data.Migrations
                     b.HasIndex("RoleId");
 
                     b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("ITAM.API.Models.Entities.AccountActivation", b =>
+                {
+                    b.HasOne("ITAM.API.Models.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("ITAM.API.Models.Entities.Asset", b =>
@@ -1073,7 +1422,14 @@ namespace ITAM.API.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("ITAM.API.Models.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Department");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("ITAM.API.Models.Entities.ImportLog", b =>
@@ -1095,6 +1451,11 @@ namespace ITAM.API.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("ITAM.API.Models.Entities.User", "ReportedBy")
+                        .WithMany()
+                        .HasForeignKey("ReportedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("ITAM.API.Models.Entities.User", "Technician")
                         .WithMany("MaintenanceTickets")
                         .HasForeignKey("TechnicianId")
@@ -1102,7 +1463,31 @@ namespace ITAM.API.Data.Migrations
 
                     b.Navigation("Asset");
 
+                    b.Navigation("ReportedBy");
+
                     b.Navigation("Technician");
+                });
+
+            modelBuilder.Entity("ITAM.API.Models.Entities.MaintenanceTicketHistory", b =>
+                {
+                    b.HasOne("ITAM.API.Models.Entities.MaintenanceTicket", "Ticket")
+                        .WithMany("History")
+                        .HasForeignKey("TicketId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Ticket");
+                });
+
+            modelBuilder.Entity("ITAM.API.Models.Entities.RolePermission", b =>
+                {
+                    b.HasOne("ITAM.API.Models.Entities.Role", "Role")
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Role");
                 });
 
             modelBuilder.Entity("ITAM.API.Models.Entities.User", b =>
@@ -1147,6 +1532,11 @@ namespace ITAM.API.Data.Migrations
                     b.Navigation("BudgetForecasts");
 
                     b.Navigation("Users");
+                });
+
+            modelBuilder.Entity("ITAM.API.Models.Entities.MaintenanceTicket", b =>
+                {
+                    b.Navigation("History");
                 });
 
             modelBuilder.Entity("ITAM.API.Models.Entities.Role", b =>

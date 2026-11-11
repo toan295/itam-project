@@ -8,14 +8,18 @@ public interface ISoftwareLicenseRepository
     Task<(IReadOnlyList<SoftwareLicenseSnapshot> Items, int TotalItems)> GetPagedAsync(
         int page,
         int pageSize,
-        string? search = null);
+        SoftwareLicenseFilter filter);
 
     Task<SoftwareLicenseSnapshot?> GetByIdAsync(int id);
     Task<SoftwareLicense?> GetEntityByIdAsync(int id);
     Task<IReadOnlyList<SoftwareLicenseSnapshot>> GetExpiringSoonAsync(DateOnly fromDate, DateOnly toDate);
     Task<bool> LicenseKeyExistsAsync(string licenseKey, int? excludeId = null);
     Task<bool> AssetExistsAsync(int assetId);
+    Task<bool> IsAssetDisposedAsync(int assetId); // tài sản đã thanh lý không được gán license.
     Task<bool> IsAssignedAsync(int licenseId, int assetId);
+
+    // Các tài sản đang được gán license này (mã tài sản tăng dần).
+    Task<IReadOnlyList<AssetSoftwareLicense>> GetAssignmentsAsync(int licenseId);
     Task<int> GetCurrentUsageAsync(int licenseId);
     Task AddAsync(SoftwareLicense license);
     Task UpdateAsync(SoftwareLicense license);

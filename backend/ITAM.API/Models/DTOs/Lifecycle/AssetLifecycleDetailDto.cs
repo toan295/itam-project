@@ -25,6 +25,8 @@ public class AssetLifecycleDetailDto
     public int? DueYear { get; set; }                    // null khi không có ngày mua và chưa vượt ngưỡng lỗi
     public IReadOnlyList<string> Reasons { get; set; } = Array.Empty<string>();   // "AgeExceeded"/"FailureCountExceeded"
     public int PriorityScore { get; set; }               // 0..100, chỉ để tham khảo (L1)
+    public PriorityScoreBreakdownDto ScoreBreakdown { get; set; } = new();
+    public string PurchaseDateStatus { get; set; } = "Valid";   // "Valid" | "Missing" | "InFuture" (ngày mua tương lai bị coi là dữ liệu sai, không tính tuổi)
     public string ReasonText { get; set; } = string.Empty;   // rỗng khi chưa vượt ngưỡng
     public IReadOnlyList<AssetTicketSummaryDto> Tickets { get; set; } = Array.Empty<AssetTicketSummaryDto>();
 }

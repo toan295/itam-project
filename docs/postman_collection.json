@@ -30,7 +30,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"admin@eaims.local\",\n  \"password\": \"Admin@123\"\n}",
+              "raw": "{\n  \"email\": \"admin@gmail.com\",\n  \"password\": \"Admin@123\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -117,6 +117,36 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Update my profile (fullName, phone)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Nguyễn Văn A\",\n  \"phone\": \"0912345678\"\n}"
+            }
+          }
         }
       ]
     },
@@ -129,11 +159,46 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/users",
+              "raw": "{{baseUrl}}/users?search=&roleId=&departmentId=&isActive=&activation=&sort=&page=1&pageSize=20",
               "host": [
                 "{{baseUrl}}/users"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": ""
+                },
+                {
+                  "key": "roleId",
+                  "value": ""
+                },
+                {
+                  "key": "departmentId",
+                  "value": ""
+                },
+                {
+                  "key": "isActive",
+                  "value": ""
+                },
+                {
+                  "key": "activation",
+                  "value": ""
+                },
+                {
+                  "key": "sort",
+                  "value": ""
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
               ]
-            }
+            },
+            "description": "Bộ lọc: search (tên, email, SĐT, mã NV); roleId; departmentId; isActive (false = đã khoá); activation = pending | activated; sort = role (mặc định, nhóm theo vai trò) | name | newest. Giá trị sai -> 400."
           },
           "response": []
         },
@@ -155,13 +220,14 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"fullName\": \"Nguyen Van A\",\n  \"email\": \"a@eaims.local\",\n  \"roleId\": 3,\n  \"departmentId\": 1\n}",
+              "raw": "{\n  \"roleId\": 2,\n  \"employeeId\": 5\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
-            }
+            },
+            "description": "Moi tai khoan gan voi MOT nhan vien co san trong Danh muc nhan vien (1-1): chi gui {roleId, employeeId} (employeeId lay tu GET /users/employee-candidates). Ho ten, email, SDT, phong ban lay tu ho so nhan vien. Khong co mat khau mac dinh: tai khoan o trang thai cho kich hoat, he thong gui email lien ket de nguoi dung tu dat mat khau. Tra activationDispatch. 400: thieu nhan vien / nhan vien khong hop le, ngung hoat dong, chua co email; 409: nhan vien da co tai khoan, email da dung."
           },
           "response": []
         },
@@ -267,13 +333,14 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"fullName\": \"Nguyen Van A\",\n  \"email\": \"a@eaims.local\",\n  \"roleId\": 3,\n  \"departmentId\": 1,\n  \"isActive\": true\n}",
+              "raw": "{\n  \"roleId\": 3,\n  \"isActive\": true\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
-            }
+            },
+            "description": "Chi doi vai tro (giua Admin IT / Manager / Technician) va khoa/mo khoa. Ho ten, email, SDT, phong ban sua o PUT /employees/{id} (tu dong bo sang tai khoan). 400: chuyen vao/ra vai tro Employee; 403: tu khoa chinh minh; 409: khoa/ha quyen Admin IT cuoi cung."
           },
           "response": []
         },
@@ -292,70 +359,8 @@
                 "{id}",
                 "reset-password"
               ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Get Default Password",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/settings/default-password",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "settings",
-                "default-password"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Set Default Password",
-          "request": {
-            "method": "PUT",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/settings/default-password",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "settings",
-                "default-password"
-              ]
             },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"password\": \"Eaims@123\"\n}"
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Delete Default Password",
-          "request": {
-            "method": "DELETE",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/settings/default-password",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "settings",
-                "default-password"
-              ]
-            }
+            "description": "Admin IT dat lai mat khau HO nguoi khac: mat khau cu mat hieu luc ngay (token cu cung bi chan), tai khoan ve trang thai cho kich hoat va he thong gui lien ket de nguoi do tu dat mat khau moi. 400: tu dat lai chinh minh, tai khoan dang cho kich hoat hoac dang bi khoa; 429: gui lai qua nhanh."
           },
           "response": []
         },
@@ -409,6 +414,71 @@
                 "1"
               ]
             }
+          },
+          "response": []
+        },
+        {
+          "name": "Employee Candidates (Admin IT)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/employee-candidates?keyword=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "employee-candidates"
+              ],
+              "query": [
+                {
+                  "key": "keyword",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Nhan vien dang hoat dong, co email, CHUA co tai khoan (toi da 50) - nguon chon khi tao tai khoan (moi vai tro)."
+          },
+          "response": []
+        },
+        {
+          "name": "Resend Activation Email (Admin IT)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/1/resend-activation",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "1",
+                "resend-activation"
+              ],
+              "query": []
+            },
+            "description": "Gui lai email kich hoat cho tai khoan (moi vai tro) dang cho kich hoat; lien ket cu mat hieu luc. 429 neu gui lai trong 60 giay; 400 neu da kich hoat/dang bi khoa."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete User (Admin IT)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/{id}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "{id}"
+              ]
+            },
+            "description": "Xoa tai khoan (xoa mem, 204): khong dang nhap duoc nua (token cu bi chan), email duoc giai phong, ho so nhan vien con nguyen va duoc tach lien ket; lich su giu nguyen. 403: tu xoa chinh minh; 404: khong ton tai/da xoa; 409: Admin IT dang hoat dong cuoi cung hoac ky thuat vien con phieu bao tri cho xu ly duoc phan cong."
           },
           "response": []
         }
@@ -491,13 +561,14 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"assetCode\": \"PC-100\",\n  \"name\": \"Dell Latitude 5440\",\n  \"categoryId\": 1,\n  \"serialNumber\": \"SN-0001\",\n  \"specification\": \"i5 / 16GB / 512GB\",\n  \"operatingSystem\": \"Windows 11\",\n  \"departmentId\": 1,\n  \"status\": \"InUse\",\n  \"purchaseDate\": \"2025-01-15\",\n  \"warrantyExpiry\": \"2028-01-15\"\n}",
+              "raw": "{\n  \"assetCode\": \"PC-100\",\n  \"name\": \"Dell Latitude 5440\",\n  \"categoryId\": 1,\n  \"serialNumber\": \"SN-0001\",\n  \"specification\": \"i5 / 16GB / 512GB\",\n  \"operatingSystem\": \"Windows 11\",\n  \"departmentId\": 1,\n  \"status\": \"InUse\",\n  \"purchaseDate\": \"2025-01-15\",\n  \"warrantyExpiry\": \"2028-01-15\",\n  \"version\": 1\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
-            }
+            },
+            "description": " version = asset.version client đang giữ; lệch -> 409."
           },
           "response": []
         },
@@ -507,11 +578,34 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/assets/search",
+              "raw": "{{baseUrl}}/assets/search?sort=&allocationState=&warrantyExpiringInDays=&purchasedFrom=&purchasedTo=",
               "host": [
                 "{{baseUrl}}/assets/search"
+              ],
+              "query": [
+                {
+                  "key": "sort",
+                  "value": ""
+                },
+                {
+                  "key": "allocationState",
+                  "value": ""
+                },
+                {
+                  "key": "warrantyExpiringInDays",
+                  "value": ""
+                },
+                {
+                  "key": "purchasedFrom",
+                  "value": ""
+                },
+                {
+                  "key": "purchasedTo",
+                  "value": ""
+                }
               ]
-            }
+            },
+            "description": "Bộ lọc nâng cao: keyword (tên, mã, số serial); allocationState = allocated | free; warrantyExpiringInDays = 1–365 (bảo hành còn hiệu lực nhưng hết trong N ngày tới); purchasedFrom/purchasedTo (ngày mua); sort = code | name | purchaseDate | warrantyExpiry | newest. Giá trị sai -> 400. purchaseYear phải từ 1990 đến năm hiện tại, ngoài khoảng -> 400."
           },
           "response": []
         }
@@ -621,6 +715,36 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Update category",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/asset-categories/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "asset-categories",
+                "1"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Máy tính\"\n}"
+            }
+          }
         }
       ]
     },
@@ -633,11 +757,49 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/software-licenses",
+              "raw": "{{baseUrl}}/software-licenses?page=1&pageSize=20&search=&state=ExpiringSoon&expiryFrom=&expiryTo=&sortBy=Expiry&assignment=",
               "host": [
                 "{{baseUrl}}/software-licenses"
+              ],
+              "path": [
+                "software-licenses"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                },
+                {
+                  "key": "state",
+                  "value": "ExpiringSoon"
+                },
+                {
+                  "key": "expiryFrom",
+                  "value": ""
+                },
+                {
+                  "key": "expiryTo",
+                  "value": ""
+                },
+                {
+                  "key": "sortBy",
+                  "value": "Expiry"
+                },
+                {
+                  "key": "assignment",
+                  "value": ""
+                }
               ]
-            }
+            },
+            "description": "Thêm assignment = Unused (chưa gán) | InUse (đã gán cho tài sản) | Full (đã dùng hết số lượt); sortBy thêm Newest. Mỗi license trả thêm status (Expired|Full|NearLimit|ExpiringSoon|Active), isFull, remainingSlots. search gồm cả mã/tên tài sản đang được gán. state=NearLimit chỉ gồm license ≥80% nhưng chưa hết chỗ."
           },
           "response": []
         },
@@ -772,7 +934,8 @@
                   "language": "json"
                 }
               }
-            }
+            },
+            "description": "Gán license cho tài sản. 409 khi: license hết hạn, tài sản đã thanh lý, đã đủ MaxUsage, hoặc đã gán trùng. Chạy trong transaction có khoá dòng license."
           },
           "response": []
         },
@@ -782,7 +945,7 @@
             "method": "DELETE",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/software-licenses/1/assign/1",
+              "raw": "{{baseUrl}}/software-licenses/1/assign/1?reason=",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -791,10 +954,36 @@
                 "1",
                 "assign",
                 "1"
+              ],
+              "query": [
+                {
+                  "key": "reason",
+                  "value": ""
+                }
               ]
-            }
+            },
+            "description": "Gỡ license khỏi tài sản. Query tuỳ chọn reason=<lý do gỡ> được ghi vào Nhật ký hệ thống. Chưa gán -> 404."
           },
           "response": []
+        },
+        {
+          "name": "Get License Assignments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/software-licenses/1/assignments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "software-licenses",
+                "1",
+                "assignments"
+              ]
+            },
+            "description": "Các tài sản đang được gán license (mã tài sản tăng dần). Dùng cho hộp thoại Gỡ license."
+          }
         }
       ]
     },
@@ -807,11 +996,69 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/maintenance-tickets?page=1&pageSize=20&status=Pending",
+              "raw": "{{baseUrl}}/maintenance-tickets?page=1&pageSize=20&closed=false&keyword=&priority=&departmentId=&fromDate=&toDate=&technicianId=&unassigned=&categoryId=&pendingOverDays=&sort=",
               "host": [
                 "{{baseUrl}}/maintenance-tickets?page=1&pageSize=20&status=Pending"
+              ],
+              "path": [
+                "maintenance-tickets"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                },
+                {
+                  "key": "closed",
+                  "value": "false"
+                },
+                {
+                  "key": "keyword",
+                  "value": ""
+                },
+                {
+                  "key": "priority",
+                  "value": ""
+                },
+                {
+                  "key": "departmentId",
+                  "value": ""
+                },
+                {
+                  "key": "fromDate",
+                  "value": ""
+                },
+                {
+                  "key": "toDate",
+                  "value": ""
+                },
+                {
+                  "key": "technicianId",
+                  "value": ""
+                },
+                {
+                  "key": "unassigned",
+                  "value": ""
+                },
+                {
+                  "key": "categoryId",
+                  "value": ""
+                },
+                {
+                  "key": "pendingOverDays",
+                  "value": ""
+                },
+                {
+                  "key": "sort",
+                  "value": ""
+                }
               ]
-            }
+            },
+            "description": "Bộ lọc nâng cao: technicianId; unassigned=true (chưa phân công — không kết hợp với technicianId); categoryId (loại tài sản); pendingOverDays = 1–3650 (chỉ phiếu chờ xử lý đã báo quá N ngày); sort = urgency (mặc định) | newest | oldest."
           },
           "response": []
         },
@@ -853,7 +1100,8 @@
                   "language": "json"
                 }
               }
-            }
+            },
+            "description": "Phieu do nguoi dung duoc cap tai san (Employee) bao loi; Admin IT/Manager tao ho khi can. Technician khong tao phieu (403)."
           },
           "response": []
         },
@@ -875,13 +1123,14 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"technicianId\": 3\n}",
+              "raw": "{\n  \"technicianId\": 3,\n  \"reason\": \"Bắt buộc khi ĐỔI người đã được phân công\",\n  \"version\": 1\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
-            }
+            },
+            "description": "Gán/đổi kỹ thuật viên (phải đang hoạt động, role Technician). Đổi người đã phụ trách thì bắt buộc reason. version = ticket.version client đang giữ; lệch -> 409 (dữ liệu đã bị người khác đổi)."
           },
           "response": []
         },
@@ -903,13 +1152,14 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"status\": \"Resolved\",\n  \"notes\": \"Đã thay nguồn\"\n}",
+              "raw": "{\n  \"status\": \"Resolved\",\n  \"notes\": \"Đã thay RAM 8GB, chạy ổn định\",\n  \"version\": 1\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
-            }
+            },
+            "description": "Đóng phiếu: status = Resolved | Failed. notes (kết quả xử lý hoặc lý do không xử lý được) BẮT BUỘC, tối thiểu 5 ký tự. version lệch -> 409. Phiếu đã đóng là trạng thái cuối (409 nếu đổi lại)."
           },
           "response": []
         },
@@ -988,6 +1238,30 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Get Ticket History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/maintenance-tickets/1/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "maintenance-tickets",
+                "1",
+                "history"
+              ]
+            },
+            "description": "Lịch sử xử lý phiếu (cũ nhất trước): tạo, phân công, đổi người (kèm lý do), đổi mức độ, đóng phiếu (kèm kết quả). Cùng phạm vi xem với GET /maintenance-tickets/{id}."
+          }
         }
       ]
     },
@@ -1056,11 +1330,18 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/allocations/overdue?thresholdDays=180",
+              "raw": "{{baseUrl}}/allocations/overdue?thresholdDays=180&severity=",
               "host": [
                 "{{baseUrl}}/allocations/overdue?thresholdDays=180"
+              ],
+              "query": [
+                {
+                  "key": "severity",
+                  "value": ""
+                }
               ]
-            }
+            },
+            "description": "Cảnh báo quá hạn bảo trì (phân bổ đang mở). Mốc = lần bảo trì HOÀN TẤT gần nhất, chưa có thì ngày mua, thiếu cả hai thì ngày giao; số ngày tính theo giờ VN; bỏ qua tài sản đang có phiếu bảo trì chờ xử lý. thresholdDays 1–3650 (mặc định 180); severity = High (≥ 2×ngưỡng) | Normal. Trả referenceDate, referenceSource, severity."
           },
           "response": []
         },
@@ -1086,7 +1367,8 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"assetId\": 1,\n  \"employeeId\": 1,\n  \"allocatedDate\": \"2026-10-08\",\n  \"handoverReason\": \"Cấp phát tài sản phục vụ công việc\",\n  \"handoverLocation\": \"Văn phòng công ty\",\n  \"handoverCondition\": \"Tốt\",\n  \"handoverNote\": \"\"\n}"
-            }
+            },
+            "description": "Phân bổ tài sản. Gửi lại đúng yêu cầu (cùng tài sản + nhân viên + ngày giao) trả lại bản ghi cũ; khác nhân viên khi đang được giữ -> 409. Ngày giao không trước ngày mua tài sản, không ở tương lai."
           },
           "response": []
         },
@@ -1096,14 +1378,45 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/allocations?keyword=&employeeId=&status=&departmentId=&page=1&pageSize=20",
+              "raw": "{{baseUrl}}/allocations?keyword=&employeeId=&status=&departmentId=&page=1&pageSize=20&categoryId=&allocatedFrom=&allocatedTo=&handoverCondition=&returnCondition=&holdingOverDays=&sort=",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "allocations"
+              ],
+              "query": [
+                {
+                  "key": "categoryId",
+                  "value": ""
+                },
+                {
+                  "key": "allocatedFrom",
+                  "value": ""
+                },
+                {
+                  "key": "allocatedTo",
+                  "value": ""
+                },
+                {
+                  "key": "handoverCondition",
+                  "value": ""
+                },
+                {
+                  "key": "returnCondition",
+                  "value": ""
+                },
+                {
+                  "key": "holdingOverDays",
+                  "value": ""
+                },
+                {
+                  "key": "sort",
+                  "value": ""
+                }
               ]
-            }
+            },
+            "description": "Bộ lọc nâng cao: categoryId; allocatedFrom/allocatedTo (ngày giao); handoverCondition = Mới | Tốt | Bình thường | Cũ; returnCondition = Good | Damaged; holdingOverDays = 1–3650 (đang giữ quá N ngày); sort = newest | oldest. departmentScope = handover (mặc định: phòng ban ghi nhận lúc giao) | employee (phòng ban hiện tại của nhân viên) | asset (phòng ban quản lý tài sản). Mỗi dòng trả holdingDays (số ngày giữ của chính lần giao đó), isOpen, assetDepartmentName, employeeCurrentDepartmentName. holdingOverDays: chỉ lượt đang mở có holdingDays > N."
           },
           "response": []
         },
@@ -1179,7 +1492,7 @@
                 }
               }
             },
-            "description": "Tạo/cập nhật dự báo. Bỏ departmentId để tạo 1 dòng cho mỗi phòng ban. Năm hợp lệ: từ năm hiện tại đến +10. Chạy lại cùng (năm, phòng ban) sẽ cập nhật dòng cũ. Từ Tuần 8 mỗi dòng dự báo có thêm: additionalHeadcount, estimatedExpansionCount, estimatedExpansionBudget, expansionBreakdown (mua thêm = ceil(nhân sự tăng × định mức)), totalPurchaseCount, totalBudget (= thay thế + mua thêm) và purchaseSummary (danh sách mua sắm gộp theo loại). estimatedBudget vẫn CHỈ là phần thay thế. Warnings gộp một dòng cho mỗi loại thiếu đơn giá (cả thay thế lẫn mua thêm) và cảnh báo nếu chưa cấu hình định mức. Sửa kế hoạch/định mức/đơn giá phải bấm generate lại mới có hiệu lực."
+            "description": "Tuần tự hoá theo năm (hai lần chạy cùng năm không chạy đồng thời; quá thời gian chờ -> 409). Đầu vào y hệt lần trước -> mỗi dòng change = \"Unchanged\", không ghi gì. Đổi -> \"Updated\", revision +1 và previous = bản trước. Mua thêm = phần thiếu hụt sau khi trừ tài sản cùng loại đang dùng được; thay thế không bị trừ bởi tồn kho. Dòng trả về có staleStatus/staleReasons khi GET."
           },
           "response": []
         },
@@ -1189,7 +1502,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/forecasts?page=1&pageSize=20&year=2026&departmentId=1",
+              "raw": "{{baseUrl}}/forecasts?page=1&pageSize=20&year=2026&departmentId=1&keyword=&kind=&minBudget=&maxBudget=&sort=",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1216,9 +1529,30 @@
                   "key": "departmentId",
                   "value": "1",
                   "disabled": true
+                },
+                {
+                  "key": "keyword",
+                  "value": ""
+                },
+                {
+                  "key": "kind",
+                  "value": ""
+                },
+                {
+                  "key": "minBudget",
+                  "value": ""
+                },
+                {
+                  "key": "maxBudget",
+                  "value": ""
+                },
+                {
+                  "key": "sort",
+                  "value": ""
                 }
               ]
-            }
+            },
+            "description": "Bộ lọc nâng cao: keyword (phòng ban, ghi chú); kind = replacement | expansion; minBudget/maxBudget (so với TỔNG ngân sách thay thế + mua thêm, VND); sort = year (mặc định) | budget | department | generated."
           },
           "response": []
         },
@@ -1302,14 +1636,14 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"unitPrice\": 20000000\n}",
+              "raw": "{\n  \"unitPrice\": 20000000,\n  \"version\": null\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
-            "description": "Đơn giá VND, > 0."
+            "description": "version = null khi loại chưa có đơn giá (tạo mới); đã có thì bắt buộc gửi đúng version (GET reference-prices). Lệch/thiếu -> 409. Tối đa 2 chữ số thập phân."
           },
           "response": []
         },
@@ -1319,7 +1653,7 @@
             "method": "DELETE",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/forecasts/reference-prices/1",
+              "raw": "{{baseUrl}}/forecasts/reference-prices/1?version=1",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1327,9 +1661,15 @@
                 "forecasts",
                 "reference-prices",
                 "1"
+              ],
+              "query": [
+                {
+                  "key": "version",
+                  "value": "1"
+                }
               ]
             },
-            "description": "204 khi xoá thành công; 404 nếu loại chưa có đơn giá."
+            "description": "Bắt buộc version (thiếu -> 400, lệch -> 409)."
           },
           "response": []
         },
@@ -1382,14 +1722,14 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"additionalHeadcount\": 5,\n  \"notes\": \"Tuyển thêm 5 nhân sự\"\n}",
+              "raw": "{\n  \"additionalHeadcount\": 2,\n  \"notes\": \"Tuyển thêm\",\n  \"version\": null\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
-            "description": "Số nhân sự TĂNG THÊM trong chính năm đó (không cộng dồn), 0..5000. 404 nếu phòng ban không tồn tại; 409 nếu 2 request tạo trùng đồng thời. Phải bấm 'Tạo dự báo' lại để có hiệu lực."
+            "description": "additionalHeadcount = thay đổi RÒNG nhân sự trong năm (âm = giảm, -5000..5000). version = null khi tạo mới; đã có kế hoạch thì bắt buộc gửi đúng version. Lệch/thiếu -> 409."
           },
           "response": []
         },
@@ -1399,7 +1739,7 @@
             "method": "DELETE",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/forecasts/expansion-plans/2026/1",
+              "raw": "{{baseUrl}}/forecasts/expansion-plans/2026/1?version=1",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1408,9 +1748,15 @@
                 "expansion-plans",
                 "2026",
                 "1"
+              ],
+              "query": [
+                {
+                  "key": "version",
+                  "value": "1"
+                }
               ]
             },
-            "description": "204 khi xoá thành công; 404 nếu chưa có kế hoạch."
+            "description": "Bắt buộc version (thiếu -> 400, lệch -> 409)."
           },
           "response": []
         },
@@ -1456,14 +1802,14 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"devicesPerPerson\": 1.00\n}",
+              "raw": "{\n  \"devicesPerPerson\": 1,\n  \"version\": null\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
-            "description": "Định mức thiết bị/người, 0,01..20,00, tối đa 2 chữ số thập phân. 404 nếu loại không tồn tại."
+            "description": "version = null khi tạo mới; đã có định mức thì bắt buộc gửi đúng version. Lệch/thiếu -> 409."
           },
           "response": []
         },
@@ -1473,7 +1819,7 @@
             "method": "DELETE",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/forecasts/device-ratios/1",
+              "raw": "{{baseUrl}}/forecasts/device-ratios/1?version=1",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1481,9 +1827,15 @@
                 "forecasts",
                 "device-ratios",
                 "1"
+              ],
+              "query": [
+                {
+                  "key": "version",
+                  "value": "1"
+                }
               ]
             },
-            "description": "204 khi xoá thành công; 404 nếu loại chưa có định mức."
+            "description": "Bắt buộc version (thiếu -> 400, lệch -> 409)."
           },
           "response": []
         }
@@ -1498,7 +1850,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/lifecycle/stats?departmentId=1",
+              "raw": "{{baseUrl}}/lifecycle/stats?departmentId=1&categoryId=1",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1509,8 +1861,11 @@
               "query": [
                 {
                   "key": "departmentId",
-                  "value": "1",
-                  "disabled": true
+                  "value": "1"
+                },
+                {
+                  "key": "categoryId",
+                  "value": "1"
                 }
               ]
             },
@@ -1524,7 +1879,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/lifecycle/replacement-candidates?departmentId=1&categoryId=1&sortBy=score&page=1&pageSize=20",
+              "raw": "{{baseUrl}}/lifecycle/replacement-candidates?departmentId=1&categoryId=1&sortBy=score&page=1&pageSize=20&keyword=&reason=&underWarranty=&minScore=",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1558,10 +1913,26 @@
                   "key": "pageSize",
                   "value": "20",
                   "disabled": false
+                },
+                {
+                  "key": "keyword",
+                  "value": ""
+                },
+                {
+                  "key": "reason",
+                  "value": ""
+                },
+                {
+                  "key": "underWarranty",
+                  "value": ""
+                },
+                {
+                  "key": "minScore",
+                  "value": ""
                 }
               ]
             },
-            "description": "Đề xuất thay thế (chỉ tài sản ĐÃ vượt ngưỡng). Mỗi dòng có priorityScore 0–100 (= round(50 × max(tuổi/ngưỡng tuổi, phiếu/ngưỡng lỗi)); chỉ để xếp hạng), reasonText, appliedMaxAgeYears/appliedMaxFailureCount, warrantyExpiry, isUnderWarranty (chỉ là thông tin, không loại tài sản). sortBy: score → điểm ↓, tuổi ↓, mã; age → tuổi ↓ (null cuối); failures → số phiếu ↓; code → mã ↑. sortBy sai → 400."
+            "description": "Bộ lọc nâng cao: keyword (mã/tên tài sản); reason = AgeExceeded | FailureCountExceeded; underWarranty = true/false; minScore = 0–100. Không đổi hợp đồng GetReplacementCandidatesAsync của module Dự báo."
           },
           "response": []
         },
@@ -1571,7 +1942,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/lifecycle/upcoming?departmentId=1&categoryId=1&months=12&page=1&pageSize=20",
+              "raw": "{{baseUrl}}/lifecycle/upcoming?departmentId=1&categoryId=1&months=12&page=1&pageSize=20&keyword=&reason=&minTickets=",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1605,10 +1976,22 @@
                   "key": "pageSize",
                   "value": "20",
                   "disabled": false
+                },
+                {
+                  "key": "keyword",
+                  "value": ""
+                },
+                {
+                  "key": "reason",
+                  "value": ""
+                },
+                {
+                  "key": "minTickets",
+                  "value": ""
                 }
               ]
             },
-            "description": "Cảnh báo sớm: tài sản CHƯA vượt ngưỡng nhưng (a) đủ tuổi trong vòng N tháng tới (reasons: AgeDueSoon, kèm ageDueDate/daysUntilAgeDue) hoặc (b) còn đúng 1 phiếu nữa chạm ngưỡng lỗi (NearFailureThreshold, phải có ≥ 1 phiếu). Sắp xếp: daysUntilAgeDue tăng dần (null cuối) rồi assetCode. Mỗi dòng: assetId/assetCode/assetName, categoryName, departmentName, ageYears, ticketCount, ageDueDate, daysUntilAgeDue (chỉ có khi sắp đủ tuổi), reasons, reasonText."
+            "description": "Bộ lọc nâng cao: keyword; reason = AgeDueSoon | NearFailureThreshold; minTickets = 1–1000 (số phiếu bảo trì tối thiểu)."
           },
           "response": []
         },
@@ -1673,23 +2056,24 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"maxAgeYears\": 7,\n  \"maxFailureCount\": 3\n}",
+              "raw": "{\n  \"maxAgeYears\": 4,\n  \"maxFailureCount\": 2,\n  \"version\": null\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
-            }
+            },
+            "description": "version = null khi loại đang dùng mặc định (tạo ngưỡng riêng); đã có ngưỡng riêng thì bắt buộc gửi đúng version đang thấy (GET /lifecycle/policies). Lệch/thiếu -> 409."
           },
           "response": []
         },
         {
-          "name": "Delete Lifecycle Policy (Admin IT)",
+          "name": "Reset Lifecycle Policy to Default (Admin IT)",
           "request": {
             "method": "DELETE",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/lifecycle/policies/1",
+              "raw": "{{baseUrl}}/lifecycle/policies/1?version=1",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1697,9 +2081,15 @@
                 "lifecycle",
                 "policies",
                 "1"
+              ],
+              "query": [
+                {
+                  "key": "version",
+                  "value": "1"
+                }
               ]
             },
-            "description": "Về ngưỡng mặc định. 204."
+            "description": "Đặt MỘT loại về mặc định hệ thống. Bắt buộc version (thiếu -> 400, cũ -> 409, đã về mặc định -> 404)."
           },
           "response": []
         }
@@ -1780,7 +2170,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/audit-logs?page=1&pageSize=20&userId=&entityName=User&action=Update&fromDate=2026-10-01&toDate=2026-10-31",
+              "raw": "{{baseUrl}}/audit-logs?page=1&pageSize=20&userId=&entityName=User&action=Update&fromDate=2026-10-01&toDate=2026-10-31&keyword=&entityId=&sort=&outcome=",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1822,9 +2212,27 @@
                   "key": "toDate",
                   "value": "2026-10-31",
                   "disabled": true
+                },
+                {
+                  "key": "keyword",
+                  "value": ""
+                },
+                {
+                  "key": "entityId",
+                  "value": ""
+                },
+                {
+                  "key": "sort",
+                  "value": ""
+                },
+                {
+                  "key": "outcome",
+                  "value": "",
+                  "disabled": false
                 }
               ]
-            }
+            },
+            "description": "Nhat ky he thong (chi quyen he thong audit-logs.view). outcome = Success | Rejected | Failed. Ngay fromDate/toDate la NGAY LICH VIET NAM. userId/entityId <= 0 -> 400. Moi dong co outcome, statusCode, message, detail (yeu cau da gui, da che mat khau), requestId, ipAddress, userName/actorRole (ban chup luc do), userEmail (null neu tai khoan da xoa). oldValue/newValue = cac truong thuc su doi (Rejected/Failed khong co)."
           },
           "response": []
         },
@@ -1845,6 +2253,63 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Audit Catalog",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/audit-logs/catalog",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "audit-logs",
+                "catalog"
+              ]
+            },
+            "description": "Danh muc toan bo doi tuong/hanh dong/ket qua cua he thong + ma la trong du lieu (known=false), kem so ban ghi."
+          },
+          "response": []
+        },
+        {
+          "name": "Audit Actors",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/audit-logs/actors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "audit-logs",
+                "actors"
+              ]
+            },
+            "description": "Nguoi da co trong nhat ky (cho o loc). Email chi hien cho nguoi giu audit-logs.view; tai khoan da xoa khong co email."
+          },
+          "response": []
+        },
+        {
+          "name": "Audit Integrity Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/audit-logs/integrity",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "audit-logs",
+                "integrity"
+              ]
+            },
+            "description": "Kiem tra chu ky HMAC tung ban ghi (valid/unsigned/tamperedIds) va trigger chong sua/xoa trong database."
+          },
+          "response": []
         }
       ]
     },
@@ -1857,14 +2322,37 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/disposal-requests?status=&page=1&pageSize=20",
+              "raw": "{{baseUrl}}/disposal-requests?status=&page=1&pageSize=20&keyword=&categoryId=&fromDate=&toDate=&sort=",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "disposal-requests?status=&page=1&pageSize=20"
+              ],
+              "query": [
+                {
+                  "key": "keyword",
+                  "value": ""
+                },
+                {
+                  "key": "categoryId",
+                  "value": ""
+                },
+                {
+                  "key": "fromDate",
+                  "value": ""
+                },
+                {
+                  "key": "toDate",
+                  "value": ""
+                },
+                {
+                  "key": "sort",
+                  "value": ""
+                }
               ]
-            }
+            },
+            "description": "Bộ lọc nâng cao: keyword (mã/tên tài sản, lý do, hình thức, người kiểm tra/đề xuất); categoryId; fromDate/toDate (ngày lập phiếu, gồm trọn ngày toDate); sort = newest | oldest."
           },
           "response": []
         },
@@ -2187,14 +2675,72 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/employees?keyword=&departmentId=&isActive=&page=1&pageSize=20",
+              "raw": "{{baseUrl}}/employees?keyword=&departmentId=&isActive=&accountState=&roleName=&holdingAssets=&sort=&page=1&pageSize=20",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "employees"
+              ],
+              "query": [
+                {
+                  "key": "keyword",
+                  "value": ""
+                },
+                {
+                  "key": "departmentId",
+                  "value": ""
+                },
+                {
+                  "key": "isActive",
+                  "value": ""
+                },
+                {
+                  "key": "accountState",
+                  "value": ""
+                },
+                {
+                  "key": "roleName",
+                  "value": ""
+                },
+                {
+                  "key": "holdingAssets",
+                  "value": ""
+                },
+                {
+                  "key": "sort",
+                  "value": ""
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
               ]
-            }
+            },
+            "description": "Bộ lọc: keyword (tên, mã NV, email, SĐT, chức danh); accountState = none | pending | active | locked; roleName = Admin IT | Manager | Technician | Employee; holdingAssets = true/false (đang giữ tài sản); sort = name | code | department | newest. Giá trị sai -> 400. Manager chỉ thấy nhân viên thường của phòng mình bất kể bộ lọc."
+          },
+          "response": []
+        },
+        {
+          "name": "Employee Position Suggestions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/employees/positions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "employees",
+                "positions"
+              ]
+            },
+            "description": "Chức danh đã dùng (thường gặp nhất trước, tối đa 50) — gợi ý khi nhập chức danh để thống nhất cách viết. Manager chỉ thấy trong phòng mình."
           },
           "response": []
         },
@@ -2237,7 +2783,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"fullName\": \"Nguyễn Văn An\",\n  \"departmentId\": 1,\n  \"position\": \"Kế toán tổng hợp\",\n  \"isActive\": true\n}"
+              "raw": "{\n  \"fullName\": \"Nguyễn Văn An\",\n  \"email\": \"nhanvien@congty.vn\",\n  \"phone\": \"0912345678\",\n  \"departmentId\": 1,\n  \"position\": \"Kế toán tổng hợp\",\n  \"isActive\": true\n}"
             }
           },
           "response": []
@@ -2264,8 +2810,9 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"fullName\": \"Nguyễn Văn An\",\n  \"departmentId\": 1,\n  \"position\": \"Kế toán trưởng\",\n  \"isActive\": true\n}"
-            }
+              "raw": "{\n  \"fullName\": \"Nguyễn Văn An\",\n  \"email\": \"nhanvien@congty.vn\",\n  \"phone\": \"0912345678\",\n  \"departmentId\": 1,\n  \"position\": \"Kế toán trưởng\",\n  \"isActive\": true\n}"
+            },
+            "description": "Sua ho so nhan vien; neu da co tai khoan thi dong bo ho ten/email/SDT/phong ban/trang thai sang tai khoan. 403: Manager sua ho so gan tai khoan Admin IT/Manager/Technician; 409: ngung hoat dong ho so cua Admin IT dang hoat dong cuoi cung."
           },
           "response": []
         },
@@ -2283,9 +2830,597 @@
                 "employees",
                 "{id}"
               ]
+            },
+            "description": "Khong xoa duoc nhan vien da co tai khoan (409) hoac co lich su phan bo; Manager khong xoa ho so gan tai khoan quan tri/van hanh (403)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "My (Employee portal)",
+      "description": "Chi tai khoan vai tro Employee. Moi API khac (tru /auth/*) tra 403 cho Employee.",
+      "item": [
+        {
+          "name": "My Assets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/my/assets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "my",
+                "assets"
+              ]
+            },
+            "description": "Tai san dang duoc cap (phan bo dang mo) + co phieu bao tri dang cho khong."
+          },
+          "response": []
+        },
+        {
+          "name": "My Maintenance Requests",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/my/tickets?page=1&pageSize=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "my",
+                "tickets?page=1&pageSize=10"
+              ]
+            },
+            "description": "Cac yeu cau bao tri do chinh nhan vien tao."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Maintenance Request (Employee: own asset only)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/maintenance-tickets",
+              "host": [
+                "{{baseUrl}}/maintenance-tickets"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assetId\": 1,\n  \"issueDescription\": \"Máy không lên nguồn\",\n  \"technicianId\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Nhan vien chi bao loi tai san minh dang duoc cap (404 neu khong); khong tu chon technicianId."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Permissions",
+      "description": "Phan quyen dong: ma tran vai tro x chuc nang. Chi vai tro co quyen he thong permissions.manage (Admin IT). Dang nhap tra them mang permissions.",
+      "item": [
+        {
+          "name": "Get Permission Matrix",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/permissions/matrix",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "permissions",
+                "matrix"
+              ]
+            },
+            "description": "Nhom chuc nang + moi vai tro (quyen hien tai, quyen mac dinh, so nguoi dung, co bi khoa, revision). Gui lai revision khi luu de phat hien nguoi khac vua sua."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Role Permissions",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/permissions/roles/2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "permissions",
+                "roles",
+                "2"
+              ]
+            },
+            "description": "Thay toan bo quyen cua mot vai tro. expectedRevision (tuy chon): lech revision hien tai -> 409, khong ghi gi. 400: ma quyen sai / permissions null / cap quyen he thong cho vai tro khac / Admin IT thieu quyen he thong; 409: vai tro Employee bi khoa hoac revision lech; 404: khong co vai tro.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permissions\": [\n    \"assets.create\",\n    \"assets.update\",\n    \"maintenance.assign\"\n  ],\n  \"expectedRevision\": \"{{managerRevision}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           },
           "response": []
+        },
+        {
+          "name": "Update Permission Matrix (atomic)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/permissions/matrix",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "permissions",
+                "matrix"
+              ]
+            },
+            "description": "Luu nhieu vai tro trong MOT transaction: kiem tra het truoc roi ghi mot lan; mot vai tro sai/lech revision thi khong vai tro nao doi. expectedRevision BAT BUOC cho moi vai tro (lay tu Get Permission Matrix). Tra ve ma tran moi do may chu xac nhan. 400: thieu revision / ma quyen sai / quyen he thong sai / trung vai tro / rong; 409: revision lech hoac vai tro Employee bi khoa; 403: khong co permissions.manage.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roles\": [\n    {\n      \"roleId\": 2,\n      \"permissions\": [\"assets.create\", \"assets.update\", \"allocations.manage\"],\n      \"expectedRevision\": \"{{managerRevision}}\"\n    },\n    {\n      \"roleId\": 3,\n      \"permissions\": [\"maintenance.update-status\", \"disposals.inspect\"],\n      \"expectedRevision\": \"{{technicianRevision}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Role Permissions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/permissions/roles/2/reset",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "permissions",
+                "roles",
+                "2",
+                "reset"
+              ]
+            },
+            "description": "Khoi phuc quyen mac dinh (lay tu danh muc trong ma nguon), ap dung ngay, ghi nhat ky rieng ResetPermissions. expectedRevision (tuy chon) lech -> 409. Khong gui body van chay.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"expectedRevision\": \"{{managerRevision}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Account Activation (public)",
+      "description": "Khong can dang nhap. Token 256-bit trong lien ket email, dung mot lan, het han sau 3 ngay.",
+      "item": [
+        {
+          "name": "Get Activation Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/account-activation/{{activationToken}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "account-activation",
+                "{{activationToken}}"
+              ],
+              "query": []
+            },
+            "description": "Thong tin tai khoan + trang thai (Pending | Expired | Activated | Superseded). 404: token sai."
+          },
+          "response": []
+        },
+        {
+          "name": "Activate Account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/account-activation/{{activationToken}}/activate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "account-activation",
+                "{{activationToken}}",
+                "activate"
+              ],
+              "query": []
+            },
+            "description": "Nguoi dung tu dat mat khau (8-72 ky tu, gom ca chu va so; nhap lai khop). 200: xong; 400: mat khau khong hop le; 410: lien ket het han / da dung / bi thay / tai khoan bi khoa. Dung chung cho kich hoat tai khoan moi va dat lai mat khau.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"MatKhau@2026\",\n  \"confirmPassword\": \"MatKhau@2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Dashboard Summary (Admin IT / Manager)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/summary?departmentId=1&year=2026&refresh=false",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "summary"
+              ],
+              "query": [
+                {
+                  "key": "departmentId",
+                  "value": "1"
+                },
+                {
+                  "key": "year",
+                  "value": "2026"
+                },
+                {
+                  "key": "refresh",
+                  "value": "false"
+                }
+              ]
+            },
+            "description": "Admin IT: toàn hệ thống (lọc được phòng ban). Manager: luôn khoá ở phòng ban của mình (phòng ban khác -> 403). Cache 60 giây; refresh=true bỏ qua cache. Widget giấy phép/ngân sách chỉ hiện khi có quyền licenses.manage/forecasts.manage."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reports",
+      "item": [
+        {
+          "name": "Export Inventory Report (Admin IT / Manager)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/reports/assets/export?format=excel&departmentId=1&categoryId=&status=&purchaseYear=&keyword=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "reports",
+                "assets",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "excel"
+                },
+                {
+                  "key": "departmentId",
+                  "value": "1"
+                },
+                {
+                  "key": "categoryId",
+                  "value": ""
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "purchaseYear",
+                  "value": ""
+                },
+                {
+                  "key": "keyword",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Tồn kho thiết bị. Manager luôn khoá ở phòng ban mình (phòng ban khác -> 403). Tối đa 50.000 dòng."
+          }
+        },
+        {
+          "name": "Export Maintenance Due Report",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/reports/maintenance-due/export?format=pdf&departmentId=&categoryId=&days=90",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "reports",
+                "maintenance-due",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "pdf"
+                },
+                {
+                  "key": "departmentId",
+                  "value": ""
+                },
+                {
+                  "key": "categoryId",
+                  "value": ""
+                },
+                {
+                  "key": "days",
+                  "value": "90"
+                }
+              ]
+            },
+            "description": "Phiếu bảo trì đang xử lý + thiết bị có bảo hành sắp hết (days 1-365)."
+          }
+        },
+        {
+          "name": "Export Short Lifecycle Report",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/reports/short-lifecycle/export?format=excel&departmentId=&categoryId=&months=12",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "reports",
+                "short-lifecycle",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "excel"
+                },
+                {
+                  "key": "departmentId",
+                  "value": ""
+                },
+                {
+                  "key": "categoryId",
+                  "value": ""
+                },
+                {
+                  "key": "months",
+                  "value": "12"
+                }
+              ]
+            },
+            "description": "Thiết bị đã vượt ngưỡng + sắp tới hạn thay thế (months 1-60); số liệu từ module Vòng đời."
+          }
+        },
+        {
+          "name": "Export Licenses Report (cần licenses.manage)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/reports/licenses/export?format=excel&status=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "reports",
+                "licenses",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "excel"
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "description": "expired | expiring | valid (bỏ trống = tất cả)"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Backups",
+      "item": [
+        {
+          "name": "List backups (Admin IT)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/backups",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "backups"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create backup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/backups",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "backups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "Download backup",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/backups/eaims-sao-luu-20261111-120000.sql/download",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "backups",
+                "eaims-sao-luu-20261111-120000.sql",
+                "download"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Restore backup (ghi đè toàn bộ dữ liệu)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/backups/eaims-sao-luu-20261111-120000.sql/restore",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "backups",
+                "eaims-sao-luu-20261111-120000.sql",
+                "restore"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"confirmText\": \"KHOI PHUC\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete backup",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/backups/eaims-sao-luu-20261111-120000.sql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "backups",
+                "eaims-sao-luu-20261111-120000.sql"
+              ]
+            }
+          }
         }
       ]
     }
@@ -2310,6 +3445,10 @@
       "key": "token",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "verificationToken",
+      "value": ""
     }
   ]
 }

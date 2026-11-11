@@ -1,3 +1,4 @@
+using ITAM.API.Authorization;
 using System.Security.Claims;
 using FluentValidation;
 using ITAM.API.Models.DTOs;
@@ -12,7 +13,7 @@ namespace ITAM.API.Controllers;
 // Danh mục nhân viên nhận tài sản. Admin IT toàn quyền; Manager chỉ trong phòng ban của mình.
 [ApiController]
 [Route("api/v1/employees")]
-[Authorize(Roles = "Admin IT,Manager")]
+[HasPermission(Permissions.EmployeesManage)]
 public class EmployeesController : ControllerBase
 {
     private readonly IEmployeeService _service;
@@ -25,14 +26,25 @@ public class EmployeesController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetList(
+    public Task<IActionResult> GetList(
         [FromQuery] int? departmentId, [FromQuery] string? keyword, [FromQuery] bool? isActive,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
-    {
-        var result = await _service.GetPagedAsync(
-            departmentId, keyword, isActive, page, pageSize, GetRole(), GetDepartmentId());
-        return Ok(ApiResponse<object>.Ok(result));
-    }
+        [FromQuery] string? accountState, [FromQuery] string? roleName, [FromQuery] bool? holdingAssets, [FromQuery] string? sort,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20) =>
+        Run(async () =>
+        {
+            var filter = new EmployeeListFilter
+            {
+                DepartmentId = departmentId, Keyword = keyword, IsActive = isActive, AccountState = accountState,
+                RoleName = roleName, HoldingAssets = holdingAssets, Sort = sort,
+            };
+            var result = await _service.GetPagedAsync(filter, page, pageSize, GetRole(), GetDepartmentId());
+            return Ok(ApiResponse<object>.Ok(result));
+        });
+
+    // Gợi ý chức danh đã dùng — để nhập chức danh thống nhất cách viết (không ép chọn).
+    [HttpGet("positions")]
+    public async Task<IActionResult> GetPositionSuggestions() =>
+        Ok(ApiResponse<object>.Ok(await _service.GetPositionSuggestionsAsync(GetRole(), GetDepartmentId())));
 
     [HttpGet("{id:int}")]
     public Task<IActionResult> GetById(int id) =>
@@ -58,7 +70,7 @@ public class EmployeesController : ControllerBase
         if (bad is not null) return bad;
 
         return await Run(async () =>
-            Ok(ApiResponse<object>.Ok(await _service.UpdateAsync(id, dto, GetRole(), GetDepartmentId()), "Đã cập nhật nhân viên.")));
+            Ok(ApiResponse<object>.Ok(await _service.UpdateAsync(id, dto, GetRole(), GetDepartmentId(), GetUserId()), "Đã cập nhật nhân viên.")));
     }
 
     [HttpDelete("{id:int}")]
@@ -91,6 +103,10 @@ public class EmployeesController : ControllerBase
         {
             return Conflict(ApiResponse<object>.Fail(ex.Message));
         }
+        catch (EmployeeSelfDeactivationException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Fail(ex.Message));
+        }
         catch (DepartmentForbiddenException ex)
         {
             return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Fail(ex.Message));
@@ -100,6 +116,9 @@ public class EmployeesController : ControllerBase
             return BadRequest(ApiResponse<object>.Fail(ex.Message));
         }
     }
+
+    private int? GetUserId() =>
+        int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) ? userId : null;
 
     private string? GetRole() => User.FindFirstValue(ClaimTypes.Role);
 

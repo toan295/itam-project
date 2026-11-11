@@ -7,6 +7,11 @@ public class AssetCategoryReferencePrice
     public int CategoryId { get; set; }
     public decimal UnitPrice { get; set; }
 
+    // Optimistic concurrency (tự tăng ở AppDbContext.BumpVersions) + ai/lúc nào sửa gần nhất.
+    public int Version { get; set; } = 1;
+    public DateTime? UpdatedAt { get; set; }
+    public int? UpdatedByUserId { get; set; }
+
     // Xoá mềm: giữ dòng trong DB, chỉ ẩn khỏi mọi truy vấn thường (query filter trong AppDbContext).
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }

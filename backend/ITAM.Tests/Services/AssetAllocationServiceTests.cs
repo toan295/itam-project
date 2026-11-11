@@ -101,7 +101,8 @@ public class AssetAllocationServiceTests
         var asset = CreateAsset();
         _assetRepository.Setup(x => x.GetByIdWithDetailsAsync(asset.Id)).ReturnsAsync(asset);
         _assetRepository.Setup(x => x.DepartmentExistsAsync(asset.DepartmentId)).ReturnsAsync(true);
-        _allocationRepository.Setup(x => x.HasOpenAllocationAsync(asset.Id)).ReturnsAsync(true);
+        _allocationRepository.Setup(x => x.GetOpenAllocationByAssetIdAsync(asset.Id)).ReturnsAsync(
+            new AssetAllocation { Id = 5, AssetId = asset.Id, EmployeeId = 999, AllocatedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-3), Status = AllocationStatus.Allocated });
 
         var service = CreateService();
 
@@ -121,6 +122,28 @@ public class AssetAllocationServiceTests
 
         await Assert.ThrowsAsync<DepartmentForbiddenException>(() =>
             service.CreateAsync(CreateRequest(asset.Id, asset.DepartmentId), "Manager", 1));
+    }
+
+    [Theory]
+    [InlineData("Admin IT")]
+    [InlineData("Manager")]
+    [InlineData("Technician")]
+    public async Task CreateAsync_ManagerTargetsAStaffProfile_IsHiddenAsNonexistent(string accountRole)
+    {
+        // Hồ sơ của Admin IT/Manager/Technician không hiện với Manager nên cũng không phân bổ cho họ được.
+        var asset = CreateAsset(departmentId: 1);
+        _assetRepository.Setup(x => x.GetByIdWithDetailsAsync(asset.Id)).ReturnsAsync(asset);
+        _employeeRepository.Setup(x => x.GetByIdAsync(100)).ReturnsAsync(new Employee
+        {
+            Id = 100, FullName = "Nhan Su IT", DepartmentId = 1, IsActive = true, UserId = 5,
+            User = new User { Id = 5, Role = new Role { Id = 9, Name = accountRole } },
+        });
+
+        var service = CreateService();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.CreateAsync(CreateRequest(asset.Id, asset.DepartmentId), "Manager", 1));
+        _allocationRepository.Verify(x => x.AddAsync(It.IsAny<AssetAllocation>()), Times.Never);
     }
 
     [Fact]
@@ -301,13 +324,56 @@ public class AssetAllocationServiceTests
     public async Task GetPagedAsync_Manager_IgnoresRequestedDepartmentAndUsesOwn()
     {
         _allocationRepository
-            .Setup(x => x.GetPagedAsync(It.IsAny<int?>(), It.IsAny<AllocationStatus?>(), It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<int>(), It.IsAny<int>()))
+            .Setup(x => x.GetPagedAsync(It.IsAny<int?>(), It.IsAny<AllocationStatus?>(), It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<AllocationListExtras>()))
             .ReturnsAsync((new List<AssetAllocation>(), 0));
 
         var service = CreateService();
         await service.GetPagedAsync(departmentId: 2, status: null, page: 1, pageSize: 20, "Manager", currentUserDepartmentId: 1);
 
-        _allocationRepository.Verify(x => x.GetPagedAsync(1, null, null, null, 1, 20), Times.Once);
+        _allocationRepository.Verify(x => x.GetPagedAsync(1, null, null, null, 1, 20, It.IsAny<AllocationListExtras>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_AdvancedFilters_AreMappedToExtras()
+    {
+        var service = CreateService();
+        _allocationRepository
+            .Setup(x => x.GetPagedAsync(It.IsAny<int?>(), It.IsAny<AllocationStatus?>(), It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<AllocationListExtras>()))
+            .ReturnsAsync((new List<AssetAllocation>(), 0));
+
+        await service.GetPagedAsync(null, null, 1, 20, "Admin IT", null, categoryId: 4,
+            allocatedFrom: new DateOnly(2026, 1, 1), allocatedTo: new DateOnly(2026, 3, 31),
+            handoverCondition: "Tốt", returnCondition: "Damaged", holdingOverDays: 30, sort: "oldest");
+
+        _allocationRepository.Verify(x => x.GetPagedAsync(null, null, null, null, 1, 20, It.Is<AllocationListExtras>(e =>
+            e.CategoryId == 4 && e.AllocatedFrom == new DateOnly(2026, 1, 1) && e.AllocatedTo == new DateOnly(2026, 3, 31)
+            && e.HandoverCondition == "Tốt" && e.ReturnCondition == AssetReturnCondition.Damaged && e.Sort == "oldest"
+            && e.HoldingBefore != null)), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("cond", "Hỏng nặng")]
+    [InlineData("return", "Lost")]
+    [InlineData("holding", "0")]
+    [InlineData("sort", "random")]
+    public async Task GetPagedAsync_InvalidAdvancedFilter_ThrowsArgumentException(string field, string value)
+    {
+        var service = CreateService();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.GetPagedAsync(null, null, 1, 20, "Admin IT", null,
+            handoverCondition: field == "cond" ? value : null,
+            returnCondition: field == "return" ? value : null,
+            holdingOverDays: field == "holding" ? int.Parse(value) : null,
+            sort: field == "sort" ? value : null));
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_AllocatedFromAfterTo_ThrowsArgumentException()
+    {
+        var service = CreateService();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.GetPagedAsync(null, null, 1, 20, "Admin IT", null,
+            allocatedFrom: new DateOnly(2026, 6, 1), allocatedTo: new DateOnly(2026, 1, 1)));
     }
 
     [Fact]
@@ -454,13 +520,13 @@ public class AssetAllocationServiceTests
     public async Task GetPagedAsync_KeywordAndEmployeeFilter_ArePassedToRepository()
     {
         _allocationRepository
-            .Setup(x => x.GetPagedAsync(It.IsAny<int?>(), It.IsAny<AllocationStatus?>(), It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<int>(), It.IsAny<int>()))
+            .Setup(x => x.GetPagedAsync(It.IsAny<int?>(), It.IsAny<AllocationStatus?>(), It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<AllocationListExtras>()))
             .ReturnsAsync((new List<AssetAllocation>(), 0));
 
         var service = CreateService();
         await service.GetPagedAsync(null, null, 1, 20, "Admin IT", null, keyword: "an", employeeId: 5);
 
-        _allocationRepository.Verify(x => x.GetPagedAsync(null, null, "an", 5, 1, 20), Times.Once);
+        _allocationRepository.Verify(x => x.GetPagedAsync(null, null, "an", 5, 1, 20, It.IsAny<AllocationListExtras>()), Times.Once);
     }
 
     // ----- GetDocumentAsync (biên bản theo mẫu) -----
@@ -509,7 +575,8 @@ public class AssetAllocationServiceTests
         Assert.Equal("Phòng IT", doc.Giver.DepartmentName);
         Assert.Equal("Nguyễn Văn An", doc.Receiver.FullName);
         Assert.Equal("Kế toán", doc.Receiver.Position);
-        Assert.Equal("Phòng Kế toán", doc.Receiver.DepartmentName);
+        // Biên bản ghi phòng ban LÚC GIAO (bản chụp trên phân bổ), không phải phòng ban hiện tại của nhân viên.
+        Assert.Equal("Phong 1", doc.Receiver.DepartmentName);
         Assert.Equal("Mới", doc.Asset.Condition);
         Assert.Equal(15_000_000m, doc.Asset.Amount);
         Assert.Equal("Văn phòng", doc.Location);
@@ -566,6 +633,201 @@ public class AssetAllocationServiceTests
 
         await Assert.ThrowsAsync<AllocationNotFoundException>(
             () => CreateService().GetDocumentAsync(allocation.Id, null, "Manager", 2));
+    }
+
+    // ----- Gửi lại an toàn, chốt chặn đồng thời, phạm vi phòng ban, cảnh báo -----
+
+    private AssetAllocation OpenFor(int employeeId, DateOnly date) => new()
+    {
+        Id = 55, AssetId = 10, EmployeeId = employeeId, DepartmentId = 1, RecipientName = "Nguyen Van A",
+        AllocatedDate = date, Status = AllocationStatus.Allocated, ActiveAssetId = 10,
+    };
+
+    [Fact]
+    public async Task CreateAsync_SameRequestRetried_ReturnsExistingAllocationInsteadOfError()
+    {
+        var asset = CreateAsset();
+        _assetRepository.Setup(x => x.GetByIdWithDetailsAsync(asset.Id)).ReturnsAsync(asset);
+        var request = CreateRequest(asset.Id, asset.DepartmentId);
+        var open = WithNavigation(OpenFor(request.EmployeeId, request.AllocatedDate), asset);
+        _allocationRepository.Setup(x => x.GetOpenAllocationByAssetIdAsync(asset.Id)).ReturnsAsync(open);
+        _allocationRepository.Setup(x => x.GetByIdWithDetailsAsync(open.Id)).ReturnsAsync(open);
+
+        var result = await CreateService().CreateAsync(request, "Admin IT", 1);
+
+        Assert.Equal(open.Id, result.Id);
+        _allocationRepository.Verify(x => x.AddAsync(It.IsAny<AssetAllocation>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateAsync_OpenAllocationForDifferentEmployee_StillConflicts()
+    {
+        var asset = CreateAsset();
+        _assetRepository.Setup(x => x.GetByIdWithDetailsAsync(asset.Id)).ReturnsAsync(asset);
+        var request = CreateRequest(asset.Id, asset.DepartmentId);
+        _allocationRepository.Setup(x => x.GetOpenAllocationByAssetIdAsync(asset.Id))
+            .ReturnsAsync(OpenFor(request.EmployeeId + 1, request.AllocatedDate));
+
+        await Assert.ThrowsAsync<AssetAlreadyAllocatedException>(() => CreateService().CreateAsync(request, "Admin IT", 1));
+    }
+
+    [Fact]
+    public async Task CreateAsync_DatabaseUniqueIndexRejectsSecondActiveAllocation_ThrowsAlreadyAllocated()
+    {
+        var asset = CreateAsset();
+        _assetRepository.Setup(x => x.GetByIdWithDetailsAsync(asset.Id)).ReturnsAsync(asset);
+        _allocationRepository.Setup(x => x.SaveChangesAsync())
+            .ThrowsAsync(new Microsoft.EntityFrameworkCore.DbUpdateException("dup", (Exception?)null));
+
+        await Assert.ThrowsAsync<AssetAlreadyAllocatedException>(
+            () => CreateService().CreateAsync(CreateRequest(asset.Id, asset.DepartmentId), "Admin IT", 1));
+    }
+
+    [Fact]
+    public async Task CreateAsync_SetsActiveAssetIdAndSnapshotsPosition()
+    {
+        var asset = CreateAsset();
+        _assetRepository.Setup(x => x.GetByIdWithDetailsAsync(asset.Id)).ReturnsAsync(asset);
+        AssetAllocation? added = null;
+        _allocationRepository.Setup(x => x.AddAsync(It.IsAny<AssetAllocation>()))
+            .Callback<AssetAllocation>(a => { a.Id = 99; added = a; }).Returns(Task.CompletedTask);
+        _allocationRepository.Setup(x => x.GetByIdWithDetailsAsync(99))
+            .ReturnsAsync(() => WithNavigation(added!, asset));
+
+        await CreateService().CreateAsync(CreateRequest(asset.Id, asset.DepartmentId), "Admin IT", 1);
+
+        Assert.Equal(asset.Id, added!.ActiveAssetId);
+        Assert.Equal("Chuyên viên", added.RecipientPosition);
+        Assert.Equal(1, added.DepartmentId); // phòng ban của nhân viên LÚC GIAO
+    }
+
+    [Fact]
+    public async Task CreateAsync_AllocatedBeforePurchaseDate_Throws()
+    {
+        var asset = CreateAsset();
+        asset.PurchaseDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-1);
+        _assetRepository.Setup(x => x.GetByIdWithDetailsAsync(asset.Id)).ReturnsAsync(asset);
+        var request = CreateRequest(asset.Id, asset.DepartmentId);
+        request.AllocatedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-5);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => CreateService().CreateAsync(request, "Admin IT", 1));
+        _allocationRepository.Verify(x => x.AddAsync(It.IsAny<AssetAllocation>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ReturnAsync_ClearsActiveAssetId()
+    {
+        var asset = CreateAsset();
+        var allocation = WithNavigation(CreateAllocation(), asset);
+        allocation.ActiveAssetId = asset.Id;
+        _allocationRepository.Setup(x => x.GetEntityByIdAsync(allocation.Id)).ReturnsAsync(allocation);
+        _allocationRepository.Setup(x => x.GetByIdWithDetailsAsync(allocation.Id)).ReturnsAsync(allocation);
+
+        await CreateService().ReturnAsync(allocation.Id, CreateReturnRequest("Good"), "Admin IT", null, 1);
+
+        Assert.Null(allocation.ActiveAssetId);
+    }
+
+    [Fact]
+    public async Task ReturnAsync_SameRequestRetried_ReturnsSameResultWithoutError()
+    {
+        var asset = CreateAsset();
+        var allocation = WithNavigation(CreateAllocation(status: AllocationStatus.Returned), asset);
+        var request = CreateReturnRequest("Good");
+        allocation.ReturnedDate = request.ReturnedDate;
+        allocation.ReturnCondition = AssetReturnCondition.Good;
+        _allocationRepository.Setup(x => x.GetEntityByIdAsync(allocation.Id)).ReturnsAsync(allocation);
+        _allocationRepository.Setup(x => x.GetByIdWithDetailsAsync(allocation.Id)).ReturnsAsync(allocation);
+
+        var result = await CreateService().ReturnAsync(allocation.Id, request, "Admin IT", null, 1);
+
+        Assert.Equal("Returned", result.Status);
+        _allocationRepository.Verify(x => x.SaveChangesAsync(), Times.Never);
+    }
+
+    [Fact]
+    public async Task ReturnAsync_AlreadyReturnedWithDifferentData_StillConflicts()
+    {
+        var asset = CreateAsset();
+        var allocation = WithNavigation(CreateAllocation(status: AllocationStatus.Returned), asset);
+        allocation.ReturnedDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-2);
+        allocation.ReturnCondition = AssetReturnCondition.Good;
+        _allocationRepository.Setup(x => x.GetEntityByIdAsync(allocation.Id)).ReturnsAsync(allocation);
+
+        await Assert.ThrowsAsync<AllocationAlreadyReturnedException>(
+            () => CreateService().ReturnAsync(allocation.Id, CreateReturnRequest("Damaged"), "Admin IT", null, 1));
+    }
+
+    [Theory]
+    [InlineData("handover")]
+    [InlineData("employee")]
+    [InlineData("asset")]
+    public async Task GetPagedAsync_DepartmentScope_IsPassedToRepository(string scope)
+    {
+        _allocationRepository.Setup(x => x.GetPagedAsync(It.IsAny<int?>(), It.IsAny<AllocationStatus?>(), It.IsAny<string?>(),
+                It.IsAny<int?>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<AllocationListExtras>()))
+            .ReturnsAsync((new List<AssetAllocation>(), 0));
+
+        await CreateService().GetPagedAsync(3, null, 1, 20, "Admin IT", null, departmentScope: scope);
+
+        _allocationRepository.Verify(x => x.GetPagedAsync(3, null, null, null, 1, 20,
+            It.Is<AllocationListExtras>(e => e.DepartmentScope == scope)), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_InvalidDepartmentScope_Throws()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => CreateService().GetPagedAsync(3, null, 1, 20, "Admin IT", null, departmentScope: "xyz"));
+    }
+
+    [Fact]
+    public async Task GetOverdueAsync_UsesLastCompletedMaintenanceOrPurchaseWhicheverIsLater()
+    {
+        var today = ITAM.API.Helpers.VietnamTime.Today();
+        _allocationRepository.Setup(x => x.GetOpenAllocationCandidatesAsync(null)).ReturnsAsync(new List<AllocationOverdueCandidateRow>
+        {
+            // bảo trì cũ hơn ngày mua (dữ liệu sai): lấy ngày mua
+            new() { AllocationId = 1, AssetCode = "A1", AllocatedDate = today.AddDays(-5), AssetPurchaseDate = today.AddDays(-300), LastMaintenanceDate = today.AddDays(-400).ToDateTime(TimeOnly.MinValue) },
+        });
+
+        var item = Assert.Single(await CreateService().GetOverdueAsync(180, "Admin IT", null));
+
+        Assert.Equal("PurchaseDate", item.ReferenceSource);
+        Assert.Equal(300, item.DaysSinceLastMaintenance);
+        Assert.Equal("Normal", item.Severity);
+    }
+
+    [Fact]
+    public async Task GetOverdueAsync_PendingTicket_AssetIsNotWarned()
+    {
+        var today = ITAM.API.Helpers.VietnamTime.Today();
+        _allocationRepository.Setup(x => x.GetOpenAllocationCandidatesAsync(null)).ReturnsAsync(new List<AllocationOverdueCandidateRow>
+        {
+            new() { AllocationId = 1, AssetCode = "A1", AllocatedDate = today.AddDays(-5), AssetPurchaseDate = today.AddDays(-900), HasPendingTicket = true },
+        });
+
+        Assert.Empty(await CreateService().GetOverdueAsync(180, "Admin IT", null));
+    }
+
+    [Fact]
+    public async Task GetOverdueAsync_NoPurchaseNoMaintenance_UsesAllocatedDate_AndSeverityHighAtDoubleThreshold()
+    {
+        var today = ITAM.API.Helpers.VietnamTime.Today();
+        _allocationRepository.Setup(x => x.GetOpenAllocationCandidatesAsync(null)).ReturnsAsync(new List<AllocationOverdueCandidateRow>
+        {
+            new() { AllocationId = 1, AssetCode = "A1", AllocatedDate = today.AddDays(-360) },
+            new() { AllocationId = 2, AssetCode = "A2", AllocatedDate = today.AddDays(-181) },
+            new() { AllocationId = 3, AssetCode = "A3", AllocatedDate = today.AddDays(-180) }, // đúng ngưỡng: chưa quá hạn
+        });
+
+        var all = await CreateService().GetOverdueAsync(180, "Admin IT", null);
+        var high = await CreateService().GetOverdueAsync(180, "Admin IT", null, "High");
+
+        Assert.Equal(new[] { "A1", "A2" }, all.Select(x => x.AssetCode));
+        Assert.All(all, x => Assert.Equal("AllocatedDate", x.ReferenceSource));
+        Assert.Equal(new[] { "A1" }, high.Select(x => x.AssetCode));
+        await Assert.ThrowsAsync<ArgumentException>(() => CreateService().GetOverdueAsync(180, "Admin IT", null, "Urgent"));
     }
 
     private AssetAllocationService CreateService() => new(

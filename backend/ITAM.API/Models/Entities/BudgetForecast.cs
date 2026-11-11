@@ -12,6 +12,12 @@ public class BudgetForecast
     public string? BreakdownJson { get; set; }   // chi tiết theo loại tài sản (JSON camelCase)
     public DateTime? GeneratedAt { get; set; }   // lần tạo/cập nhật dự báo gần nhất (UTC)
 
+    // Tái lập & phát hiện dữ liệu đầu vào đã đổi: InputsJson là ảnh chụp đầu vào của lần tạo (nhân sự, định mức, đơn giá, tồn kho,
+    // danh sách tài sản đến hạn); InputsHash = SHA-256 của nó. Chạy lại với đầu vào y hệt thì không ghi gì (Revision giữ nguyên).
+    public int Revision { get; set; } = 1;       // tăng mỗi khi lần chạy lại thực sự đổi kết quả
+    public string? InputsHash { get; set; }      // null = dòng cũ trước khi lưu ảnh chụp đầu vào
+    public string? InputsJson { get; set; }
+
     // Phần MUA THÊM theo kế hoạch mở rộng phòng ban (Tuần 8, E8). Dòng tạo trước Tuần 8: 0/0/null.
     public int EstimatedExpansionCount { get; set; }
     public decimal EstimatedExpansionBudget { get; set; }   // VND

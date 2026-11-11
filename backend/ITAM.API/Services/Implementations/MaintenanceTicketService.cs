@@ -1,3 +1,4 @@
+using ITAM.API.Repositories.Models;
 using ITAM.API.Models.DTOs.Common;
 using ITAM.API.Helpers;
 using ITAM.API.Models.DTOs.MaintenanceTickets;
@@ -13,24 +14,49 @@ public class MaintenanceTicketService : IMaintenanceTicketService
     private const string AdminRoleName = "Admin IT";
     private const string ManagerRoleName = "Manager";
     private const string TechnicianRoleName = "Technician";
+    private const string EmployeeRoleName = "Employee";
+    private const int MinResultLength = 5; // độ dài tối thiểu của kết quả xử lý/lý do khi đóng phiếu.
     private const int NoAccessSentinelDepartmentId = -1; // DepartmentId không tồn tại -> query luôn trả rỗng.
     private static readonly string[] DepartmentScopedRoles = { ManagerRoleName };
 
     private readonly IMaintenanceTicketRepository _repo;
     private readonly IAssetRepository _assetRepo;
+    private readonly IEmployeeRepository _employeeRepo;
 
-    public MaintenanceTicketService(IMaintenanceTicketRepository repo, IAssetRepository assetRepo)
+    public MaintenanceTicketService(
+        IMaintenanceTicketRepository repo, IAssetRepository assetRepo, IEmployeeRepository employeeRepo)
     {
         _repo = repo;
         _assetRepo = assetRepo;
+        _employeeRepo = employeeRepo;
     }
 
     public async Task<MaintenanceTicketResponseDto> CreateAsync(
         CreateMaintenanceTicketRequestDto dto, string? currentUserRole, int? currentUserDepartmentId, int? currentUserId)
     {
+        // Kỹ thuật viên không tạo phiếu: phiếu do người dùng được cấp tài sản báo lỗi, Admin IT phân công, KTV đi kiểm tra.
+        if (IsTechnician(currentUserRole))
+        {
+            throw new TicketAssignmentForbiddenException(
+                "Kỹ thuật viên không tạo phiếu bảo trì. Phiếu do người dùng được cấp tài sản báo lỗi và Admin IT phân công xử lý.");
+        }
+
         // UC-11 E1: AssetId không tồn tại -> 404.
         var asset = await _assetRepo.GetByIdWithDetailsAsync(dto.AssetId)
             ?? throw new AssetNotFoundException(dto.AssetId);
+
+        // Nhân viên (vai trò Employee) chỉ được báo lỗi tài sản MÌNH ĐANG ĐƯỢC CẤP (phân bổ đang mở) — trả 404 như
+        // thể không tồn tại để không lộ tài sản của người khác.
+        var isEmployee = IsEmployee(currentUserRole);
+        if (isEmployee)
+        {
+            var employee = currentUserId.HasValue ? await _employeeRepo.GetByUserIdAsync(currentUserId.Value) : null;
+            if (employee is null || !employee.IsActive
+                || !await _employeeRepo.HasOpenAllocationForAssetAsync(employee.Id, dto.AssetId))
+            {
+                throw new AssetNotFoundException(dto.AssetId);
+            }
+        }
 
         // Manager/Technician chỉ tạo phiếu cho tài sản phòng ban mình — trả 404 (không lộ tồn tại),
         // đúng pattern AssetService.GetByIdAsync.
@@ -45,27 +71,29 @@ public class MaintenanceTicketService : IMaintenanceTicketService
             throw new AssetNotEligibleForMaintenanceException(asset.Id, asset.Status);
         }
 
-        if (dto.TechnicianId.HasValue)
+        // Nhân viên không tự chọn người xử lý — Admin IT/Manager/Technician sẽ nhận và xử lý phiếu.
+        var technicianId = isEmployee ? null : dto.TechnicianId;
+        if (technicianId.HasValue)
         {
-            // Cùng quy tắc với AssignTechnicianAsync: Technician chỉ được gán cho chính mình,
-            // không được lách qua lúc tạo phiếu để gán cho người khác.
-            if (IsTechnician(currentUserRole) && dto.TechnicianId != currentUserId)
-            {
-                throw new TicketAssignmentForbiddenException("Technician chỉ được tự nhận phiếu cho chính mình.");
-            }
-
-            await EnsureTechnicianValidAsync(dto.TechnicianId.Value);
+            await EnsureTechnicianValidAsync(technicianId.Value);
         }
 
+        var actorName = await GetActorNameAsync(currentUserId);
         var ticket = new MaintenanceTicket
         {
             AssetId = dto.AssetId,
             IssueDescription = dto.IssueDescription.Trim(),
             Status = TicketStatus.Pending,
             Priority = ParsePriorityOrDefault(dto.Priority),
-            TechnicianId = dto.TechnicianId,
+            TechnicianId = technicianId,
+            ReportedByUserId = currentUserId,
             ReportedDate = DateTime.UtcNow,
         };
+        ticket.History.Add(NewHistory("Created", null, ticket.Priority.ToString(), dto.IssueDescription.Trim(), currentUserId, actorName));
+        if (technicianId.HasValue)
+        {
+            ticket.History.Add(NewHistory("Assigned", null, await _repo.GetUserFullNameAsync(technicianId.Value), null, currentUserId, actorName));
+        }
 
         // Có phiếu bảo trì đang chờ xử lý thì tài sản chuyển sang "Bảo trì" (từ Đang dùng hoặc Hỏng). Cùng 1 DbContext
         // với repo phiếu nên 1 lần SaveChanges ghi cả phiếu lẫn trạng thái tài sản (atomic).
@@ -98,25 +126,31 @@ public class MaintenanceTicketService : IMaintenanceTicketService
             throw new TicketStatusTransitionNotAllowedException(id, ticket.Status);
         }
 
-        if (IsTechnician(currentUserRole))
+        // Phân công là việc của Admin IT / Manager; kỹ thuật viên không tự nhận phiếu.
+        if (IsTechnician(currentUserRole) || IsEmployee(currentUserRole))
         {
-            // UC-12 bước 1 "tự nhận": chỉ được gán cho chính mình, và chỉ khi phiếu chưa ai nhận.
-            if (dto.TechnicianId != currentUserId)
-            {
-                throw new TicketAssignmentForbiddenException("Technician chỉ được tự nhận phiếu cho chính mình.");
-            }
-
-            if (ticket.TechnicianId.HasValue)
-            {
-                throw new TicketAlreadyAssignedException(id);
-            }
-        }
-        else
-        {
-            // Admin IT / Manager: gán tự do cho bất kỳ Technician hợp lệ nào (kể cả đổi người đã gán).
-            await EnsureTechnicianValidAsync(dto.TechnicianId);
+            throw new TicketAssignmentForbiddenException("Chỉ Admin IT hoặc Manager mới phân công kỹ thuật viên cho phiếu.");
         }
 
+        ConcurrencyConflictException.EnsureCurrent(ticket.Version, dto.Version);
+
+        // Gán cho Technician hợp lệ (đang hoạt động); đổi người đã gán thì phải nêu lý do để truy vết điều phối.
+        await EnsureTechnicianValidAsync(dto.TechnicianId);
+        if (ticket.TechnicianId == dto.TechnicianId)
+        {
+            throw new ArgumentException("Phiếu đã được phân công cho kỹ thuật viên này.");
+        }
+
+        var reason = string.IsNullOrWhiteSpace(dto.Reason) ? null : dto.Reason.Trim();
+        var isReassign = ticket.TechnicianId.HasValue;
+        if (isReassign && reason is null)
+        {
+            throw new ArgumentException("Vui lòng nhập lý do khi đổi kỹ thuật viên phụ trách.");
+        }
+
+        var newName = await _repo.GetUserFullNameAsync(dto.TechnicianId);
+        ticket.History.Add(NewHistory(isReassign ? "Reassigned" : "Assigned",
+            isReassign ? ticket.Technician?.FullName : null, newName, reason, currentUserId, await GetActorNameAsync(currentUserId)));
         ticket.TechnicianId = dto.TechnicianId;
         _repo.Update(ticket);
         await _repo.SaveChangesAsync();
@@ -148,14 +182,27 @@ public class MaintenanceTicketService : IMaintenanceTicketService
             throw new TicketStatusTransitionNotAllowedException(id, ticket.Status);
         }
 
+        ConcurrencyConflictException.EnsureCurrent(ticket.Version, dto.Version);
+
         if (!TryParseClosingStatus(dto.Status, out var newStatus))
         {
             throw new ArgumentException("Status chỉ được chuyển sang Resolved hoặc Failed.");
         }
 
+        // Đóng phiếu phải có kết quả: việc đã làm (Resolved) hoặc lý do không xử lý được (Failed).
+        var notes = dto.Notes?.Trim();
+        if (string.IsNullOrEmpty(notes) || notes.Length < MinResultLength)
+        {
+            throw new ArgumentException(newStatus == TicketStatus.Resolved
+                ? $"Vui lòng mô tả kết quả xử lý (ít nhất {MinResultLength} ký tự)."
+                : $"Vui lòng nêu lý do không xử lý được (ít nhất {MinResultLength} ký tự).");
+        }
+
+        ticket.History.Add(NewHistory(newStatus.ToString(), ticket.Status.ToString(), newStatus.ToString(), notes,
+            currentUserId, await GetActorNameAsync(currentUserId)));
         ticket.Status = newStatus;
         ticket.ResolvedDate = DateTime.UtcNow;
-        ticket.Notes = dto.Notes?.Trim();
+        ticket.Notes = notes;
         _repo.Update(ticket);
 
         // UC-12 bước 4: đồng bộ Assets.Status. ticket.Asset và ticket cùng được track bởi 1 AppDbContext,
@@ -192,7 +239,8 @@ public class MaintenanceTicketService : IMaintenanceTicketService
     public async Task<PagedResultDto<MaintenanceTicketResponseDto>> GetPagedAsync(
         int? departmentId, int? assetId, string? status, DateOnly? fromDate, DateOnly? toDate,
         int page, int pageSize, string? currentUserRole, int? currentUserDepartmentId, int? currentUserId,
-        string? priority = null, bool? closed = null)
+        string? priority = null, bool? closed = null, string? keyword = null,
+        int? technicianId = null, bool? unassigned = null, int? categoryId = null, int? pendingOverDays = null, string? sort = null)
     {
         var parsedStatus = ParseStatusOrThrow(status);
         var parsedPriority = string.IsNullOrWhiteSpace(priority) ? (TicketPriority?)null : ParsePriorityOrThrow(priority);
@@ -203,14 +251,38 @@ public class MaintenanceTicketService : IMaintenanceTicketService
             throw new ArgumentException("fromDate không được lớn hơn toDate.");
         }
 
+        if (unassigned == true && technicianId.HasValue)
+        {
+            throw new ArgumentException("Không thể vừa lọc theo kỹ thuật viên vừa lọc phiếu chưa phân công.");
+        }
+
+        if (pendingOverDays is < 1 or > 3650)
+        {
+            throw new ArgumentException("pendingOverDays phải từ 1 đến 3650.");
+        }
+
+        if (sort is not null && sort is not ("urgency" or "newest" or "oldest"))
+        {
+            throw new ArgumentException("sort không hợp lệ. Phải là một trong: urgency, newest, oldest");
+        }
+
         (page, pageSize) = Paging.Normalize(page, pageSize);
+
+        var extras = new TicketListExtras
+        {
+            TechnicianId = technicianId,
+            Unassigned = unassigned,
+            CategoryId = categoryId,
+            PendingBefore = pendingOverDays.HasValue ? DateTime.UtcNow.AddDays(-pendingOverDays.Value) : null,
+            Sort = sort,
+        };
 
         var (items, total) = await _repo.GetPagedAsync(
             scopedDepartmentId, assetId, parsedStatus, parsedPriority, closed,
             fromDate?.ToDateTime(TimeOnly.MinValue),
             toDate?.AddDays(1).ToDateTime(TimeOnly.MinValue), // cận trên loại trừ -> gồm trọn ngày toDate.
             technicianScopeUserId: IsTechnician(currentUserRole) ? currentUserId : null,
-            page, pageSize);
+            page, pageSize, keyword, extras);
 
         return new PagedResultDto<MaintenanceTicketResponseDto>
         {
@@ -287,11 +359,60 @@ public class MaintenanceTicketService : IMaintenanceTicketService
             throw new TicketStatusTransitionNotAllowedException(id, ticket.Status);
         }
 
-        ticket.Priority = ParsePriorityOrThrow(dto.Priority);
+        ConcurrencyConflictException.EnsureCurrent(ticket.Version, dto.Version);
+
+        var newPriority = ParsePriorityOrThrow(dto.Priority);
+        if (newPriority != ticket.Priority)
+        {
+            ticket.History.Add(NewHistory("PriorityChanged", ticket.Priority.ToString(), newPriority.ToString(), null,
+                currentUserId, await GetActorNameAsync(currentUserId)));
+        }
+
+        ticket.Priority = newPriority;
         _repo.Update(ticket);
         await _repo.SaveChangesAsync();
         return MapToDto(ticket);
     }
+
+    public async Task<List<MaintenanceTicketHistoryDto>> GetHistoryAsync(
+        int id, string? currentUserRole, int? currentUserDepartmentId, int? currentUserId)
+    {
+        var ticket = await _repo.GetByIdWithDetailsAsync(id)
+            ?? throw new MaintenanceTicketNotFoundException(id);
+
+        if (IsTicketOutOfScope(ticket, currentUserRole, currentUserDepartmentId, currentUserId))
+        {
+            throw new MaintenanceTicketNotFoundException(id);
+        }
+
+        var history = await _repo.GetHistoryAsync(id);
+        return history.Select(h => new MaintenanceTicketHistoryDto
+        {
+            Id = h.Id,
+            Action = h.Action,
+            FromValue = h.FromValue,
+            ToValue = h.ToValue,
+            Reason = h.Reason,
+            ActorUserId = h.ActorUserId,
+            ActorName = h.ActorName,
+            CreatedAt = h.CreatedAt,
+        }).ToList();
+    }
+
+    private async Task<string?> GetActorNameAsync(int? userId) =>
+        userId.HasValue ? await _repo.GetUserFullNameAsync(userId.Value) : null;
+
+    private static MaintenanceTicketHistory NewHistory(
+        string action, string? from, string? to, string? reason, int? actorId, string? actorName) => new()
+    {
+        Action = action,
+        FromValue = from,
+        ToValue = to,
+        Reason = reason,
+        ActorUserId = actorId,
+        ActorName = actorName,
+        CreatedAt = DateTime.UtcNow,
+    };
 
     private static TicketPriority ParsePriorityOrDefault(string? priority) =>
         string.IsNullOrWhiteSpace(priority) ? TicketPriority.Normal : ParsePriorityOrThrow(priority);
@@ -370,18 +491,21 @@ public class MaintenanceTicketService : IMaintenanceTicketService
         && currentUserDepartmentId != targetDepartmentId;
 
     // Phạm vi xem/thao tác trên MỘT phiếu: Manager bị giới hạn theo phòng ban của tài sản. Technician phục vụ
-    // mọi phòng ban nhưng chỉ thấy phiếu của mình hoặc phiếu chưa ai nhận — phiếu của kỹ thuật viên khác
-    // trả 404 như thể không tồn tại (không lộ thông tin đồng nghiệp).
+    // mọi phòng ban nhưng chỉ thấy phiếu được phân công cho mình — phiếu chưa phân công hoặc của kỹ thuật viên
+    // khác trả 404 như thể không tồn tại (không lộ thông tin đồng nghiệp).
     private static bool IsTicketOutOfScope(
         MaintenanceTicket ticket, string? currentUserRole, int? currentUserDepartmentId, int? currentUserId)
     {
         if (IsTechnician(currentUserRole))
         {
-            return ticket.TechnicianId.HasValue && ticket.TechnicianId != currentUserId;
+            return ticket.TechnicianId != currentUserId;
         }
 
         return IsOutsideDepartmentScope(currentUserRole, currentUserDepartmentId, ticket.Asset.DepartmentId);
     }
+
+    private static bool IsEmployee(string? currentUserRole) =>
+        string.Equals(currentUserRole, EmployeeRoleName, StringComparison.Ordinal);
 
     private static bool IsTechnician(string? currentUserRole) =>
         string.Equals(currentUserRole, TechnicianRoleName, StringComparison.Ordinal);
@@ -397,9 +521,12 @@ public class MaintenanceTicketService : IMaintenanceTicketService
         Priority = t.Priority.ToString(),
         TechnicianId = t.TechnicianId,
         TechnicianName = t.Technician?.FullName,
+        ReportedByUserId = t.ReportedByUserId,
+        ReportedByName = t.ReportedBy?.FullName,
         ReportedDate = t.ReportedDate,
         ResolvedDate = t.ResolvedDate,
         Notes = t.Notes,
+        Version = t.Version,
         ResolutionHours = t.ResolvedDate.HasValue ? (t.ResolvedDate.Value - t.ReportedDate).TotalHours : null,
     };
 }

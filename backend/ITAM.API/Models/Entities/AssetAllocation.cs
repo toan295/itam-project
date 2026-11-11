@@ -22,6 +22,13 @@ public class AssetAllocation
     public string? ReturnNote { get; set; }
     public AllocationStatus Status { get; set; }
 
+    // Chức danh người nhận lúc bàn giao (bản chụp, giữ nguyên trên biên bản dù nhân viên sau này đổi chức danh).
+    public string? RecipientPosition { get; set; }
+
+    // = AssetId khi lần phân bổ còn hiệu lực (chưa thu hồi), NULL khi đã thu hồi. Chỉ mục duy nhất trên cột này là chốt
+    // chặn ở database: mỗi tài sản tối đa MỘT phân bổ đang hiệu lực (MySQL cho phép nhiều NULL nên lịch sử không bị ảnh hưởng).
+    public int? ActiveAssetId { get; set; }
+
     public Asset Asset { get; set; } = null!;
     public Department Department { get; set; } = null!;
     public Employee? Employee { get; set; }

@@ -1,3 +1,4 @@
+using ITAM.API.Authorization;
 using ITAM.API.Models.DTOs;
 using ITAM.API.Models.DTOs.AuditLogs;
 using ITAM.API.Models.DTOs.Common;
@@ -10,7 +11,7 @@ namespace ITAM.API.Controllers;
 
 [ApiController]
 [Route("api/v1/audit-logs")]
-[Authorize(Roles = "Admin IT")]
+[HasPermission(Permissions.AuditLogsView)]
 public class AuditLogsController : ControllerBase
 {
     private readonly IAuditLogService _service;
@@ -30,7 +31,11 @@ public class AuditLogsController : ControllerBase
         [FromQuery] string? entityName = null,
         [FromQuery] string? action = null,
         [FromQuery] DateTime? fromDate = null,
-        [FromQuery] DateTime? toDate = null)
+        [FromQuery] DateTime? toDate = null,
+        [FromQuery] string? keyword = null,
+        [FromQuery] int? entityId = null,
+        [FromQuery] string? sort = null,
+        [FromQuery] string? outcome = null)
     {
         try
         {
@@ -41,7 +46,11 @@ public class AuditLogsController : ControllerBase
                 entityName,
                 action,
                 fromDate,
-                toDate);
+                toDate,
+                keyword,
+                entityId,
+                sort,
+                outcome);
 
             return Ok(ApiResponse<PagedResultDto<AuditLogResponseDto>>.Ok(result));
         }
@@ -50,6 +59,22 @@ public class AuditLogsController : ControllerBase
             return BadRequest(ApiResponse<object>.Fail(ex.Message));
         }
     }
+
+    // Người đã có trong nhật ký (cho ô lọc "Người dùng"): email chỉ hiển thị cho người giữ quyền audit-logs.view (Admin IT),
+    // và không bao giờ hiển thị email của tài khoản đã xoá.
+    [HttpGet("actors")]
+    public async Task<IActionResult> GetActors() =>
+        Ok(ApiResponse<List<AuditActorDto>>.Ok(await _service.GetActorsAsync()));
+
+    // Danh mục đối tượng/hành động/kết quả: toàn bộ chức năng hệ thống + mọi mã đang có trong dữ liệu, kèm số bản ghi.
+    [HttpGet("catalog")]
+    public async Task<IActionResult> GetCatalog() =>
+        Ok(ApiResponse<AuditCatalogDto>.Ok(await _service.GetCatalogAsync()));
+
+    // Kiểm tra chữ ký từng bản ghi và trigger chống sửa/xoá.
+    [HttpGet("integrity")]
+    public async Task<IActionResult> VerifyIntegrity() =>
+        Ok(ApiResponse<AuditIntegrityReportDto>.Ok(await _service.VerifyIntegrityAsync()));
 
     [HttpGet("{id:long}")]
     [ProducesResponseType(typeof(ApiResponse<AuditLogResponseDto>), StatusCodes.Status200OK)]

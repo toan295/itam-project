@@ -1,7 +1,7 @@
 const session = requireAuth("login.html");
 renderNav({ active: "categories", basePath: "../" });
 
-const isAdmin = session.role === "Admin IT";
+const isAdmin = can("asset-categories.manage");
 let categoryModal;
 let currentItems = []; // tra cứu lại theo id khi Sửa, thay vì nhúng JSON.stringify(c) vào onclick='...' (rủi ro XSS)
 

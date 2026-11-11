@@ -6,7 +6,7 @@
   <title>Phần mềm & Giấy phép - EAIMS</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-  <link href="../shared/theme.css" rel="stylesheet">
+  <link href="../shared/theme.css?v=20261113" rel="stylesheet">
 </head>
 <body>
   <div class="eaims-shell">
@@ -22,21 +22,59 @@
       </div>
 
       <div id="forbiddenAlert" class="alert alert-warning d-none"></div>
-      <div id="warningBanner" class="alert alert-warning d-none"></div>
+      <div id="warningBanner" class="alert alert-warning d-none">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
+          <strong><i class="bi bi-exclamation-triangle"></i> Nhắc gia hạn license</strong>
+          <span class="small flex-shrink-0" id="warningCount"></span>
+        </div>
+        <div class="small text-muted mb-1">Các license sắp hết hạn trong 30 ngày. Hết hạn thì không gán thêm được và phần mềm có thể ngừng chạy, nên cần gia hạn sớm (sửa ngày hết hạn).</div>
+        <div id="warningPreview" class="small" style="max-height: 260px; overflow-y: auto;"></div>
+        <div class="d-flex flex-wrap gap-2 mt-2">
+          <button class="btn btn-sm btn-outline-warning" id="filterExpiringBtn" type="button"><i class="bi bi-funnel"></i> Lọc danh sách theo license sắp hết hạn</button>
+        </div>
+      </div>
       <div id="errorAlert" class="alert alert-danger d-none"></div>
 
       <div id="licenseContent">
-        <div class="eaims-card mb-3">
-          <div class="card-body py-3">
-            <form id="searchForm" class="row g-2 align-items-end">
-              <div class="col-auto">
+      <div class="eaims-card mb-3 filter-card">
+        <div class="card-body py-3">
+          <form id="searchForm">
+            <div class="row g-2 align-items-end">
+              <div class="col-12 col-lg-4">
                 <label class="form-label">Tìm kiếm</label>
-                <input class="form-control" id="searchText" placeholder="Tên phần mềm hoặc LicenseKey" style="width: 260px">
+                <div class="input-group"><span class="input-group-text bg-white"><i class="bi bi-search"></i></span><input class="form-control" id="searchText" placeholder="Tên phần mềm, License Key, ghi chú hoặc mã tài sản được gán" autocomplete="off"></div>
               </div>
-              <div class="col-auto"><button class="btn btn-primary" type="submit"><i class="bi bi-search"></i> Tìm</button></div>
-            </form>
-          </div>
+              <div class="col-6 col-lg-3">
+                <label class="form-label">Trạng thái</label>
+                <select class="form-select" id="stateFilter"><option value="">-- Tất cả --</option><option value="Valid">Còn hạn (trên 30 ngày)</option><option value="ExpiringSoon">Sắp hết hạn (≤ 30 ngày)</option><option value="Expired">Đã hết hạn</option><option value="NearLimit">Gần giới hạn (≥ 80%, còn chỗ)</option></select>
+              </div>
+              <div class="col-6 col-lg-3">
+                <label class="form-label">Sắp xếp</label>
+                <select class="form-select" id="sortBy"><option value="Name">Tên phần mềm (A→Z)</option><option value="Expiry">Ngày hết hạn (gần nhất trước)</option><option value="Usage">Mức sử dụng (cao nhất trước)</option><option value="Newest">Mới thêm nhất</option></select>
+              </div>
+              <div class="col-12 col-lg-auto ms-lg-auto d-flex gap-2">
+                <button class="btn btn-outline-secondary" type="button" id="resetFilterBtn"><i class="bi bi-x-circle"></i> Xoá lọc</button>
+              </div>
+            </div>
+            <div id="advancedFilters">
+              <div class="row g-2 advanced-panel">
+              <div class="col-6 col-lg-3">
+                <label class="form-label">Tình trạng gán</label>
+                <select class="form-select" id="assignment"><option value="">-- Tất cả --</option><option value="Unused">Chưa gán cho tài sản nào</option><option value="InUse">Đã gán cho tài sản</option><option value="Full">Hết chỗ (đã dùng đủ số lượt)</option></select>
+              </div>
+              <div class="col-6 col-lg-3">
+                <label class="form-label">Hết hạn từ ngày</label>
+                <input class="form-control" id="expiryFrom" data-date-vi>
+              </div>
+              <div class="col-6 col-lg-3">
+                <label class="form-label">Hết hạn đến ngày</label>
+                <input class="form-control" id="expiryTo" data-date-vi>
+              </div>
+              </div>
+            </div>
+          </form>
         </div>
+      </div>
 
         <div class="eaims-table-wrap">
           <div class="table-responsive">
@@ -48,15 +86,19 @@
             </table>
           </div>
         </div>
+        <div class="d-flex justify-content-between align-items-center mt-3">
+          <span class="text-muted small" id="resultLabel"></span>
+          <nav><ul class="pagination mb-0" id="licensePagination"></ul></nav>
+        </div>
       </div>
     </main>
   </div>
 
   <!-- Modal Tạo / Sửa license -->
   <div class="modal fade" id="licenseModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered">
       <div class="modal-content">
-        <form id="licenseForm">
+        <form id="licenseForm" novalidate>
           <div class="modal-header">
             <h5 class="modal-title" id="licenseModalTitle">Thêm license</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -66,25 +108,25 @@
             <input type="hidden" id="licenseId">
             <div class="mb-2">
               <label class="form-label">Tên phần mềm</label>
-              <input class="form-control" id="softwareName" required maxlength="150">
+              <input class="form-control" id="softwareName" required maxlength="150" placeholder="VD: Microsoft Office 2021">
             </div>
             <div class="mb-2">
               <label class="form-label">License Key</label>
-              <input class="form-control" id="licenseKey" required maxlength="255">
+              <input class="form-control" id="licenseKey" required maxlength="255" placeholder="VD: XXXXX-XXXXX-XXXXX-XXXXX-XXXXX">
             </div>
             <div class="row">
               <div class="col mb-2">
                 <label class="form-label">Ngày hết hạn</label>
-                <input type="date" class="form-control" id="expiryDate" required>
+                <input class="form-control" id="expiryDate" data-date-vi required>
               </div>
               <div class="col mb-2">
                 <label class="form-label">Số lượng tối đa (MaxUsage)</label>
-                <input type="number" min="1" class="form-control" id="maxUsage" required>
+                <input type="number" min="1" class="form-control" id="maxUsage" required placeholder="Số thiết bị được cài tối đa, VD: 10">
               </div>
             </div>
             <div class="mb-2">
               <label class="form-label">Ghi chú</label>
-              <textarea class="form-control" id="notes" maxlength="500"></textarea>
+              <textarea class="form-control" id="notes" maxlength="500" placeholder="VD: Bản quyền theo gói doanh nghiệp, gia hạn hằng năm"></textarea>
             </div>
           </div>
           <div class="modal-footer">
@@ -98,18 +140,30 @@
 
   <!-- Modal Gán / Gỡ license cho tài sản -->
   <div class="modal fade" id="assignModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered">
       <div class="modal-content">
-        <form id="assignForm">
+        <form id="assignForm" novalidate>
           <div class="modal-header">
             <h5 class="modal-title" id="assignModalTitle">Gán license cho tài sản</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
             <div id="assignModalError" class="alert alert-danger d-none py-2"></div>
-            <p class="text-muted small" id="assignHelpText"></p>
-            <label class="form-label">Tài sản</label>
-            <select class="form-select" id="assignAssetId" required></select>
+            <div id="assignLicenseInfo" class="border rounded p-2 mb-3 small bg-body-tertiary"></div>
+            <div id="assignModeAssign">
+              <label class="form-label">Tìm tài sản <span class="text-muted fw-normal">(mã, tên hoặc số serial)</span></label>
+              <input class="form-control mb-2" id="assetSearch" placeholder="VD: LT-001" autocomplete="off">
+              <label class="form-label">Chọn tài sản <span class="text-danger">*</span></label>
+              <select class="form-select" id="assignAssetId" size="6"></select>
+              <div class="form-text" id="assignAssetHint">Chỉ hiện tài sản chưa thanh lý và chưa được gán license này.</div>
+            </div>
+            <div id="assignModeUnassign" class="d-none">
+              <label class="form-label">Tài sản đang được gán <span class="text-danger">*</span></label>
+              <select class="form-select" id="unassignAssetId" size="6"></select>
+              <label class="form-label mt-2">Lý do gỡ <span class="text-muted fw-normal">(nên nhập để phục vụ kiểm toán)</span></label>
+              <textarea class="form-control" id="unassignReason" rows="2" maxlength="300" placeholder="VD: Thiết bị chuyển sang phòng khác, không còn dùng phần mềm này"></textarea>
+              <div class="alert alert-warning py-2 small mt-2 mb-0">Gỡ license sẽ giải phóng một chỗ. Hãy chắc chắn thiết bị không còn cần phần mềm này cho công việc.</div>
+            </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huỷ</button>
@@ -121,8 +175,10 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="../shared/api-client.js"></script>
-  <script src="../shared/nav.js"></script>
-  <script src="../assets/js/software-licenses.js"></script>
+  <script src="../shared/api-client.js?v=20261113"></script>
+  <script src="../shared/nav.js?v=20261113"></script>
+  <script src="../shared/form-helpers.js?v=20261113"></script>
+  <script src="../shared/filter-bar.js?v=20261113"></script>
+  <script src="../assets/js/software-licenses.js?v=20261113"></script>
 </body>
 </html>

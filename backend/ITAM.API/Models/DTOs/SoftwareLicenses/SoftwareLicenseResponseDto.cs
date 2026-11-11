@@ -11,6 +11,12 @@ public class SoftwareLicenseResponseDto
     public decimal UsagePercentage { get; set; }
     public bool IsExpired { get; set; }
     public bool IsExpiringSoon { get; set; }
+    // Gần giới hạn: dùng từ 80% trở lên nhưng CHƯA hết chỗ (hết chỗ là IsFull).
     public bool IsNearUsageLimit { get; set; }
+    public bool IsFull { get; set; }
+    public int RemainingSlots { get; set; }
+
+    // Trạng thái tổng hợp theo thứ tự ưu tiên: Expired > Full > NearLimit > ExpiringSoon > Active.
+    public string Status { get; set; } = "Active";
     public string? Notes { get; set; }
 }

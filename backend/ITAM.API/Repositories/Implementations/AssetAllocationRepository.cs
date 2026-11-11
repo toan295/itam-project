@@ -19,7 +19,7 @@ public class AssetAllocationRepository : IAssetAllocationRepository
     public Task<AssetAllocation?> GetByIdWithDetailsAsync(int id) =>
         _context.AssetAllocations
             .AsNoTracking()
-            .Include(x => x.Asset)
+            .Include(x => x.Asset).ThenInclude(a => a.Department)
             .Include(x => x.Department)
             .Include(x => x.Employee).ThenInclude(e => e!.Department)
             .Include(x => x.HandedOverBy).ThenInclude(u => u!.Role)
@@ -60,13 +60,14 @@ public class AssetAllocationRepository : IAssetAllocationRepository
         string? keyword,
         int? employeeId,
         int page,
-        int pageSize)
+        int pageSize,
+        AllocationListExtras extras)
     {
         var query = _context.AssetAllocations
             .AsNoTracking()
-            .Include(x => x.Asset)
+            .Include(x => x.Asset).ThenInclude(a => a.Department)
             .Include(x => x.Department)
-            .Include(x => x.Employee)
+            .Include(x => x.Employee).ThenInclude(e => e!.Department)
             .AsQueryable();
 
         if (employeeId.HasValue)
@@ -86,7 +87,13 @@ public class AssetAllocationRepository : IAssetAllocationRepository
 
         if (departmentId.HasValue)
         {
-            query = query.Where(x => x.DepartmentId == departmentId.Value);
+            var dept = departmentId.Value;
+            query = extras.DepartmentScope switch
+            {
+                "employee" => query.Where(x => x.Employee != null && x.Employee.DepartmentId == dept),
+                "asset" => query.Where(x => x.Asset.DepartmentId == dept),
+                _ => query.Where(x => x.DepartmentId == dept),
+            };
         }
 
         if (status.HasValue)
@@ -94,10 +101,42 @@ public class AssetAllocationRepository : IAssetAllocationRepository
             query = query.Where(x => x.Status == status.Value);
         }
 
+        if (extras.CategoryId.HasValue)
+        {
+            query = query.Where(x => x.Asset.CategoryId == extras.CategoryId.Value);
+        }
+
+        if (extras.AllocatedFrom.HasValue)
+        {
+            query = query.Where(x => x.AllocatedDate >= extras.AllocatedFrom.Value);
+        }
+
+        if (extras.AllocatedTo.HasValue)
+        {
+            query = query.Where(x => x.AllocatedDate <= extras.AllocatedTo.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(extras.HandoverCondition))
+        {
+            query = query.Where(x => x.HandoverCondition == extras.HandoverCondition);
+        }
+
+        if (extras.ReturnCondition.HasValue)
+        {
+            query = query.Where(x => x.ReturnCondition == extras.ReturnCondition.Value);
+        }
+
+        if (extras.HoldingBefore.HasValue)
+        {
+            query = query.Where(x => x.Status == AllocationStatus.Allocated && x.ReturnedDate == null
+                && x.AllocatedDate < extras.HoldingBefore.Value);
+        }
+
         var totalItems = await query.CountAsync();
-        var items = await query
-            .OrderByDescending(x => x.AllocatedDate)
-            .ThenByDescending(x => x.Id)
+        var ordered = extras.Sort == "oldest"
+            ? query.OrderBy(x => x.AllocatedDate).ThenBy(x => x.Id)
+            : query.OrderByDescending(x => x.AllocatedDate).ThenByDescending(x => x.Id);
+        var items = await ordered
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
@@ -129,16 +168,23 @@ public class AssetAllocationRepository : IAssetAllocationRepository
         // Tách truy vấn MAX bảo trì thành bước riêng để LINQ dịch ổn định sang MySQL,
         // đúng hướng dẫn của tài liệu Tuần 5 khi LEFT JOIN/MAX trở nên phức tạp.
         var assetIds = allocations.Select(x => x.AssetId).Distinct().ToList();
+        // Mốc bảo trì = lần HOÀN TẤT (Resolved) gần nhất; phiếu chờ xử lý/không xử lý được không tính là đã bảo trì.
         var maintenanceDates = await _context.MaintenanceTickets
             .AsNoTracking()
-            .Where(ticket => assetIds.Contains(ticket.AssetId))
+            .Where(ticket => assetIds.Contains(ticket.AssetId) && ticket.Status == TicketStatus.Resolved)
             .GroupBy(ticket => ticket.AssetId)
             .Select(group => new
             {
                 AssetId = group.Key,
-                LastMaintenanceDate = group.Max(ticket => (DateTime?)ticket.ReportedDate),
+                LastMaintenanceDate = group.Max(ticket => (DateTime?)(ticket.ResolvedDate ?? ticket.ReportedDate)),
             })
             .ToDictionaryAsync(x => x.AssetId, x => x.LastMaintenanceDate);
+        var pendingAssetIds = (await _context.MaintenanceTickets
+            .AsNoTracking()
+            .Where(ticket => assetIds.Contains(ticket.AssetId) && ticket.Status == TicketStatus.Pending)
+            .Select(ticket => ticket.AssetId)
+            .Distinct()
+            .ToListAsync()).ToHashSet();
 
         return allocations.Select(allocation =>
         {
@@ -154,6 +200,7 @@ public class AssetAllocationRepository : IAssetAllocationRepository
                 AllocatedDate = allocation.AllocatedDate,
                 AssetPurchaseDate = allocation.Asset.PurchaseDate,
                 LastMaintenanceDate = lastMaintenanceDate,
+                HasPendingTicket = pendingAssetIds.Contains(allocation.AssetId),
             };
         }).ToList();
     }

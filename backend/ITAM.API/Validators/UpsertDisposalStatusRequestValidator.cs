@@ -13,6 +13,7 @@ public class UpsertDisposalStatusRequestValidator : AbstractValidator<UpsertDisp
         RuleFor(x => x.Description).MaximumLength(255).WithMessage("Mô tả không được vượt quá 255 ký tự.");
         RuleFor(x => x.Color).Must(c => DisposalStatusCodes.AllowedColors.Contains(c))
             .WithMessage($"Màu không hợp lệ. Phải là một trong: {string.Join(", ", DisposalStatusCodes.AllowedColors)}.");
-        RuleFor(x => x.SortOrder).InclusiveBetween(0, 1000).WithMessage("Thứ tự phải nằm trong khoảng 0–1000.");
+        RuleFor(x => x.SortOrder).InclusiveBetween(0, 1000).When(x => x.SortOrder.HasValue)
+            .WithMessage("Thứ tự phải nằm trong khoảng 0–1000.");
     }
 }

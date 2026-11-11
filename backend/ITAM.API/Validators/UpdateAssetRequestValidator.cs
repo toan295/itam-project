@@ -29,9 +29,17 @@ public class UpdateAssetRequestValidator : AbstractValidator<UpdateAssetRequestD
             .Must(d => DateRules.IsNotInFuture(d!.Value))
             .When(x => x.PurchaseDate.HasValue)
             .WithMessage("Ngày mua không được ở tương lai.");
+        RuleFor(x => x.PurchaseDate)
+            .Must(d => d!.Value >= DateRules.EarliestPurchaseDate)
+            .When(x => x.PurchaseDate.HasValue)
+            .WithMessage($"Ngày mua không hợp lệ (không được trước năm {DateRules.MinPurchaseYear}).");
         RuleFor(x => x.WarrantyExpiry)
             .GreaterThanOrEqualTo(x => x.PurchaseDate!.Value)
             .When(x => x.PurchaseDate.HasValue && x.WarrantyExpiry.HasValue)
             .WithMessage("Hạn bảo hành phải từ ngày mua trở về sau.");
+        RuleFor(x => x.WarrantyExpiry)
+            .Must(d => d!.Value <= DateRules.LatestWarrantyDate())
+            .When(x => x.WarrantyExpiry.HasValue)
+            .WithMessage("Hạn bảo hành quá xa (tối đa 30 năm kể từ hôm nay).");
     }
 }

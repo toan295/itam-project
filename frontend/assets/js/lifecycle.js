@@ -20,6 +20,16 @@ function clearError() {
   document.getElementById("errorAlert").classList.add("d-none");
 }
 
+function showOk(message) {
+  const el = document.getElementById("okAlert");
+  el.textContent = message;
+  el.classList.remove("d-none");
+}
+
+function clearOk() {
+  document.getElementById("okAlert").classList.add("d-none");
+}
+
 function formatOneDecimal(value) {
   if (value === null || value === undefined) return "—";
   return oneDecimalFormatter.format(Number(value));
@@ -86,24 +96,42 @@ function currentUpcomingMonths() {
   return Number.isInteger(months) && months >= 1 && months <= 60 ? months : null;
 }
 
+// Đổi bộ lọc nhanh: chỉ phản hồi của yêu cầu MỚI NHẤT được hiển thị (phản hồi chậm của bộ lọc cũ bị bỏ).
+const loadSeq = { stats: 0, candidates: 0, upcoming: 0 };
+
+function optionText(selectId) {
+  const select = document.getElementById(selectId);
+  return select.value ? select.options[select.selectedIndex].text : "Tất cả";
+}
+
 async function loadStats() {
+  const seq = ++loadSeq.stats;
   const params = new URLSearchParams();
   if (currentDepartmentId()) params.set("departmentId", currentDepartmentId());
+  if (currentCategoryId()) params.set("categoryId", currentCategoryId());
 
   const stats = await api.get(`/lifecycle/stats${params.toString() ? `?${params}` : ""}`);
+  if (seq !== loadSeq.stats) return;
+
+  const invalidDates = stats.assetsWithoutPurchaseDate + stats.assetsWithFuturePurchaseDate;
+  document.getElementById("scopeLabel").innerHTML =
+    `<strong>Phạm vi thống kê:</strong> Phòng ban: ${escapeHtml(optionText("departmentId"))} · Loại: ${escapeHtml(optionText("categoryId"))} · ` +
+    `${stats.totalAssets} tài sản chưa thanh lý · ${stats.totalTickets} phiếu bảo trì · tính đến ${formatDateOnly(stats.asOfDate)}`;
   document.getElementById("statTotalAssets").textContent = stats.totalAssets;
   document.getElementById("statAverageAge").textContent = formatOneDecimal(stats.averageAgeYears);
   document.getElementById("statMedianAge").textContent = formatOneDecimal(stats.medianAgeYears);
   document.getElementById("statFailureRatio").textContent = formatPercent(stats.failureRatio);
   document.getElementById("statAverageTickets").textContent = formatOneDecimal(stats.averageTicketsPerAsset);
   document.getElementById("statOverdue").textContent = stats.overdueNowCount;
-  document.getElementById("statUnknownPurchase").textContent = `${stats.assetsWithoutPurchaseDate} tài sản chưa có ngày mua`;
+  document.getElementById("statUnknownPurchase").textContent = invalidDates === 0
+    ? "Mọi tài sản đều có ngày mua hợp lệ"
+    : `${invalidDates} tài sản thiếu/sai ngày mua (không tính tuổi)` +
+      (stats.assetsWithFuturePurchaseDate ? ` — ${stats.assetsWithFuturePurchaseDate} có ngày mua ở tương lai` : "");
 
   renderCategoryStats(stats.byCategory || []);
   renderAgeBuckets(stats.ageBuckets || []);
   renderDepartmentStats(stats.byDepartment || []);
   renderTopFailing(stats.topFailingAssets || []);
-  renderTicketTrend(stats.ticketTrend || []);
 }
 
 function renderCategoryStats(items) {
@@ -177,17 +205,6 @@ function renderTopFailing(items) {
     </tr>`).join("");
 }
 
-function renderTicketTrend(items) {
-  const body = document.getElementById("ticketTrendBody");
-  if (!items.length) {
-    body.innerHTML = '<tr><td colspan="2" class="text-center text-muted py-4">Không có dữ liệu.</td></tr>';
-    return;
-  }
-
-  body.innerHTML = items.map((item) => `
-    <tr><td>${item.year}</td><td>${item.ticketCount}</td></tr>`).join("");
-}
-
 function buildCandidateQuery(page) {
   const params = new URLSearchParams({
     page: String(page),
@@ -196,11 +213,22 @@ function buildCandidateQuery(page) {
   });
   if (currentDepartmentId()) params.set("departmentId", currentDepartmentId());
   if (currentCategoryId()) params.set("categoryId", currentCategoryId());
+  for (const [id, name] of [["keyword", "keyword"], ["reason", "reason"], ["underWarranty", "underWarranty"], ["minScore", "minScore"]]) {
+    const value = document.getElementById(id).value.trim();
+    if (value) params.set(name, value);
+  }
   return params.toString();
 }
 
 async function loadCandidates(page = 1) {
-  const result = await api.get(`/lifecycle/replacement-candidates?${buildCandidateQuery(page)}`);
+  const seq = ++loadSeq.candidates;
+  let result = await api.get(`/lifecycle/replacement-candidates?${buildCandidateQuery(page)}`);
+  if (seq !== loadSeq.candidates) return;
+  // Đang ở trang cuối rồi dữ liệu/bộ lọc làm số trang giảm: nhảy về trang cuối còn dữ liệu thay vì hiện bảng rỗng.
+  if (!(result.items || []).length && result.totalItems > 0 && page > 1) {
+    result = await api.get(`/lifecycle/replacement-candidates?${buildCandidateQuery(result.totalPages)}`);
+    if (seq !== loadSeq.candidates) return;
+  }
   currentPage = result.page;
   renderCandidates(result.items || []);
   renderPagination(result, "pagination", loadCandidates);
@@ -252,6 +280,10 @@ function buildUpcomingQuery(page) {
   });
   if (currentDepartmentId()) params.set("departmentId", currentDepartmentId());
   if (currentCategoryId()) params.set("categoryId", currentCategoryId());
+  for (const [id, name] of [["keyword", "keyword"], ["upcomingReason", "reason"], ["minTickets", "minTickets"]]) {
+    const value = document.getElementById(id).value.trim();
+    if (value) params.set(name, value);
+  }
   return params.toString();
 }
 
@@ -259,7 +291,13 @@ async function loadUpcoming(page = 1) {
   if (currentUpcomingMonths() === null) {
     throw new Error("Số tháng cảnh báo phải là số nguyên từ 1 đến 60.");
   }
-  const result = await api.get(`/lifecycle/upcoming?${buildUpcomingQuery(page)}`);
+  const seq = ++loadSeq.upcoming;
+  let result = await api.get(`/lifecycle/upcoming?${buildUpcomingQuery(page)}`);
+  if (seq !== loadSeq.upcoming) return;
+  if (!(result.items || []).length && result.totalItems > 0 && page > 1) {
+    result = await api.get(`/lifecycle/upcoming?${buildUpcomingQuery(result.totalPages)}`);
+    if (seq !== loadSeq.upcoming) return;
+  }
   currentUpcomingPage = result.page;
   renderUpcoming(result.items || []);
   renderPagination(result, "upcomingPagination", loadUpcoming);
@@ -290,31 +328,61 @@ function renderUpcoming(items) {
 function renderPagination(result, elementId, loader) {
   const el = document.getElementById(elementId);
   el.innerHTML = "";
-  for (let page = 1; page <= result.totalPages; page += 1) {
+  const total = result.totalPages;
+  if (total <= 1) return;
+  // Rút gọn: trang đầu, cuối và vài trang quanh trang hiện tại (không dựng hàng trăm nút).
+  const pages = new Set([1, total]);
+  for (let p = result.page - 2; p <= result.page + 2; p += 1) if (p >= 1 && p <= total) pages.add(p);
+  let prev = 0;
+  for (const page of [...pages].sort((a, b) => a - b)) {
+    if (page - prev > 1) {
+      const gap = document.createElement("li");
+      gap.className = "page-item disabled";
+      gap.innerHTML = '<span class="page-link">…</span>';
+      el.appendChild(gap);
+    }
     const li = document.createElement("li");
     li.className = `page-item ${page === result.page ? "active" : ""}`;
     li.innerHTML = `<button class="page-link" type="button">${page}</button>`;
-    li.querySelector("button").addEventListener("click", () => loader(page));
+    li.querySelector("button").addEventListener("click", () => loader(page).catch((err) => showError(err.message)));
     el.appendChild(li);
+    prev = page;
   }
+}
+
+let policyCache = new Map();
+
+function formatUpdated(item) {
+  if (!item.updatedAt && !item.updatedByName) {
+    return item.isOverridden ? '<span class="text-muted small">Không rõ (cấu hình có từ trước)</span>' : '<span class="text-muted small">—</span>';
+  }
+  const who = item.updatedByName ? ` bởi ${escapeHtml(item.updatedByName)}` : "";
+  return `<span class="small">${escapeHtml(formatDateTime(item.updatedAt))}${who}</span>`;
 }
 
 async function loadPolicies() {
   const policies = await api.get("/lifecycle/policies");
   const body = document.getElementById("policyBody");
+  policyCache = new Map(policies.map((item) => [item.categoryId, item]));
+  if (policies.length) {
+    document.getElementById("defaultsLabel").textContent =
+      `${policies[0].defaultMaxAgeYears} năm / ${policies[0].defaultMaxFailureCount} phiếu bảo trì`;
+  }
   if (!policies.length) {
-    body.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Chưa có loại tài sản.</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Chưa có loại tài sản.</td></tr>';
     return;
   }
 
   body.innerHTML = policies.map((item) => `
     <tr data-category-id="${item.categoryId}">
       <td class="fw-semibold">${escapeHtml(item.categoryName)}</td>
-      <td><input type="number" min="1" max="30" class="form-control form-control-sm policy-age" value="${item.maxAgeYears}"></td>
-      <td><input type="number" min="1" max="100" class="form-control form-control-sm policy-failure" value="${item.maxFailureCount}"></td>
+      <td><input type="number" min="1" max="30" step="1" class="form-control form-control-sm policy-age" value="${item.maxAgeYears}"></td>
+      <td><input type="number" min="1" max="100" step="1" class="form-control form-control-sm policy-failure" value="${item.maxFailureCount}"></td>
       <td>${item.isOverridden
-        ? '<span class="badge text-bg-primary">Ngưỡng riêng</span>'
-        : '<span class="badge text-bg-secondary">Mặc định</span>'}</td>
+        ? '<span class="badge text-bg-primary" title="Admin đã đặt ngưỡng riêng cho loại này">Tuỳ chỉnh</span>'
+        : `<span class="badge text-bg-secondary" title="Chưa chỉnh riêng: đang dùng mặc định hệ thống (${item.defaultMaxAgeYears} năm / ${item.defaultMaxFailureCount} phiếu)">Mặc định hệ thống</span>`}
+        <span class="badge text-bg-success" title="Ngưỡng này đang được dùng để đánh giá ngay bây giờ">Đang áp dụng</span></td>
+      <td>${formatUpdated(item)}</td>
       <td class="text-end text-nowrap">
         <button class="btn btn-sm btn-primary me-1" onclick="savePolicy(${item.categoryId})"><i class="bi bi-save"></i> Lưu</button>
         <button class="btn btn-sm btn-outline-secondary" ${item.isOverridden ? "" : "disabled"} onclick="resetPolicy(${item.categoryId})">Về mặc định</button>
@@ -322,38 +390,76 @@ async function loadPolicies() {
     </tr>`).join("");
 }
 
+// Sau khi đổi ngưỡng: số liệu và hai danh sách thay đổi theo; giữ nguyên trang đang xem (tự lùi nếu trang đó không còn).
+async function refreshAfterPolicyChange() {
+  await Promise.all([loadPolicies(), loadStats(), loadCandidates(currentPage), loadUpcoming(currentUpcomingPage)]);
+}
+
+// Lỗi 409 (người khác vừa sửa): nạp lại bảng ngưỡng để thấy giá trị mới nhất, không ghi đè lên chỗ người kia vừa lưu.
+async function handlePolicyError(err) {
+  showError(err.message);
+  if (err.status === 409) {
+    try { await loadPolicies(); } catch { /* giữ nguyên bảng hiện tại */ }
+  }
+}
+
+function parsePositiveInt(raw) {
+  const text = String(raw).trim();
+  return /^\d+$/.test(text) ? Number(text) : null;
+}
+
 async function savePolicy(categoryId) {
   clearError();
+  clearOk();
   const row = document.querySelector(`tr[data-category-id="${categoryId}"]`);
-  const maxAgeYears = Number(row.querySelector(".policy-age").value);
-  const maxFailureCount = Number(row.querySelector(".policy-failure").value);
+  const current = policyCache.get(categoryId);
+  const maxAgeYears = parsePositiveInt(row.querySelector(".policy-age").value);
+  const maxFailureCount = parsePositiveInt(row.querySelector(".policy-failure").value);
+
+  if (maxAgeYears === null || maxAgeYears < 1 || maxAgeYears > 30) {
+    showError("Tuổi tối đa phải là số nguyên từ 1 đến 30 năm.");
+    return;
+  }
+  if (maxFailureCount === null || maxFailureCount < 1 || maxFailureCount > 100) {
+    showError("Số lần lỗi tối đa phải là số nguyên từ 1 đến 100.");
+    return;
+  }
+  if (current && maxAgeYears === current.maxAgeYears && maxFailureCount === current.maxFailureCount) {
+    showOk(`Ngưỡng của "${current.categoryName}" không thay đổi nên không cần lưu.`);
+    return;
+  }
 
   try {
-    await api.put(`/lifecycle/policies/${categoryId}`, { maxAgeYears, maxFailureCount });
-    await Promise.all([
-      loadPolicies(),
-      loadStats(),
-      loadCandidates(currentPage),
-      loadUpcoming(currentUpcomingPage),
-    ]);
+    await api.put(`/lifecycle/policies/${categoryId}`, {
+      maxAgeYears,
+      maxFailureCount,
+      version: current && current.isOverridden ? current.version : null,
+    });
+    showOk(`Đã lưu ngưỡng của "${current ? current.categoryName : "loại tài sản"}": ${maxAgeYears} năm / ${maxFailureCount} phiếu. Có hiệu lực ngay.`);
+    await refreshAfterPolicyChange();
   } catch (err) {
-    showError(err.message);
+    await handlePolicyError(err);
   }
 }
 
 async function resetPolicy(categoryId) {
-  if (!confirm("Xoá ngưỡng riêng và quay về cấu hình mặc định?")) return;
   clearError();
+  clearOk();
+  const current = policyCache.get(categoryId);
+  if (!current || !current.isOverridden) return;
+
+  const message = `Đặt "${current.categoryName}" về mặc định hệ thống?\n\n` +
+    `Ngưỡng riêng hiện tại: ${current.maxAgeYears} năm / ${current.maxFailureCount} phiếu\n` +
+    `Mặc định hệ thống: ${current.defaultMaxAgeYears} năm / ${current.defaultMaxFailureCount} phiếu\n\n` +
+    `Chỉ loại này bị ảnh hưởng, số liệu và đề xuất thay thế sẽ được tính lại ngay. Thao tác được ghi vào Nhật ký hệ thống.`;
+  if (!confirm(message)) return;
+
   try {
-    await api.del(`/lifecycle/policies/${categoryId}`);
-    await Promise.all([
-      loadPolicies(),
-      loadStats(),
-      loadCandidates(currentPage),
-      loadUpcoming(currentUpcomingPage),
-    ]);
+    await api.del(`/lifecycle/policies/${categoryId}?version=${current.version}`);
+    showOk(`Đã đặt "${current.categoryName}" về mặc định hệ thống (${current.defaultMaxAgeYears} năm / ${current.defaultMaxFailureCount} phiếu).`);
+    await refreshAfterPolicyChange();
   } catch (err) {
-    showError(err.message);
+    await handlePolicyError(err);
   }
 }
 
@@ -374,19 +480,17 @@ async function reloadData(page = 1) {
   }
 }
 
-document.getElementById("filterForm").addEventListener("submit", (event) => {
-  event.preventDefault();
-  reloadData(1);
+// Đổi bộ lọc chỉ tải lại thống kê và hai danh sách (không đụng tới bảng ngưỡng chính sách đang chỉnh dở).
+initFilterBar({
+  fields: ["keyword", "departmentId", "categoryId", "reason", "underWarranty", "minScore", "sortBy", "upcomingReason", "minTickets"],
+  uncounted: ["sortBy"],
+  textFields: ["keyword", "minScore", "minTickets"],
+  onChange: () => {
+    clearError();
+    clearOk();
+    Promise.all([loadStats(), loadCandidates(1), loadUpcoming(1)]).catch((err) => showError(err.message));
+  },
 });
-
-document.getElementById("resetFilterBtn").addEventListener("click", () => {
-  document.getElementById("departmentId").value = "";
-  document.getElementById("categoryId").value = "";
-  document.getElementById("sortBy").value = "score";
-  reloadData(1);
-});
-
-document.getElementById("sortBy").addEventListener("change", () => loadCandidates(1).catch((err) => showError(err.message)));
 document.getElementById("loadUpcomingBtn").addEventListener("click", () => {
   clearError();
   loadUpcoming(1).catch((err) => showError(err.message));
@@ -430,9 +534,11 @@ function renderAssetDetail(d) {
 
   setText("assetDetailTitle", `${d.assetCode} — ${d.assetName}`);
   setText("adCategoryDept", `${d.categoryName} / ${d.departmentName}`);
-  setText("adPurchaseAge", d.purchaseDate
-    ? `${formatDateOnly(d.purchaseDate)} (${formatOneDecimal(d.ageYears)} năm)`
-    : "Chưa có ngày mua");
+  setText("adPurchaseAge", d.purchaseDateStatus === "InFuture"
+    ? `${formatDateOnly(d.purchaseDate)} — ngày mua ở TƯƠNG LAI (dữ liệu sai, không tính tuổi; hãy sửa trong màn Tài sản)`
+    : d.purchaseDate
+      ? `${formatDateOnly(d.purchaseDate)} (${formatOneDecimal(d.ageYears)} năm)`
+      : "Chưa có ngày mua");
   document.getElementById("adWarranty").innerHTML = d.warrantyExpiry
     ? `${formatDateOnly(d.warrantyExpiry)} ${d.isUnderWarranty
         ? '<span class="badge text-bg-success" title="Còn bảo hành — cân nhắc sửa/đổi trả trước khi thay">Còn bảo hành</span>'
@@ -446,7 +552,13 @@ function renderAssetDetail(d) {
     : '<span class="badge text-bg-success">Chưa vượt ngưỡng</span>';
   document.getElementById("adStatus").innerHTML =
     `${status} <span class="text-muted small ms-1">${d.dueYear ? `Năm đến hạn: ${d.dueYear}` : "Chưa xác định năm đến hạn (thiếu ngày mua)"}</span>`;
+  const b = d.scoreBreakdown;
+  const ratio = (value) => oneDecimalFormatter.format(Number(value || 0));
+  const drivenBy = { Age: "tuổi", Failures: "số phiếu bảo trì", Both: "cả tuổi và số phiếu (bằng nhau)", None: "chưa có thành phần nào" }[b.drivenBy] || b.drivenBy;
   document.getElementById("adScore").innerHTML = `${priorityBar(d.priorityScore)}
+    <div class="small mt-1">Tuổi: ${b.ageYears === null ? "không rõ" : `${formatOneDecimal(b.ageYears)} ÷ ${b.maxAgeYears} năm = ${ratio(b.ageRatio)}`}
+      · Phiếu: ${b.ticketCount} ÷ ${b.maxFailureCount} = ${ratio(b.failureRatio)}</div>
+    <div class="small">Điểm = làm tròn(50 × ${ratio(b.severity)}) = <strong>${b.score}</strong> (thành phần quyết định: ${drivenBy}).</div>
     <div class="text-muted small">Chỉ dùng để xếp hạng, không quyết định có thay thế hay không.</div>`;
   setText("adReason", d.reasonText || "Chưa vượt ngưỡng nào.");
 
@@ -472,7 +584,7 @@ document.addEventListener("click", (event) => {
 });
 
 // ---------- Khởi động ----------
-if (session?.role !== "Admin IT") {
+if (!can("lifecycle.view")) {
   document.getElementById("forbiddenAlert").textContent = "Chỉ Admin IT được phép xem và cấu hình Vòng đời tài sản.";
   document.getElementById("forbiddenAlert").classList.remove("d-none");
   document.getElementById("lifecycleContent").classList.add("d-none");

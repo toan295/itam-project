@@ -6,7 +6,7 @@
   <title>Quản lý tài sản CNTT - EAIMS</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-  <link href="../shared/theme.css" rel="stylesheet">
+  <link href="../shared/theme.css?v=20261113" rel="stylesheet">
 </head>
 <body>
   <div class="eaims-shell">
@@ -18,52 +18,63 @@
           <h1>Quản lý tài sản CNTT</h1>
           <p>Danh sách, tìm kiếm/lọc nâng cao, thêm/sửa/thanh lý tài sản.</p>
         </div>
-        <button class="btn btn-primary" id="openCreateBtn"><i class="bi bi-plus-lg"></i> Thêm tài sản</button>
+        <div class="d-flex gap-2">
+          <button class="btn btn-primary" id="openCreateBtn"><i class="bi bi-plus-lg"></i> Thêm tài sản</button>
+        </div>
       </div>
 
-      <div class="eaims-card mb-3">
+      <div class="eaims-card mb-3 filter-card">
         <div class="card-body py-3">
-          <form id="filterForm" class="row g-2 align-items-end">
-            <div class="col-auto">
-              <label class="form-label">Từ khoá</label>
-              <input class="form-control" id="keyword" placeholder="Tên hoặc mã tài sản">
+          <form id="filterForm">
+            <div class="row g-2 align-items-end">
+              <div class="col-12 col-lg-3">
+                <label class="form-label">Tìm kiếm</label>
+                <div class="input-group"><span class="input-group-text bg-white"><i class="bi bi-search"></i></span><input class="form-control" id="keyword" placeholder="Tên, mã hoặc số serial" autocomplete="off"></div>
+              </div>
+              <div class="col-6 col-lg-2">
+                <label class="form-label">Trạng thái</label>
+                <select class="form-select" id="status"><option value="">-- Tất cả --</option><option value="InUse">Đang dùng</option><option value="Maintenance">Bảo trì</option><option value="Broken">Hỏng</option><option value="Disposed">Đã thanh lý</option></select>
+              </div>
+              <div class="col-6 col-lg-2">
+                <label class="form-label">Phòng ban</label>
+                <select class="form-select" id="departmentId"><option value="">-- Tất cả --</option></select>
+              </div>
+              <div class="col-6 col-lg-2">
+                <label class="form-label">Loại tài sản</label>
+                <select class="form-select" id="categoryId"><option value="">-- Tất cả --</option></select>
+              </div>
+              <div class="col-12 col-lg-auto ms-lg-auto d-flex gap-2">
+                <button class="btn btn-outline-secondary" type="button" id="resetFilterBtn"><i class="bi bi-x-circle"></i> Xoá lọc</button>
+              </div>
             </div>
-            <div class="col-auto">
-              <label class="form-label">Trạng thái</label>
-              <select class="form-select" id="status">
-                <option value="">-- Tất cả --</option>
-                <option value="InUse">Đang dùng</option>
-                <option value="Maintenance">Bảo trì</option>
-                <option value="Broken">Hỏng</option>
-                <option value="Disposed">Đã thanh lý</option>
-              </select>
+            <div id="advancedFilters">
+              <div class="row g-2 advanced-panel">
+              <div class="col-6 col-lg-3">
+                <label class="form-label">Bảo hành</label>
+                <select class="form-select" id="warrantyStatus"><option value="">-- Tất cả --</option><option value="Valid">Còn bảo hành</option><option value="Expired">Hết bảo hành</option></select>
+              </div>
+              <div class="col-6 col-lg-3">
+                <label class="form-label">Sắp hết bảo hành</label>
+                <select class="form-select" id="warrantyExpiringInDays"><option value="">-- Tất cả --</option><option value="30">Trong 30 ngày tới</option><option value="60">Trong 60 ngày tới</option><option value="90">Trong 90 ngày tới</option><option value="180">Trong 180 ngày tới</option><option value="365">Trong 1 năm tới</option></select>
+              </div>
+              <div class="col-6 col-lg-3">
+                <label class="form-label">Tình trạng cấp phát</label>
+                <select class="form-select" id="allocationState"><option value="">-- Tất cả --</option><option value="allocated">Đang được cấp cho nhân viên</option><option value="free">Chưa cấp cho ai</option></select>
+              </div>
+              <div class="col-6 col-lg-3">
+                <label class="form-label">Năm mua</label>
+                <select class="form-select" id="purchaseYear"><option value="">-- Tất cả --</option></select>
+              </div>
+              <div class="col-6 col-lg-3">
+                <label class="form-label">Mua từ ngày</label>
+                <input class="form-control" id="purchasedFrom" data-date-vi>
+              </div>
+              <div class="col-6 col-lg-3">
+                <label class="form-label">Sắp xếp</label>
+                <select class="form-select" id="sort"><option value="">Mã tài sản (A → Z)</option><option value="name">Tên tài sản (A → Z)</option><option value="purchaseDate">Ngày mua (mới nhất trước)</option><option value="warrantyExpiry">Hết bảo hành (gần nhất trước)</option><option value="newest">Mới thêm nhất</option></select>
+              </div>
+              </div>
             </div>
-            <div class="col-auto">
-              <label class="form-label">Bảo hành</label>
-              <select class="form-select" id="warrantyStatus">
-                <option value="">-- Tất cả --</option>
-                <option value="Valid">Còn bảo hành</option>
-                <option value="Expired">Hết bảo hành</option>
-              </select>
-            </div>
-            <div class="col-auto">
-              <label class="form-label">Phòng ban</label>
-              <select class="form-select" id="departmentId" style="width: 170px">
-                <option value="">-- Tất cả --</option>
-              </select>
-            </div>
-            <div class="col-auto">
-              <label class="form-label">Loại tài sản</label>
-              <select class="form-select" id="categoryId" style="width: 170px">
-                <option value="">-- Tất cả --</option>
-              </select>
-            </div>
-            <div class="col-auto">
-              <label class="form-label">Năm mua</label>
-              <input type="number" min="1900" class="form-control" id="purchaseYear" style="width: 110px">
-            </div>
-            <div class="col-auto"><button class="btn btn-primary" type="submit"><i class="bi bi-search"></i> Lọc</button></div>
-            <div class="col-auto"><button class="btn btn-outline-secondary" type="button" id="resetFilterBtn">Xoá lọc</button></div>
           </form>
         </div>
       </div>
@@ -74,7 +85,7 @@
         <div class="table-responsive">
           <table class="eaims-table">
             <thead><tr>
-              <th>Mã TS</th><th>Tên</th><th>Loại</th><th>Phòng ban</th><th>Trạng thái</th><th>Bảo hành</th><th></th>
+              <th>Mã TS</th><th>Tên / Serial</th><th>Loại</th><th>Phòng ban</th><th>Trạng thái</th><th>Bảo hành</th><th class="text-end">Thao tác</th>
             </tr></thead>
             <tbody id="assetTableBody"></tbody>
           </table>
@@ -89,9 +100,9 @@
 
   <!-- Modal Tạo / Sửa tài sản -->
   <div class="modal fade" id="assetModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered">
       <div class="modal-content">
-        <form id="assetForm">
+        <form id="assetForm" novalidate>
           <div class="modal-header">
             <h5 class="modal-title" id="assetModalTitle">Thêm tài sản</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -99,13 +110,14 @@
           <div class="modal-body">
             <div id="modalError" class="alert alert-danger d-none py-2"></div>
             <input type="hidden" id="assetId">
+            <input type="hidden" id="assetVersion">
             <div class="mb-2">
-              <label class="form-label">Mã tài sản</label>
-              <input class="form-control" id="assetCode" required maxlength="50">
+              <label class="form-label">Mã tài sản <span class="text-danger">*</span></label>
+              <input class="form-control" id="assetCode" required maxlength="50" placeholder="VD: TS-001">
             </div>
             <div class="mb-2">
-              <label class="form-label">Tên tài sản</label>
-              <input class="form-control" id="assetName" required maxlength="150">
+              <label class="form-label">Tên tài sản <span class="text-danger">*</span></label>
+              <input class="form-control" id="assetName" required maxlength="150" placeholder="VD: Laptop Dell Latitude 5440">
             </div>
             <div class="row">
               <div class="col mb-2">
@@ -128,24 +140,26 @@
             </div>
             <div class="mb-2">
               <label class="form-label">Số serial</label>
-              <input class="form-control" id="serialNumber" maxlength="100">
+              <input class="form-control" id="serialNumber" maxlength="100" placeholder="Số do nhà sản xuất in trên thiết bị">
             </div>
             <div class="mb-2">
               <label class="form-label">Cấu hình</label>
-              <input class="form-control" id="specification" maxlength="500">
+              <input class="form-control" id="specification" maxlength="500" placeholder="VD: Core i5, RAM 16GB, SSD 512GB">
             </div>
             <div class="mb-2">
               <label class="form-label">Hệ điều hành</label>
-              <input class="form-control" id="operatingSystem" maxlength="100">
+              <input class="form-control" id="operatingSystem" maxlength="100" placeholder="VD: Windows 11 Pro">
             </div>
             <div class="row">
               <div class="col mb-2">
                 <label class="form-label">Ngày mua</label>
-                <input type="date" class="form-control" id="purchaseDate">
+                <input class="form-control" id="purchaseDate" data-date-vi>
+                <div class="invalid-feedback">Nhập ngày dạng dd/mm/yyyy.</div>
               </div>
               <div class="col mb-2">
                 <label class="form-label">Hạn bảo hành</label>
-                <input type="date" class="form-control" id="warrantyExpiry">
+                <input class="form-control" id="warrantyExpiry" data-date-vi>
+                <div class="invalid-feedback">Nhập ngày dạng dd/mm/yyyy.</div>
               </div>
             </div>
           </div>
@@ -159,8 +173,10 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="../shared/api-client.js"></script>
-  <script src="../shared/nav.js"></script>
-  <script src="../assets/js/assets.js"></script>
+  <script src="../shared/api-client.js?v=20261113"></script>
+  <script src="../shared/nav.js?v=20261113"></script>
+  <script src="../shared/form-helpers.js?v=20261113"></script>
+  <script src="../shared/filter-bar.js?v=20261113"></script>
+  <script src="../assets/js/assets.js?v=20261113"></script>
 </body>
 </html>

@@ -1,3 +1,4 @@
+using ITAM.API.Authorization;
 using FluentValidation;
 using ITAM.API.Models.DTOs;
 using ITAM.API.Models.DTOs.Common;
@@ -9,7 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace ITAM.API.Controllers;
 
 [ApiController]
-[Authorize(Roles = "Admin IT")]
+[HasPermission(Permissions.LicensesManage)]
 [Route("api/v1/software-licenses")]
 public class SoftwareLicensesController : ControllerBase
 {
@@ -35,10 +36,22 @@ public class SoftwareLicensesController : ControllerBase
     public async Task<IActionResult> GetPaged(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
-        [FromQuery] string? search = null)
+        [FromQuery] string? search = null,
+        [FromQuery] string? state = null,
+        [FromQuery] DateOnly? expiryFrom = null,
+        [FromQuery] DateOnly? expiryTo = null,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? assignment = null)
     {
-        var result = await _service.GetPagedAsync(page, pageSize, search);
-        return Ok(ApiResponse<PagedResultDto<SoftwareLicenseResponseDto>>.Ok(result));
+        try
+        {
+            var result = await _service.GetPagedAsync(page, pageSize, search, state, expiryFrom, expiryTo, sortBy, assignment);
+            return Ok(ApiResponse<PagedResultDto<SoftwareLicenseResponseDto>>.Ok(result));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<object>.Fail(ex.Message));
+        }
     }
 
     [HttpGet("expiring-soon")]
@@ -170,6 +183,21 @@ public class SoftwareLicensesController : ControllerBase
         catch (InvalidOperationException ex)
         {
             return Conflict(ApiResponse<object>.Fail(ex.Message));
+        }
+    }
+
+    [HttpGet("{id:int}/assignments")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetAssignments(int id)
+    {
+        try
+        {
+            return Ok(ApiResponse<IReadOnlyList<LicenseAssignmentDto>>.Ok(await _service.GetAssignmentsAsync(id)));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ApiResponse<object>.Fail(ex.Message));
         }
     }
 

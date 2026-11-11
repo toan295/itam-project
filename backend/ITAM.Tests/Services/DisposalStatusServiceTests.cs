@@ -160,4 +160,72 @@ public class DisposalStatusServiceTests
         _repoMock.Verify(r => r.Remove(status), Times.Once);
         _repoMock.Verify(r => r.SaveChangesAsync(), Times.Once);
     }
+
+    // ----- Thứ tự (SortOrder) -----
+
+    [Fact]
+    public async Task CreateAsync_NoSortOrder_GoesToEndOfListStartingFromSix()
+    {
+        DisposalStatus? added = null;
+        _repoMock.Setup(r => r.GetMaxSortOrderAsync()).ReturnsAsync(5);
+        _repoMock.Setup(r => r.AddAsync(It.IsAny<DisposalStatus>()))
+            .Callback<DisposalStatus>(s => { s.Id = 30; added = s; }).Returns(Task.CompletedTask);
+
+        var dto = Dto();
+        dto.SortOrder = null;
+        await _sut.CreateAsync(dto, 1);
+
+        Assert.Equal(6, added!.SortOrder);
+    }
+
+    [Fact]
+    public async Task CreateAsync_NoSortOrder_AfterExistingCustomOnes_UsesMaxPlusOne()
+    {
+        DisposalStatus? added = null;
+        _repoMock.Setup(r => r.GetMaxSortOrderAsync()).ReturnsAsync(12);
+        _repoMock.Setup(r => r.AddAsync(It.IsAny<DisposalStatus>()))
+            .Callback<DisposalStatus>(s => { s.Id = 30; added = s; }).Returns(Task.CompletedTask);
+
+        var dto = Dto();
+        dto.SortOrder = null;
+        await _sut.CreateAsync(dto, 1);
+
+        Assert.Equal(13, added!.SortOrder);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(3)]
+    [InlineData(5)]
+    public async Task CreateAsync_SortOrderInsideMainStepRange_ThrowsConflict(int order)
+    {
+        var dto = Dto();
+        dto.SortOrder = order;
+
+        await Assert.ThrowsAsync<DisposalConflictException>(() => _sut.CreateAsync(dto, 1));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_SystemStatus_IgnoresSortOrderChange()
+    {
+        var system = new DisposalStatus { Id = 1, Code = "Inspected", Name = "Đã kiểm tra", Color = "info", SortOrder = 1, IsSystem = true };
+        _repoMock.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(system);
+
+        var dto = Dto("Đã kiểm tra");
+        dto.SortOrder = 99;
+        await _sut.UpdateAsync(1, dto, 1);
+
+        Assert.Equal(1, system.SortOrder);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_CustomStatus_BelowSix_ThrowsConflict()
+    {
+        var custom = new DisposalStatus { Id = 9, Code = "custom-x", Name = "Chờ chứng từ", Color = "warning", SortOrder = 6, IsSystem = false };
+        _repoMock.Setup(r => r.GetByIdAsync(9)).ReturnsAsync(custom);
+
+        var dto = Dto();
+        dto.SortOrder = 2;
+        await Assert.ThrowsAsync<DisposalConflictException>(() => _sut.UpdateAsync(9, dto, 1));
+    }
 }

@@ -23,6 +23,12 @@ function setSession(authResponse) {
   localStorage.setItem(SESSION_KEY, JSON.stringify(authResponse));
 }
 
+// Quyền của vai trò hiện tại (ma trận phân quyền, do server trả khi đăng nhập). Backend vẫn kiểm tra mọi request —
+// hàm này chỉ để ẩn/hiện nút và menu.
+function can(permission) {
+  return Array.isArray(getSession()?.permissions) && getSession().permissions.includes(permission);
+}
+
 function clearSession() {
   localStorage.removeItem(SESSION_KEY);
 }
@@ -35,7 +41,8 @@ function getToken() {
 // pathToLoginPage: đường dẫn tương đối tới login.html tính từ trang đang gọi.
 function requireAuth(pathToLoginPage) {
   const session = getSession();
-  if (!session?.token || (session.expiresAt && new Date(session.expiresAt) <= new Date())) {
+  // Phiên tạo trước khi có phân quyền động chưa có danh sách quyền -> đăng nhập lại một lần.
+  if (!session?.token || !Array.isArray(session.permissions)) {
     clearSession();
     window.location.href = pathToLoginPage;
     return null;
@@ -100,6 +107,10 @@ async function apiRequest(path, options = {}) {
       // Token hết hạn/không hợp lệ giữa phiên làm việc — dọn session để lần thao tác kế tiếp
       // (hoặc lần requireAuth() ở trang sau) bắt về đăng nhập lại thay vì lặp lại lỗi 401.
       clearSession();
+      // Phiên không còn được công nhận (vd máy chủ vừa chạy lại) -> về trang đăng nhập ngay, trừ khi đang ở chính trang đăng nhập/kích hoạt.
+      if (!/(login|activate-account)\.html$/i.test(window.location.pathname)) {
+        window.location.href = /\/pages\//.test(window.location.pathname) ? "login.html" : "pages/login.html";
+      }
     }
 
     throw error;
@@ -107,7 +118,50 @@ async function apiRequest(path, options = {}) {
   return body?.data;
 }
 
+// Tải file (xuất báo cáo): trả { blob, filename, rows }. Lỗi trả JSON {message} như các API khác nên đọc ra thông báo tiếng Việt.
+async function apiDownload(path) {
+  let res;
+  try {
+    res = await fetch(`${API_BASE_URL}${path}`, { headers: { Authorization: `Bearer ${getToken() || ""}` } });
+  } catch {
+    throw new Error("Không thể kết nối tới API. Kiểm tra API đã chạy (dotnet run) và đúng cổng trong api-client.js.");
+  }
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    let message = body?.message;
+    if (!message) {
+      message = res.status === 401 ? "Phiên đăng nhập đã hết hạn hoặc bạn chưa đăng nhập. Vui lòng đăng nhập lại."
+        : res.status === 403 ? "Bạn không có quyền thực hiện thao tác này."
+        : res.status >= 500 ? "Hệ thống đang gặp sự cố. Vui lòng thử lại sau."
+        : `Đã xảy ra lỗi (mã ${res.status}). Vui lòng thử lại.`;
+    }
+    const errors = body?.errors || [];
+    const error = new Error(errors.length ? `${message}: ${errors.join(", ")}` : message);
+    error.status = res.status;
+    if (res.status === 401) clearSession();
+    throw error;
+  }
+
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+  return { blob: await res.blob(), filename: match ? decodeURIComponent(match[1]) : "bao-cao", rows: res.headers.get("X-Report-Rows") === null ? null : Number(res.headers.get("X-Report-Rows")) };
+}
+
+// Lưu blob thành file qua thẻ <a> tạm (không mở tab mới, không để lại URL).
+function saveBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 const api = {
+  download: apiDownload,
   get: (path) => apiRequest(path, { method: "GET" }),
   post: (path, data) => apiRequest(path, { method: "POST", body: JSON.stringify(data) }),
   put: (path, data) => apiRequest(path, { method: "PUT", body: JSON.stringify(data) }),

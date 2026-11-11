@@ -40,3 +40,20 @@ public class DeviceRatioNotFoundException : Exception
     {
     }
 }
+
+// Đầu vào dự báo (kế hoạch nhân sự, định mức, đơn giá) đã bị người khác tạo/sửa/xoá kể từ lúc client tải — 409.
+public class ForecastInputConflictException : Exception
+{
+    public ForecastInputConflictException(string message) : base(message)
+    {
+    }
+}
+
+// Đang có lần tạo dự báo khác cho cùng năm (khoá tuần tự hoá bị quá thời gian chờ) — 409, thử lại sau.
+public class ForecastBusyException : Exception
+{
+    public ForecastBusyException(int year)
+        : base($"Đang có lần tạo dự báo khác cho năm {year}. Vui lòng đợi vài giây rồi thử lại.")
+    {
+    }
+}

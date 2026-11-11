@@ -15,15 +15,20 @@ public static class LifecycleCalculator
     private const double DaysPerYear = 365.25;
     private static readonly CultureInfo ViCulture = CultureInfo.GetCultureInfo("vi-VN");
 
+    // Ngày mua dùng được để tính tuổi: có giá trị và không ở tương lai (so với "hôm nay" theo giờ VN). Ngày mua tương lai là dữ
+    // liệu sai: KHÔNG tính tuổi (không kéo tuổi trung bình xuống 0, không bị coi là sắp tới hạn) mà xếp vào "thiếu/không hợp lệ".
+    public static bool HasUsablePurchaseDate(DateOnly? purchaseDate, DateOnly today) =>
+        purchaseDate.HasValue && purchaseDate.Value <= today;
+
     // Chỉ dùng để hiển thị/thống kê/xếp hạng; quyết định vượt ngưỡng tuổi phải dùng ngày lịch trong Evaluate.
     public static double? ComputeAgeYears(DateOnly? purchaseDate, DateOnly today)
     {
-        if (!purchaseDate.HasValue)
+        if (!HasUsablePurchaseDate(purchaseDate, today))
         {
             return null;
         }
 
-        return Math.Max(0d, (today.DayNumber - purchaseDate.Value.DayNumber) / DaysPerYear);
+        return (today.DayNumber - purchaseDate!.Value.DayNumber) / DaysPerYear;
     }
 
     public static LifecycleEvaluation Evaluate(
@@ -34,7 +39,7 @@ public static class LifecycleCalculator
     {
         ValidateThresholds(maxAgeYears, maxFailureCount);
 
-        var ageDueDate = row.PurchaseDate?.AddYears(maxAgeYears);
+        var ageDueDate = HasUsablePurchaseDate(row.PurchaseDate, today) ? row.PurchaseDate!.Value.AddYears(maxAgeYears) : (DateOnly?)null;
         var ageExceeded = ageDueDate.HasValue && ageDueDate.Value <= today;
 
         // Tuần 7 đã chốt "số lần lỗi" theo tổng số phiếu bảo trì, FailedTicketCount chỉ là thông tin phụ.
@@ -74,6 +79,16 @@ public static class LifecycleCalculator
         int ticketCount,
         int maxFailureCount)
     {
+        return ExplainPriorityScore(ageYears, maxAgeYears, ticketCount, maxFailureCount).Score;
+    }
+
+    // Cùng công thức nhưng trả từng thành phần để giải trình; ComputePriorityScore lấy Score từ đây nên không thể lệch.
+    public static PriorityScoreBreakdownDto ExplainPriorityScore(
+        double? ageYears,
+        int maxAgeYears,
+        int ticketCount,
+        int maxFailureCount)
+    {
         ValidateThresholds(maxAgeYears, maxFailureCount);
 
         var ageRatio = ageYears.HasValue ? ageYears.Value / maxAgeYears : 0d;
@@ -81,7 +96,24 @@ public static class LifecycleCalculator
         var severity = Math.Max(ageRatio, failureRatio);
 
         var rounded = Math.Round(50d * severity, MidpointRounding.AwayFromZero);
-        return (int)Math.Clamp(rounded, 0d, 100d);
+        var drivenBy =
+            severity <= 0d ? "None"
+            : Math.Abs(ageRatio - failureRatio) < 1e-9 ? "Both"
+            : ageRatio > failureRatio ? "Age"
+            : "Failures";
+
+        return new PriorityScoreBreakdownDto
+        {
+            AgeYears = ageYears,
+            MaxAgeYears = maxAgeYears,
+            AgeRatio = ageRatio,
+            TicketCount = ticketCount,
+            MaxFailureCount = maxFailureCount,
+            FailureRatio = failureRatio,
+            Severity = severity,
+            Score = (int)Math.Clamp(rounded, 0d, 100d),
+            DrivenBy = drivenBy,
+        };
     }
 
     // L7: chuỗi lý do đúng khuôn (số thập phân dùng dấu phẩy kiểu vi-VN). Cờ vượt ngưỡng lấy từ Evaluate
@@ -122,7 +154,7 @@ public static class LifecycleCalculator
             throw new ArgumentException("Số tháng cảnh báo phải từ 1 đến 60.", nameof(months));
         }
 
-        var ageDueDate = row.PurchaseDate?.AddYears(maxAgeYears);
+        var ageDueDate = HasUsablePurchaseDate(row.PurchaseDate, today) ? row.PurchaseDate!.Value.AddYears(maxAgeYears) : (DateOnly?)null;
         var windowEnd = today.AddMonths(months);
         var ageDueSoon = ageDueDate.HasValue
             && ageDueDate.Value > today
@@ -167,12 +199,12 @@ public static class LifecycleCalculator
     // So theo ngày lịch để biên đúng tròn 1/3/5 năm không phụ thuộc 365.25.
     public static int GetAgeBucketIndex(DateOnly? purchaseDate, DateOnly today)
     {
-        if (!purchaseDate.HasValue)
+        if (!HasUsablePurchaseDate(purchaseDate, today))
         {
-            return 4;
+            return 4;   // thiếu ngày mua hoặc ngày mua ở tương lai (dữ liệu sai)
         }
 
-        if (purchaseDate.Value.AddYears(1) > today)
+        if (purchaseDate!.Value.AddYears(1) > today)
         {
             return 0;
         }

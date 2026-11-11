@@ -1,3 +1,4 @@
+using ITAM.API.Repositories.Models;
 using ITAM.API.Data;
 using ITAM.API.Models.Entities;
 using ITAM.API.Models.Enums;
@@ -29,7 +30,8 @@ public class DisposalRequestRepository : IDisposalRequestRepository
         WithDetails().FirstOrDefaultAsync(r => r.Id == id);
 
     public async Task<(List<DisposalRequest> Items, int TotalItems)> GetPagedAsync(
-        int? departmentId, int? assetId, string? statusCode, int? technicianUserId, int page, int pageSize)
+        int? departmentId, int? assetId, string? statusCode, int? technicianUserId, int page, int pageSize,
+        DisposalListExtras extras)
     {
         var query = WithDetails().AsNoTracking();
 
@@ -55,9 +57,36 @@ public class DisposalRequestRepository : IDisposalRequestRepository
             query = query.Where(r => r.InspectedByUserId == me || r.ProposedByUserId == me);
         }
 
+        if (!string.IsNullOrWhiteSpace(extras.Keyword))
+        {
+            var k = extras.Keyword.Trim();
+            query = query.Where(r => r.Asset.AssetCode.Contains(k) || r.Asset.Name.Contains(k)
+                || (r.Reason != null && r.Reason.Contains(k))
+                || (r.DisposalMethod != null && r.DisposalMethod.Contains(k))
+                || r.InspectedBy.FullName.Contains(k)
+                || (r.ProposedBy != null && r.ProposedBy.FullName.Contains(k)));
+        }
+
+        if (extras.CategoryId.HasValue)
+        {
+            query = query.Where(r => r.Asset.CategoryId == extras.CategoryId.Value);
+        }
+
+        if (extras.CreatedFrom.HasValue)
+        {
+            query = query.Where(r => r.CreatedAt >= extras.CreatedFrom.Value);
+        }
+
+        if (extras.CreatedTo.HasValue)
+        {
+            query = query.Where(r => r.CreatedAt < extras.CreatedTo.Value);
+        }
+
         var total = await query.CountAsync();
-        var items = await query
-            .OrderByDescending(r => r.CreatedAt).ThenByDescending(r => r.Id)
+        var ordered = extras.Sort == "oldest"
+            ? query.OrderBy(r => r.CreatedAt).ThenBy(r => r.Id)
+            : query.OrderByDescending(r => r.CreatedAt).ThenByDescending(r => r.Id);
+        var items = await ordered
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
@@ -88,6 +117,13 @@ public class DisposalRequestRepository : IDisposalRequestRepository
             r.AssetId == assetId
             && r.Status.Code != DisposalStatusCodes.Rejected
             && r.Status.Code != DisposalStatusCodes.Completed);
+
+    public async Task<int> ReleaseSoftwareLicensesAsync(int assetId)
+    {
+        var assignments = await _db.AssetSoftwareLicenses.Where(a => a.AssetId == assetId).ToListAsync();
+        _db.AssetSoftwareLicenses.RemoveRange(assignments);
+        return assignments.Count;
+    }
 
     public async Task AddAsync(DisposalRequest request) => await _db.DisposalRequests.AddAsync(request);
 

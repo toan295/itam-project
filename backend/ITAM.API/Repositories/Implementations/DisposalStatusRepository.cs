@@ -35,9 +35,18 @@ public class DisposalStatusRepository : IDisposalStatusRepository
     public Task<bool> IsInUseAsync(int id) =>
         _db.DisposalRequests.AnyAsync(r => r.StatusId == id || r.SubStatusId == id);
 
+    public async Task<int> GetMaxSortOrderAsync() =>
+        await _db.DisposalStatuses.AnyAsync() ? await _db.DisposalStatuses.MaxAsync(s => s.SortOrder) : 0;
+
     public async Task AddAsync(DisposalStatus status) => await _db.DisposalStatuses.AddAsync(status);
 
-    public void Remove(DisposalStatus status) => _db.DisposalStatuses.Remove(status);
+    // Xoá mềm: giữ dòng trong CSDL, chỉ đánh dấu đã xoá.
+    public void Remove(DisposalStatus status)
+    {
+        status.IsDeleted = true;
+        status.DeletedAt = DateTime.UtcNow;
+        _db.DisposalStatuses.Update(status);
+    }
 
     public Task<int> SaveChangesAsync() => _db.SaveChangesAsync();
 }

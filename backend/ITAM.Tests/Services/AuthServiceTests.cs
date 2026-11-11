@@ -19,7 +19,6 @@ public class AuthServiceTests
     private readonly Mock<IUserRepository> _repo = new();
 
     private readonly Mock<IAuditLogService> _audit = new();
-    private readonly Mock<IDefaultPasswordService> _defaultPassword = new();
     private readonly ManualTimeProvider _time = new();
     private readonly LoginAttemptTracker _tracker;
     private readonly AuthService _sut;
@@ -34,7 +33,7 @@ public class AuthServiceTests
             ExpiryMinutes = 60,
         }));
         _tracker = new LoginAttemptTracker(_time);
-        _sut = new AuthService(_repo.Object, jwt, _tracker, _defaultPassword.Object, NullLogger<AuthService>.Instance, _audit.Object);
+        _sut = new AuthService(_repo.Object, jwt, _tracker, NullLogger<AuthService>.Instance, _audit.Object);
     }
 
     private static User MakeUser(bool active = true, bool mustChange = false) => new()
@@ -238,18 +237,6 @@ public class AuthServiceTests
     }
 
     [Fact]
-    public async Task ChangePasswordAsync_NewPasswordIsTheSystemDefault_ThrowsAndDoesNotSave()
-    {
-        _repo.Setup(r => r.GetByIdTrackedAsync(7)).ReturnsAsync(MakeUser(mustChange: true));
-        _defaultPassword.Setup(d => d.IsDefaultPasswordAsync("Default#123")).ReturnsAsync(true);
-
-        await Assert.ThrowsAsync<ArgumentException>(() =>
-            _sut.ChangePasswordAsync(7, new ChangePasswordRequestDto { CurrentPassword = Password, NewPassword = "Default#123" }));
-
-        _repo.Verify(r => r.SaveChangesAsync(), Times.Never);
-    }
-
-    [Fact]
     public async Task ChangePasswordAsync_UserNotFound_ThrowsUserNotFound()
     {
         _repo.Setup(r => r.GetByIdTrackedAsync(It.IsAny<int>())).ReturnsAsync((User?)null);
@@ -300,7 +287,8 @@ public class AuthServiceTests
         await Assert.ThrowsAsync<InvalidCredentialsException>(() =>
             _sut.LoginAsync(new LoginRequestDto { Email = "a@eaims.local", Password = "sai-mat-khau" }));
 
-        _audit.Verify(a => a.RecordAsync(7, "LoginFailed", "User", 7, null, It.IsAny<object?>()), Times.Once);
+        _audit.Verify(a => a.RecordEventAsync(It.Is<ITAM.API.Auditing.AuditEvent>(e =>
+            e.UserId == 7 && e.Action == "LoginFailed" && e.Outcome == "Rejected" && e.StatusCode == 401 && e.Message != null)), Times.Once);
     }
 
     [Fact]
@@ -322,7 +310,8 @@ public class AuthServiceTests
         await Assert.ThrowsAsync<AccountLockedException>(() =>
             _sut.LoginAsync(new LoginRequestDto { Email = "a@eaims.local", Password = Password }));
 
-        _audit.Verify(a => a.RecordAsync(7, "LoginFailed", "User", 7, null, It.IsAny<object?>()), Times.Once);
+        _audit.Verify(a => a.RecordEventAsync(It.Is<ITAM.API.Auditing.AuditEvent>(e =>
+            e.UserId == 7 && e.Action == "LoginFailed" && e.Outcome == "Rejected" && e.StatusCode == 401 && e.Message != null)), Times.Once);
     }
 
     [Fact]

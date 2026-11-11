@@ -1,9 +1,10 @@
 const session = requireAuth("login.html");
 renderNav({ active: "disposals", basePath: "../" });
 
-const isAdmin = session.role === "Admin IT";
-const isManager = session.role === "Manager";
-const isTechnician = session.role === "Technician";
+const canManageStatuses = can("disposal-statuses.manage");
+const canApprove = can("disposals.approve");
+const canInspect = can("disposals.inspect");
+const canExecute = can("disposals.execute");
 
 // Mã các bước chính của luồng — khớp DisposalStatusCodes ở backend (bất biến).
 const CODE = { Inspected: "Inspected", Proposed: "Proposed", Approved: "Approved", Rejected: "Rejected", Completed: "Completed" };
@@ -17,6 +18,31 @@ let statuses = [];
 let createModal, actionModal, detailModal, statusModal;
 let assetSearchTimer = null;
 let currentAction = null; // { type, id }
+let filterBar;
+
+const DISPOSAL_FILTERS = ["keyword", "filterStatus", "filterDepartmentId", "filterCategoryId", "filterFromDate", "filterSort"];
+const DISPOSAL_PARAMS = {
+  keyword: "keyword", filterStatus: "status", filterDepartmentId: "departmentId", filterCategoryId: "categoryId",
+  filterFromDate: "fromDate", filterSort: "sort",
+};
+
+// Phòng ban và loại tài sản cho bộ lọc. Chỉ Admin IT chọn được phòng ban (Manager bị backend giới hạn phòng mình, Technician chỉ thấy phiếu của mình).
+async function loadFilterOptions() {
+  try {
+    if (session.role === "Admin IT") {
+      const departments = await api.get("/departments");
+      document.getElementById("filterDepartmentId").innerHTML = `<option value="">-- Tất cả --</option>` +
+        departments.map((d) => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join("");
+    } else {
+      document.getElementById("filterDepartmentWrapper").classList.add("d-none");
+    }
+    const categories = await api.get("/asset-categories");
+    document.getElementById("filterCategoryId").innerHTML = `<option value="">-- Tất cả --</option>` +
+      categories.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
+  } catch {
+    // Bộ lọc phụ — không chặn trang nếu không tải được.
+  }
+}
 
 const ACTION_TITLES = {
   propose: "Đề xuất thanh lý",
@@ -65,8 +91,8 @@ async function init() {
   detailModal = new bootstrap.Modal(document.getElementById("detailModal"));
   statusModal = new bootstrap.Modal(document.getElementById("statusModal"));
 
-  if (isTechnician) document.getElementById("openCreateBtn").classList.remove("d-none");
-  if (isAdmin) document.getElementById("tabStatusesItem").classList.remove("d-none");
+  if (canInspect) document.getElementById("openCreateBtn").classList.remove("d-none");
+  if (canManageStatuses) document.getElementById("tabStatusesItem").classList.remove("d-none");
 
   document.getElementById("openCreateBtn").addEventListener("click", () => openCreateModal());
   document.getElementById("openStatusCreateBtn").addEventListener("click", () => openStatusModal(null));
@@ -74,11 +100,10 @@ async function init() {
   document.getElementById("tabStatuses").addEventListener("click", () => switchTab("statuses"));
   document.getElementById("tabCandidates").addEventListener("click", () => switchTab("candidates"));
   document.getElementById("restoreDefaultsBtn").addEventListener("click", restoreDefaults);
-  document.getElementById("filterForm").addEventListener("submit", (e) => { e.preventDefault(); loadRequests(1); });
-  document.getElementById("resetFilterBtn").addEventListener("click", () => {
-    document.getElementById("filterStatus").value = "";
-    loadRequests(1);
+  filterBar = initFilterBar({
+    fields: DISPOSAL_FILTERS, uncounted: ["filterSort"], textFields: ["keyword"], onChange: () => loadRequests(1),
   });
+  loadFilterOptions();
   document.getElementById("createForm").addEventListener("submit", submitCreate);
   document.getElementById("actionForm").addEventListener("submit", submitAction);
   document.getElementById("statusForm").addEventListener("submit", submitStatus);
@@ -93,7 +118,7 @@ async function init() {
 
   // Từ trang Tài sản: ?newAssetId=ID mở sẵn form kiểm tra cho tài sản đó.
   const newAssetId = new URLSearchParams(location.search).get("newAssetId");
-  if (newAssetId && isTechnician) openCreateModal(Number(newAssetId));
+  if (newAssetId && canInspect) openCreateModal(Number(newAssetId));
 }
 
 function switchTab(tab) {
@@ -102,8 +127,8 @@ function switchTab(tab) {
     document.getElementById(`${t}Section`).classList.toggle("d-none", t !== tab);
     document.getElementById(`tab${key}`).classList.toggle("active", t === tab);
   }
-  document.getElementById("openStatusCreateBtn").classList.toggle("d-none", tab !== "statuses" || !isAdmin);
-  document.getElementById("openCreateBtn").classList.toggle("d-none", tab === "statuses" || !isTechnician);
+  document.getElementById("openStatusCreateBtn").classList.toggle("d-none", tab !== "statuses" || !canManageStatuses);
+  document.getElementById("openCreateBtn").classList.toggle("d-none", tab === "statuses" || !canInspect);
   clearMessages();
   if (tab === "candidates") loadCandidates(1);
 }
@@ -125,7 +150,7 @@ async function loadStatuses() {
     statuses.filter((s) => s.isSystem).map((s) => `<option value="${escapeHtml(s.code)}">${escapeHtml(s.name)}</option>`).join("");
   select.value = selected;
 
-  if (isAdmin) renderStatusTable();
+  if (canManageStatuses) renderStatusTable();
 }
 
 const DEFAULT_STEP_CODES = ["Inspected", "Proposed", "Approved", "Rejected", "Completed"];
@@ -157,9 +182,6 @@ function renderStatusTable() {
     <tr>
       <td class="text-muted">${s.sortOrder}</td>
       <td>${badge(s.name, s.color)}</td>
-      <td>${s.isSystem
-        ? '<span class="badge-soft slate"><i class="bi bi-diagram-3"></i> Bước chính</span>'
-        : '<span class="badge-soft info">Trạng thái phụ</span>'}</td>
       <td>${escapeHtml(s.description || "")}</td>
       <td class="text-end text-nowrap">
         <button class="btn btn-sm btn-outline-primary me-1" onclick="openStatusModal(${s.id})"><i class="bi bi-pencil"></i> Sửa</button>
@@ -180,6 +202,9 @@ function openStatusModal(id) {
     document.getElementById("statusColor").value = status.color;
     document.getElementById("statusSortOrder").value = status.sortOrder;
   }
+  // Bước chính có thứ tự cố định theo luồng (1–5) — không sửa được; trạng thái phụ để trống = tự xếp cuối.
+  const sortInput = document.getElementById("statusSortOrder");
+  sortInput.disabled = Boolean(status?.isSystem);
   statusModal.show();
 }
 
@@ -190,7 +215,7 @@ async function submitStatus(e) {
     name: document.getElementById("statusName").value.trim(),
     description: document.getElementById("statusDescription").value.trim() || null,
     color: document.getElementById("statusColor").value,
-    sortOrder: Number(document.getElementById("statusSortOrder").value),
+    sortOrder: document.getElementById("statusSortOrder").value === "" ? null : Number(document.getElementById("statusSortOrder").value),
   };
   try {
     if (id) await api.put(`/disposal-statuses/${id}`, payload);
@@ -246,9 +271,9 @@ async function loadCandidates(page = 1) {
           <td>${escapeHtml(a.categoryName)}</td>
           <td>${escapeHtml(a.departmentName)}</td>
           <td>${a.serialNumber ? escapeHtml(a.serialNumber) : '<span class="text-muted">-</span>'}</td>
-          <td class="text-end">${isTechnician
+          <td class="text-end">${canInspect
             ? `<button class="btn btn-sm btn-primary" onclick="openCreateModal(${a.assetId})"><i class="bi bi-clipboard-check"></i> Kiểm tra thanh lý</button>`
-            : '<span class="text-muted small">Chờ Technician kiểm tra</span>'}</td>
+            : '<span class="text-muted small">Chờ nhân viên kỹ thuật kiểm tra</span>'}</td>
         </tr>`).join("");
 
     let html = "";
@@ -267,9 +292,9 @@ async function loadRequests(page = 1) {
   currentPage = page;
   clearMessages();
   try {
-    const params = new URLSearchParams({ page, pageSize: 10 });
-    const status = document.getElementById("filterStatus").value;
-    if (status) params.set("status", status);
+    const params = filterBar.params(DISPOSAL_PARAMS, { page, pageSize: 10 });
+    // "Ngày tạo phiếu": một ngày duy nhất -> lọc các phiếu tạo đúng ngày đó (từ ngày = đến ngày).
+    if (params.get("fromDate")) params.set("toDate", params.get("fromDate"));
     const result = await api.get(`/disposal-requests?${params}`);
     renderTable(result.items);
     renderPagination(result.page, result.totalPages);
@@ -284,17 +309,17 @@ async function loadRequests(page = 1) {
 // Nút thao tác theo (vai trò, bước hiện tại) — khớp phân quyền backend.
 function actionButtons(r) {
   const buttons = [`<button class="btn btn-sm btn-outline-secondary me-1" onclick="openDetail(${r.id})"><i class="bi bi-eye"></i> Chi tiết</button>`];
-  if (isTechnician && r.statusCode === CODE.Inspected) {
+  if (canInspect && r.statusCode === CODE.Inspected) {
     buttons.push(`<button class="btn btn-sm btn-primary me-1" onclick="openAction('propose', ${r.id})"><i class="bi bi-send"></i> Đề xuất</button>`);
   }
-  if (isManager && r.statusCode === CODE.Proposed) {
+  if (canApprove && r.statusCode === CODE.Proposed) {
     buttons.push(`<button class="btn btn-sm btn-success me-1" onclick="openAction('approve', ${r.id})"><i class="bi bi-check2"></i> Duyệt</button>`);
     buttons.push(`<button class="btn btn-sm btn-outline-danger me-1" onclick="openAction('reject', ${r.id})"><i class="bi bi-x-lg"></i> Từ chối</button>`);
   }
-  if (isAdmin && r.statusCode === CODE.Approved) {
+  if (canExecute && r.statusCode === CODE.Approved) {
     buttons.push(`<button class="btn btn-sm btn-danger me-1" onclick="openAction('complete', ${r.id})"><i class="bi bi-archive"></i> Thanh lý</button>`);
   }
-  if (isAdmin && !FINAL_CODES.includes(r.statusCode)) {
+  if (canExecute && !FINAL_CODES.includes(r.statusCode)) {
     buttons.push(`<button class="btn btn-sm btn-outline-secondary" onclick="openAction('subStatus', ${r.id})" title="Gán trạng thái phụ"><i class="bi bi-tag"></i></button>`);
   }
   return buttons.join("");
@@ -348,7 +373,7 @@ function openDetail(id) {
     ${step("1. Kiểm tra", r.inspectedByName, r.inspectedAt, r.inspectionNote)}
     ${step("2. Đề xuất", r.proposedByName, r.proposedAt, r.reason,
         r.disposalMethod ? `<div class="small">Hình thức: ${escapeHtml(r.disposalMethod)}</div>` : "")}
-    ${step("3. Manager xem xét", r.reviewedByName, r.reviewedAt, r.reviewNote)}
+    ${step("3. Quản lý xem xét", r.reviewedByName, r.reviewedAt, r.reviewNote)}
     ${step("4. Admin IT thanh lý", r.completedByName, r.completedAt, r.completionNote)}`;
   detailModal.show();
 }
@@ -404,7 +429,7 @@ async function submitCreate(e) {
       inspectionNote: document.getElementById("inspectionNote").value.trim(),
     });
     createModal.hide();
-    showInfo("Đã ghi nhận kết quả kiểm tra. Bấm \"Đề xuất\" trên phiếu để gửi Manager duyệt.");
+    showInfo("Đã ghi nhận kết quả kiểm tra. Bấm \"Đề xuất\" trên phiếu để gửi Quản lý duyệt.");
     loadRequests(1);
     refreshCandidateCount();
     if (!document.getElementById("candidatesSection").classList.contains("d-none")) loadCandidates(candidatePage);

@@ -1,3 +1,5 @@
+using ITAM.API.Repositories.Models;
+using ITAM.API.Helpers;
 using ITAM.API.Models.DTOs.Forecasts;
 using ITAM.API.Models.DTOs.Lifecycle;
 using ITAM.API.Models.Entities;
@@ -18,22 +20,30 @@ public class BudgetForecastServiceTests
     private const int CatPrinter = 11;
     private const int CatSwitch = 12;
 
-    private static readonly int Year = DateTime.UtcNow.Year;
+    private static readonly int Year = VietnamTime.Today().Year;
 
     private readonly Mock<IBudgetForecastRepository> _repo = new();
     private readonly Mock<ILifecycleAnalysisService> _lifecycle = new();
+    private readonly Mock<IExclusiveSection> _exclusive = new();
     private readonly BudgetForecastService _sut;
 
     private readonly List<(int Id, string Name)> _departments = new() { (DeptA, "IT-A"), (DeptB, "IT-B") };
 
     public BudgetForecastServiceTests()
     {
-        _sut = new BudgetForecastService(_repo.Object, _lifecycle.Object, NullLogger<BudgetForecastService>.Instance);
+        _exclusive.Setup(e => e.RunAsync(It.IsAny<LockTarget>(), It.IsAny<int>(), It.IsAny<Func<Task<ForecastGenerationResultDto>>>()))
+            .Returns((LockTarget _, int _, Func<Task<ForecastGenerationResultDto>> work) => work());
+        _sut = new BudgetForecastService(_repo.Object, _lifecycle.Object, _exclusive.Object, NullLogger<BudgetForecastService>.Instance);
+
+        _repo.Setup(r => r.GetActiveEmployeeCountsAsync()).ReturnsAsync(new Dictionary<int, int>());
+        _repo.Setup(r => r.GetUsableAssetCountsAsync()).ReturnsAsync(new Dictionary<(int DepartmentId, int CategoryId), int>());
+        _repo.Setup(r => r.GetAssetsWithoutPurchaseDateCountsAsync()).ReturnsAsync(new Dictionary<int, int>());
+        _repo.Setup(r => r.GetUserNamesAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new Dictionary<int, string>());
 
         _repo.Setup(r => r.GetAllDepartmentsAsync()).ReturnsAsync(_departments);
         _repo.Setup(r => r.GetDepartmentAsync(DeptA)).ReturnsAsync((DeptA, "IT-A"));
         _repo.Setup(r => r.GetDepartmentAsync(DeptB)).ReturnsAsync((DeptB, "IT-B"));
-        _repo.Setup(r => r.GetByYearAndDepartmentAsync(It.IsAny<int>(), It.IsAny<int>())).ReturnsAsync((BudgetForecast?)null);
+        _repo.Setup(r => r.GetForecastsByYearAsync(It.IsAny<int>())).ReturnsAsync(new List<BudgetForecast>());
         _repo.Setup(r => r.GetAllPricesAsync()).ReturnsAsync(new List<AssetCategoryReferencePrice>
         {
             new() { CategoryId = CatComputer, UnitPrice = 20_000_000m },
@@ -221,13 +231,12 @@ public class BudgetForecastServiceTests
         {
             Id = 7, Year = Year, DepartmentId = DeptA, EstimatedReplacementCount = 99, EstimatedBudget = 1m, Notes = "cũ",
         };
-        _repo.Setup(r => r.GetByYearAndDepartmentAsync(Year, DeptA)).ReturnsAsync(existing);
+        _repo.Setup(r => r.GetForecastsByYearAsync(Year)).ReturnsAsync(new List<BudgetForecast> { existing });
         SetupCandidates(Candidate(CatComputer, "Máy tính", Year));
 
         var result = await _sut.GenerateAsync(new GenerateForecastRequestDto { Year = Year, DepartmentId = DeptA });
 
         _repo.Verify(r => r.AddAsync(It.IsAny<BudgetForecast>()), Times.Never);
-        _repo.Verify(r => r.Update(existing), Times.Once);
         Assert.Equal(1, existing.EstimatedReplacementCount);
         Assert.Equal(20_000_000m, existing.EstimatedBudget);
         Assert.Null(existing.Notes);                                  // ghi đè cả ghi chú cũ
@@ -238,7 +247,7 @@ public class BudgetForecastServiceTests
     public async Task GenerateAsync_SoftDeletedRowForSameYearAndDepartment_IsRestoredNotDuplicated()
     {
         var deleted = new BudgetForecast { Id = 8, Year = Year, DepartmentId = DeptA, IsDeleted = true, DeletedAt = DateTime.UtcNow };
-        _repo.Setup(r => r.GetByYearAndDepartmentAsync(Year, DeptA)).ReturnsAsync(deleted);
+        _repo.Setup(r => r.GetForecastsByYearAsync(Year)).ReturnsAsync(new List<BudgetForecast> { deleted });
         SetupCandidates(Candidate(CatComputer, "Máy tính", Year));
 
         await _sut.GenerateAsync(new GenerateForecastRequestDto { Year = Year, DepartmentId = DeptA });
@@ -380,9 +389,30 @@ public class BudgetForecastServiceTests
     }
 
     [Fact]
+    public async Task GetPagedAsync_AdvancedFilters_AreMappedToExtras()
+    {
+        _repo.Setup(r => r.GetPagedAsync(2027, 3, 1, 20, It.IsAny<ForecastListExtras>())).ReturnsAsync((new List<BudgetForecast>(), 0));
+
+        await _sut.GetPagedAsync(2027, 3, 1, 20, "it", "expansion", 1000m, 5000m, "budget");
+
+        _repo.Verify(r => r.GetPagedAsync(2027, 3, 1, 20, It.Is<ForecastListExtras>(x =>
+            x.Keyword == "it" && x.Kind == "expansion" && x.MinBudget == 1000m && x.MaxBudget == 5000m && x.Sort == "budget")), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("other", null, null, null)]
+    [InlineData(null, -1, null, null)]
+    [InlineData(null, 500, 100, null)]
+    [InlineData(null, null, null, "random")]
+    public async Task GetPagedAsync_InvalidAdvancedFilter_ThrowsArgumentException(string? kind, int? min, int? max, string? sort)
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => _sut.GetPagedAsync(null, null, 1, 20, kind: kind, minBudget: min, maxBudget: max, sort: sort));
+    }
+
+    [Fact]
     public async Task GetPagedAsync_OutOfRangePagingFallsBackToDefaults()
     {
-        _repo.Setup(r => r.GetPagedAsync(null, null, 1, 20)).ReturnsAsync((new List<BudgetForecast>(), 0));
+        _repo.Setup(r => r.GetPagedAsync(null, null, 1, 20, It.IsAny<ForecastListExtras>())).ReturnsAsync((new List<BudgetForecast>(), 0));
 
         var result = await _sut.GetPagedAsync(null, null, 0, 5000);
 
@@ -425,10 +455,10 @@ public class BudgetForecastServiceTests
     [Fact]
     public async Task UpsertPriceAsync_ExistingPrice_UpdatesInsteadOfAdding()
     {
-        var existing = new AssetCategoryReferencePrice { CategoryId = CatComputer, UnitPrice = 20_000_000m };
+        var existing = new AssetCategoryReferencePrice { CategoryId = CatComputer, UnitPrice = 20_000_000m, Version = 1 };
         _repo.Setup(r => r.GetPriceAsync(CatComputer)).ReturnsAsync(existing);
 
-        var result = await _sut.UpsertPriceAsync(CatComputer, new UpsertReferencePriceRequestDto { UnitPrice = 22_000_000m });
+        var result = await _sut.UpsertPriceAsync(CatComputer, new UpsertReferencePriceRequestDto { UnitPrice = 22_000_000m, Version = 1 });
 
         _repo.Verify(r => r.AddPriceAsync(It.IsAny<AssetCategoryReferencePrice>()), Times.Never);
         _repo.Verify(r => r.UpdatePrice(existing), Times.Once);
@@ -441,7 +471,7 @@ public class BudgetForecastServiceTests
     {
         _repo.Setup(r => r.GetPriceAsync(CatPrinter)).ReturnsAsync((AssetCategoryReferencePrice?)null);
 
-        await Assert.ThrowsAsync<ReferencePriceNotFoundException>(() => _sut.DeletePriceAsync(CatPrinter));
+        await Assert.ThrowsAsync<ReferencePriceNotFoundException>(() => _sut.DeletePriceAsync(CatPrinter, 1));
     }
 
     [Fact]
@@ -450,7 +480,7 @@ public class BudgetForecastServiceTests
         var existing = new AssetCategoryReferencePrice { CategoryId = CatComputer, UnitPrice = 1m };
         _repo.Setup(r => r.GetPriceAsync(CatComputer)).ReturnsAsync(existing);
 
-        await _sut.DeletePriceAsync(CatComputer);
+        await _sut.DeletePriceAsync(CatComputer, 1);
 
         // Xoá mềm: chỉ đặt cờ IsDeleted, không xoá dòng khỏi DB.
         Assert.True(existing.IsDeleted);
@@ -465,7 +495,7 @@ public class BudgetForecastServiceTests
         var deleted = new AssetCategoryReferencePrice { CategoryId = CatComputer, UnitPrice = 1m, IsDeleted = true };
         _repo.Setup(r => r.GetPriceAsync(CatComputer)).ReturnsAsync(deleted);
 
-        await Assert.ThrowsAsync<ReferencePriceNotFoundException>(() => _sut.DeletePriceAsync(CatComputer));
+        await Assert.ThrowsAsync<ReferencePriceNotFoundException>(() => _sut.DeletePriceAsync(CatComputer, 1));
     }
 
     [Fact]
@@ -673,7 +703,7 @@ public class BudgetForecastServiceTests
             Id = 7, Year = Year, DepartmentId = DeptA, EstimatedExpansionCount = 99, EstimatedExpansionBudget = 99m,
             ExpansionBreakdownJson = "{\"additionalHeadcount\":99,\"items\":[]}",
         };
-        _repo.Setup(r => r.GetByYearAndDepartmentAsync(Year, DeptA)).ReturnsAsync(existing);
+        _repo.Setup(r => r.GetForecastsByYearAsync(Year)).ReturnsAsync(new List<BudgetForecast> { existing });
         SetupPlans((DeptA, 2));
         SetupRatios((CatComputer, 1.00m));
 
@@ -696,7 +726,7 @@ public class BudgetForecastServiceTests
         await GenerateForDeptA();
 
         Assert.NotNull(added);
-        Assert.Equal("{\"additionalHeadcount\":0,\"items\":[]}", added!.ExpansionBreakdownJson);
+        Assert.Equal("{\"baselineHeadcount\":0,\"additionalHeadcount\":0,\"projectedHeadcount\":0,\"items\":[]}", added!.ExpansionBreakdownJson);
     }
 
     [Fact]

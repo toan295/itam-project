@@ -16,4 +16,7 @@ public class UpdateAssetRequestDto
 
     public DateOnly? PurchaseDate { get; set; }
     public DateOnly? WarrantyExpiry { get; set; }
+
+    // Số phiên bản client đang giữ (AssetResponseDto.Version). Lệch với bản hiện tại -> 409; bỏ trống thì không kiểm tra.
+    public int? Version { get; set; }
 }

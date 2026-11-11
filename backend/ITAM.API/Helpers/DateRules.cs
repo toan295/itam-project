@@ -8,4 +8,11 @@ public static class DateRules
     public static DateOnly LatestAllowedDate() => DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1);
 
     public static bool IsNotInFuture(DateOnly date) => date <= LatestAllowedDate();
+
+    // Mốc sớm nhất chấp nhận cho ngày mua tài sản — chặn nhập nhầm năm (vd 0020, 1900).
+    public const int MinPurchaseYear = 1990;
+    public static readonly DateOnly EarliestPurchaseDate = new(MinPurchaseYear, 1, 1);
+
+    // Hạn bảo hành xa nhất chấp nhận: 30 năm kể từ hôm nay.
+    public static DateOnly LatestWarrantyDate() => DateOnly.FromDateTime(DateTime.UtcNow).AddYears(30);
 }

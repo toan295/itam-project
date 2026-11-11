@@ -1,3 +1,4 @@
+using ITAM.API.Repositories.Models;
 using ITAM.API.Models.DTOs.Assets;
 using ITAM.API.Models.Entities;
 using ITAM.API.Models.Enums;
@@ -376,12 +377,12 @@ public class AssetServiceTests
     [Fact]
     public async Task SearchAsync_Technician_IsNotScopedToDepartment()
     {
-        _repoMock.Setup(r => r.SearchAsync(null, 7, null, null, null, null, null, 1, 20))
+        _repoMock.Setup(r => r.SearchAsync(It.IsAny<AssetQueryCriteria>(), 1, 20))
             .ReturnsAsync((new List<Asset>(), 0));
 
         await _sut.SearchAsync(new AssetSearchFilterDto { DepartmentId = 7 }, "Technician", 3, 9);
 
-        _repoMock.Verify(r => r.SearchAsync(null, 7, null, null, null, null, null, 1, 20), Times.Once);
+        _repoMock.Verify(r => r.SearchAsync(It.Is<AssetQueryCriteria>(c => c.DepartmentId == 7 && c.OrAssignedTechnicianId == null), 1, 20), Times.Once);
     }
 
     [Fact]
@@ -532,12 +533,54 @@ public class AssetServiceTests
     [Fact]
     public async Task SearchAsync_WarrantyStatusValid_MapsToIsUnderWarrantyTrue()
     {
-        _repoMock.Setup(r => r.SearchAsync(null, null, null, null, null, true, null, 1, 20))
+        _repoMock.Setup(r => r.SearchAsync(It.IsAny<AssetQueryCriteria>(), 1, 20))
             .ReturnsAsync((new List<Asset>(), 0));
 
         await _sut.SearchAsync(new AssetSearchFilterDto { WarrantyStatus = "Valid" }, "Admin IT", 1, null);
 
-        _repoMock.Verify(r => r.SearchAsync(null, null, null, null, null, true, null, 1, 20), Times.Once);
+        _repoMock.Verify(r => r.SearchAsync(It.Is<AssetQueryCriteria>(c => c.IsUnderWarranty == true), 1, 20), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("allocation", "maybe")]
+    [InlineData("expiring", "0")]
+    [InlineData("expiring", "366")]
+    [InlineData("sort", "price")]
+    public async Task SearchAsync_InvalidAdvancedFilter_ThrowsArgumentException(string field, string value)
+    {
+        var filter = new AssetSearchFilterDto();
+        switch (field)
+        {
+            case "allocation": filter.AllocationState = value; break;
+            case "expiring": filter.WarrantyExpiringInDays = int.Parse(value); break;
+            default: filter.Sort = value; break;
+        }
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _sut.SearchAsync(filter, "Admin IT", 1, null));
+    }
+
+    [Fact]
+    public async Task SearchAsync_PurchasedFromAfterTo_ThrowsArgumentException()
+    {
+        var filter = new AssetSearchFilterDto { PurchasedFrom = new DateOnly(2026, 6, 1), PurchasedTo = new DateOnly(2026, 1, 1) };
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _sut.SearchAsync(filter, "Admin IT", 1, null));
+    }
+
+    [Fact]
+    public async Task SearchAsync_AdvancedFilters_AreMappedToCriteria()
+    {
+        _repoMock.Setup(r => r.SearchAsync(It.IsAny<AssetQueryCriteria>(), 1, 20)).ReturnsAsync((new List<Asset>(), 0));
+
+        await _sut.SearchAsync(new AssetSearchFilterDto
+        {
+            AllocationState = "free", WarrantyExpiringInDays = 30, Sort = "warrantyExpiry",
+            PurchasedFrom = new DateOnly(2025, 1, 1), PurchasedTo = new DateOnly(2025, 12, 31),
+        }, "Admin IT", 1, null);
+
+        _repoMock.Verify(r => r.SearchAsync(It.Is<AssetQueryCriteria>(c =>
+            c.IsAllocated == false && c.WarrantyExpiringInDays == 30 && c.Sort == "warrantyExpiry"
+            && c.PurchasedFrom == new DateOnly(2025, 1, 1) && c.PurchasedTo == new DateOnly(2025, 12, 31)), 1, 20), Times.Once);
     }
 
     // ----- Đổi trạng thái tay -> đồng bộ phiếu bảo trì -----
@@ -593,5 +636,43 @@ public class AssetServiceTests
 
         _ticketRepoMock.Verify(r => r.AddAsync(It.IsAny<MaintenanceTicket>()), Times.Never);
         _ticketRepoMock.Verify(r => r.GetPendingByAssetAsync(It.IsAny<int>()), Times.Never);
+    }
+
+    // ----- Phiên bản (chống ghi đè) và năm mua -----
+
+    [Fact]
+    public async Task UpdateAsync_StaleVersion_ThrowsConflictAndDoesNotSave()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 1, Version = 4 });
+        var dto = ValidUpdateDto();
+        dto.Version = 3;
+
+        await Assert.ThrowsAsync<ConcurrencyConflictException>(() => _sut.UpdateAsync(1, dto, "Admin IT", 1));
+
+        _repoMock.Verify(r => r.SaveChangesAsync(), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_CurrentVersion_Succeeds()
+    {
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1))
+            .ReturnsAsync(new Asset { Id = 1, AssetCode = "TS-001", DepartmentId = 1, Version = 4 });
+        var dto = ValidUpdateDto();
+        dto.Version = 4;
+
+        await _sut.UpdateAsync(1, dto, "Admin IT", 1);
+
+        _repoMock.Verify(r => r.SaveChangesAsync(), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(20)]
+    [InlineData(1989)]
+    [InlineData(20244)]
+    public async Task SearchAsync_PurchaseYearOutOfRange_ThrowsArgumentException(int year)
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _sut.SearchAsync(new AssetSearchFilterDto { PurchaseYear = year }, "Admin IT", 1, 1));
     }
 }

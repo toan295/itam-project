@@ -12,5 +12,6 @@ public class AllocationOverdueCandidateRow
     public string RecipientName { get; set; } = string.Empty;
     public DateOnly AllocatedDate { get; set; }
     public DateOnly? AssetPurchaseDate { get; set; }
-    public DateTime? LastMaintenanceDate { get; set; }
+    public DateTime? LastMaintenanceDate { get; set; } // lần bảo trì HOÀN TẤT (Resolved) gần nhất.
+    public bool HasPendingTicket { get; set; }          // đang có phiếu bảo trì chờ xử lý -> việc bảo trì đã được tiếp nhận, không cảnh báo.
 }

@@ -14,6 +14,8 @@ public class UpsertDeviceRatioRequestValidator : AbstractValidator<UpsertDeviceR
             .InclusiveBetween(MinRatio, MaxRatio)
             .WithMessage("Định mức phải từ 0,01 đến 20 thiết bị/người.");
 
+        RuleFor(x => x.Version).GreaterThan(0).When(x => x.Version.HasValue).WithMessage("Version không hợp lệ.");
+
         RuleFor(x => x.DevicesPerPerson)
             .Must(x => decimal.Round(x, 2) == x)
             .WithMessage("Tối đa 2 chữ số thập phân.");

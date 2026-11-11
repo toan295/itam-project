@@ -5,6 +5,7 @@ using ITAM.API.Models.DTOs.Lifecycle;
 using ITAM.API.Models.Entities;
 using ITAM.API.Repositories.Interfaces;
 using ITAM.API.Services.Interfaces;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace ITAM.API.Services.Implementations;
@@ -66,17 +67,32 @@ public class LifecycleAnalysisService : ILifecycleAnalysisService
         int? categoryId,
         string sortBy,
         int page,
-        int pageSize)
+        int pageSize,
+        string? keyword = null,
+        string? reason = null,
+        bool? underWarranty = null,
+        int? minScore = null)
     {
         (page, pageSize) = Paging.Normalize(page, pageSize);
         sortBy = string.IsNullOrWhiteSpace(sortBy) ? DefaultSortBy : sortBy.Trim();
         var validSortBy = ValidateSortBy(sortBy);   // sortBy sai → 400 trước khi tốn công truy vấn
+        ValidateReason(reason, CurrentReasons);
+        if (minScore is < 0 or > 100)
+        {
+            throw new ArgumentException("Điểm ưu tiên tối thiểu phải từ 0 đến 100.", nameof(minScore));
+        }
+
+        var kw = keyword?.Trim();
         var today = Today();
 
         var recommendations = await BuildRecommendationsAsync(departmentId, today.Year, today);
         IEnumerable<ReplacementRecommendationDto> filtered = recommendations
             .Where(item => item.IsOverdueNow)
-            .Where(item => !categoryId.HasValue || item.CategoryId == categoryId.Value);
+            .Where(item => !categoryId.HasValue || item.CategoryId == categoryId.Value)
+            .Where(item => string.IsNullOrEmpty(kw) || MatchesKeyword(item.AssetCode, item.AssetName, kw))
+            .Where(item => string.IsNullOrWhiteSpace(reason) || item.Reasons.Contains(reason.Trim(), StringComparer.Ordinal))
+            .Where(item => !underWarranty.HasValue || item.IsUnderWarranty == underWarranty.Value)
+            .Where(item => !minScore.HasValue || item.PriorityScore >= minScore.Value);
 
         var sorted = SortRecommendations(filtered, validSortBy).ToList();
 
@@ -92,41 +108,52 @@ public class LifecycleAnalysisService : ILifecycleAnalysisService
         };
     }
 
+    private static readonly string[] CurrentReasons = { "AgeExceeded", "FailureCountExceeded" };
+    private static readonly string[] UpcomingReasons = { "AgeDueSoon", "NearFailureThreshold" };
+
+    private static void ValidateReason(string? reason, string[] allowed)
+    {
+        if (!string.IsNullOrWhiteSpace(reason) && !allowed.Contains(reason.Trim(), StringComparer.Ordinal))
+        {
+            throw new ArgumentException($"Lý do không hợp lệ. Phải là một trong: {string.Join(", ", allowed)}", nameof(reason));
+        }
+    }
+
+    // Không phân biệt hoa/thường, dấu tiếng Việt và khoảng trắng thừa ("  máy   TÍNH " khớp "May tinh").
+    private static bool MatchesKeyword(string assetCode, string assetName, string keyword)
+    {
+        var needle = TextSearch.Normalize(keyword);
+        return TextSearch.Contains(assetCode, needle) || TextSearch.Contains(assetName, needle);
+    }
+
     public async Task<PagedResultDto<UpcomingReplacementDto>> GetUpcomingAsync(
         int? departmentId,
         int? categoryId,
         int months,
         int page,
-        int pageSize)
+        int pageSize,
+        string? keyword = null,
+        string? reason = null,
+        int? minTickets = null)
     {
         if (months is < 1 or > 60)
         {
             throw new ArgumentException("Số tháng cảnh báo phải từ 1 đến 60.", nameof(months));
         }
 
+        ValidateReason(reason, UpcomingReasons);
+        if (minTickets is < 1 or > 1000)
+        {
+            throw new ArgumentException("Số phiếu bảo trì tối thiểu phải từ 1 đến 1000.", nameof(minTickets));
+        }
+
+        var kw = keyword?.Trim();
+
         (page, pageSize) = Paging.Normalize(page, pageSize);
-        var today = Today();
-        var evaluated = await EvaluateAllAsync(departmentId, today);
-
-        var upcomingItems = evaluated
-            .Where(item => !item.Evaluation.IsOverdueNow)
-            .Where(item => !categoryId.HasValue || item.Row.CategoryId == categoryId.Value)
-            .Select(item =>
-            {
-                var upcoming = LifecycleCalculator.EvaluateUpcoming(
-                    item.Row,
-                    item.MaxAgeYears,
-                    item.MaxFailureCount,
-                    months,
-                    today);
-
-                return (Item: item, Upcoming: upcoming);
-            })
-            .Where(x => x.Upcoming.AgeDueSoon || x.Upcoming.NearFailureThreshold)
-            .Select(x => ToUpcomingDto(x.Item, x.Upcoming, today))
-            .OrderBy(item => item.DaysUntilAgeDue.HasValue ? 0 : 1)
-            .ThenBy(item => item.DaysUntilAgeDue ?? int.MaxValue)
-            .ThenBy(item => item.AssetCode, StringComparer.Ordinal)
+        var upcomingItems = (await BuildUpcomingAsync(departmentId, categoryId, months))
+            .Where(item => string.IsNullOrEmpty(kw) || MatchesKeyword(item.AssetCode, item.AssetName, kw))
+            .Where(item => string.IsNullOrWhiteSpace(reason) || item.Reasons.Contains(reason.Trim(), StringComparer.Ordinal))
+            .Where(item => !minTickets.HasValue || item.TicketCount >= minTickets.Value)
             .ToList();
 
         return new PagedResultDto<UpcomingReplacementDto>
@@ -139,6 +166,42 @@ public class LifecycleAnalysisService : ILifecycleAnalysisService
             PageSize = pageSize,
             TotalItems = upcomingItems.Count,
         };
+    }
+
+    // Danh sách "sắp tới hạn" đã sắp xếp (DaysUntilAgeDue tăng, null cuối, rồi mã tài sản) — dùng chung cho API phân trang và xuất báo cáo.
+    private async Task<List<UpcomingReplacementDto>> BuildUpcomingAsync(int? departmentId, int? categoryId, int months)
+    {
+        var today = Today();
+        var evaluated = await EvaluateAllAsync(departmentId, today);
+        return evaluated
+            .Where(item => !item.Evaluation.IsOverdueNow)
+            .Where(item => !categoryId.HasValue || item.Row.CategoryId == categoryId.Value)
+            .Select(item => (Item: item, Upcoming: LifecycleCalculator.EvaluateUpcoming(item.Row, item.MaxAgeYears, item.MaxFailureCount, months, today)))
+            .Where(x => x.Upcoming.AgeDueSoon || x.Upcoming.NearFailureThreshold)
+            .Select(x => ToUpcomingDto(x.Item, x.Upcoming, today))
+            .OrderBy(item => item.DaysUntilAgeDue.HasValue ? 0 : 1)
+            .ThenBy(item => item.DaysUntilAgeDue ?? int.MaxValue)
+            .ThenBy(item => item.AssetCode, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<UpcomingReplacementDto>> GetAllUpcomingAsync(int? departmentId, int? categoryId, int months)
+    {
+        if (months is < 1 or > 60)
+        {
+            throw new ArgumentException("Số tháng cảnh báo phải từ 1 đến 60.", nameof(months));
+        }
+
+        return await BuildUpcomingAsync(departmentId, categoryId, months);
+    }
+
+    public async Task<IReadOnlyList<ReplacementRecommendationDto>> GetAllCurrentReplacementCandidatesAsync(int? departmentId, int? categoryId)
+    {
+        var today = Today();
+        var recommendations = await BuildRecommendationsAsync(departmentId, today.Year, today);
+        return SortRecommendations(
+            recommendations.Where(item => item.IsOverdueNow).Where(item => !categoryId.HasValue || item.CategoryId == categoryId.Value),
+            "score").ToList();
     }
 
     // M2: chi tiết vòng đời một tài sản, dùng cùng Evaluate/ngưỡng hiệu lực/điểm ưu tiên như danh sách.
@@ -169,12 +232,14 @@ public class LifecycleAnalysisService : ILifecycleAnalysisService
             FailedTicketCount = row.FailedTicketCount,
             AppliedMaxAgeYears = item.MaxAgeYears,
             AppliedMaxFailureCount = item.MaxFailureCount,
-            AgeDueDate = row.PurchaseDate?.AddYears(item.MaxAgeYears),
+            AgeDueDate = LifecycleCalculator.HasUsablePurchaseDate(row.PurchaseDate, today) ? row.PurchaseDate!.Value.AddYears(item.MaxAgeYears) : null,
             IsOverdueNow = item.Evaluation.IsOverdueNow,
             IsHighPriority = item.Evaluation.IsHighPriority,
             DueYear = item.Evaluation.DueYear,
             Reasons = item.Evaluation.Reasons,
             PriorityScore = ScoreOf(item, ageYears),
+            ScoreBreakdown = BreakdownOf(item, ageYears),
+            PurchaseDateStatus = !row.PurchaseDate.HasValue ? "Missing" : row.PurchaseDate.Value > today ? "InFuture" : "Valid",
             ReasonText = ReasonTextOf(item, ageYears),
             Tickets = tickets
                 .Select(ticket => new AssetTicketSummaryDto
@@ -189,15 +254,18 @@ public class LifecycleAnalysisService : ILifecycleAnalysisService
         };
     }
 
-    public async Task<LifecycleStatsDto> GetStatsAsync(int? departmentId)
+    public async Task<LifecycleStatsDto> GetStatsAsync(int? departmentId, int? categoryId = null)
     {
         var today = Today();
-        var evaluated = await EvaluateAllAsync(departmentId, today);
+        var evaluated = await EvaluateAllAsync(departmentId, today, categoryId);
 
         if (evaluated.Count == 0)
         {
             return new LifecycleStatsDto
             {
+                AsOfDate = today,
+                DepartmentId = departmentId,
+                CategoryId = categoryId,
                 TotalAssets = 0,
                 AssetsWithoutPurchaseDate = 0,
                 AverageAgeYears = null,
@@ -214,7 +282,7 @@ public class LifecycleAnalysisService : ILifecycleAnalysisService
             };
         }
 
-        var ticketTrendRaw = await _repository.GetTicketCountByYearAsync(departmentId, today.Year - 4);
+        var ticketTrendRaw = await _repository.GetTicketCountByYearAsync(departmentId, today.Year - 4, categoryId);
 
         var byCategory = evaluated
             .GroupBy(item => new { item.Row.CategoryId, item.Row.CategoryName })
@@ -245,8 +313,13 @@ public class LifecycleAnalysisService : ILifecycleAnalysisService
 
         return new LifecycleStatsDto
         {
+            AsOfDate = today,
+            DepartmentId = departmentId,
+            CategoryId = categoryId,
             TotalAssets = total,
             AssetsWithoutPurchaseDate = evaluated.Count(item => !item.Row.PurchaseDate.HasValue),
+            AssetsWithFuturePurchaseDate = evaluated.Count(item => item.Row.PurchaseDate.HasValue && item.Row.PurchaseDate.Value > today),
+            TotalTickets = evaluated.Sum(item => item.Row.TicketCount),
             AverageAgeYears = AverageAge(evaluated.Select(item => item.Row), today),
             MedianAgeYears = MedianAge(evaluated.Select(item => item.Row), today),
             AssetsWithAtLeastOneTicket = assetsWithTicket,
@@ -265,27 +338,42 @@ public class LifecycleAnalysisService : ILifecycleAnalysisService
     {
         var categories = await _repository.GetCategoriesAsync();
         var policyByCategory = await LoadPolicyMapAsync();
+        var editorIds = policyByCategory.Values.Where(p => p.UpdatedByUserId.HasValue).Select(p => p.UpdatedByUserId!.Value);
+        var editorNames = await _repository.GetUserNamesAsync(editorIds);
 
         return categories
-            .Select(category =>
-            {
-                var thresholds = ResolveThresholds(category.Id, policyByCategory);
-                return new LifecyclePolicyDto
-                {
-                    CategoryId = category.Id,
-                    CategoryName = category.Name,
-                    MaxAgeYears = thresholds.MaxAgeYears,
-                    MaxFailureCount = thresholds.MaxFailureCount,
-                    IsOverridden = policyByCategory.ContainsKey(category.Id),
-                };
-            })
+            .Select(category => ToPolicyDto(category, policyByCategory.GetValueOrDefault(category.Id), editorNames))
             .ToList();
     }
 
+    private LifecyclePolicyDto ToPolicyDto(
+        AssetCategory category,
+        AssetCategoryLifecyclePolicy? policy,
+        IReadOnlyDictionary<int, string> editorNames) => new()
+    {
+        CategoryId = category.Id,
+        CategoryName = category.Name,
+        MaxAgeYears = policy?.MaxAgeYears ?? _options.DefaultMaxAgeYears,
+        MaxFailureCount = policy?.MaxFailureCount ?? _options.DefaultMaxFailureCount,
+        IsOverridden = policy is not null,
+        Source = policy is null ? "Default" : "Custom",
+        DefaultMaxAgeYears = _options.DefaultMaxAgeYears,
+        DefaultMaxFailureCount = _options.DefaultMaxFailureCount,
+        Version = policy?.Version,
+        UpdatedAt = policy?.UpdatedAt is { } updated ? DateTime.SpecifyKind(updated, DateTimeKind.Utc) : null,
+        UpdatedByUserId = policy?.UpdatedByUserId,
+        UpdatedByName = policy?.UpdatedByUserId is { } id
+            ? (editorNames.TryGetValue(id, out var name) ? name : "(tài khoản không còn)")
+            : null,
+    };
+
     public async Task<LifecyclePolicyDto> UpsertPolicyAsync(
         int categoryId,
-        UpsertLifecyclePolicyRequestDto dto)
+        UpsertLifecyclePolicyRequestDto dto,
+        int? actorUserId = null)
     {
+        ArgumentNullException.ThrowIfNull(dto);
+
         if (dto.MaxAgeYears is < MinMaxAgeYears or > MaxMaxAgeYears)
         {
             throw new ArgumentException(
@@ -304,39 +392,104 @@ public class LifecycleAnalysisService : ILifecycleAnalysisService
         var policy = await _repository.GetPolicyByCategoryIdAsync(categoryId);
         if (policy is null)
         {
+            if (dto.Version.HasValue)
+            {
+                throw new LifecyclePolicyConflictException(
+                    "Ngưỡng riêng của loại này đã bị đặt về mặc định bởi người khác. Vui lòng tải lại trang rồi nhập lại nếu vẫn cần.");
+            }
+
             policy = new AssetCategoryLifecyclePolicy
             {
                 CategoryId = categoryId,
                 MaxAgeYears = dto.MaxAgeYears,
                 MaxFailureCount = dto.MaxFailureCount,
+                UpdatedAt = NowUtc(),
+                UpdatedByUserId = actorUserId,
             };
             await _repository.AddPolicyAsync(policy);
         }
         else
         {
+            // Đã có ngưỡng riêng: client phải đang cầm đúng phiên bản hiện tại, nếu không là ghi đè công sức của người khác.
+            if (!dto.Version.HasValue || dto.Version.Value != policy.Version)
+            {
+                throw new LifecyclePolicyConflictException(
+                    "Ngưỡng của loại này vừa được người khác tạo hoặc sửa. Vui lòng tải lại trang để xem giá trị mới nhất rồi thao tác lại.");
+            }
+
+            if (policy.MaxAgeYears == dto.MaxAgeYears && policy.MaxFailureCount == dto.MaxFailureCount)
+            {
+                // Không đổi gì: không lưu (không tăng phiên bản, không đổi 'cập nhật gần nhất').
+                return await BuildPolicyDtoAsync(category, policy);
+            }
+
             policy.MaxAgeYears = dto.MaxAgeYears;
             policy.MaxFailureCount = dto.MaxFailureCount;
+            policy.UpdatedAt = NowUtc();
+            policy.UpdatedByUserId = actorUserId;
         }
 
-        await _repository.SaveChangesAsync();
-
-        return new LifecyclePolicyDto
+        try
         {
-            CategoryId = category.Id,
-            CategoryName = category.Name,
-            MaxAgeYears = policy.MaxAgeYears,
-            MaxFailureCount = policy.MaxFailureCount,
-            IsOverridden = true,
-        };
+            await _repository.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new LifecyclePolicyConflictException(
+                "Ngưỡng của loại này vừa được người khác thay đổi trong lúc bạn lưu. Vui lòng tải lại trang rồi thao tác lại.");
+        }
+        catch (DbUpdateException)
+        {
+            // Hai yêu cầu tạo ngưỡng cho cùng một loại cùng lúc: unique index CategoryId giữ đúng một dòng, bên chậm hơn nhận 409.
+            throw new LifecyclePolicyConflictException(
+                "Loại này vừa được người khác tạo ngưỡng riêng. Vui lòng tải lại trang để xem giá trị mới nhất.");
+        }
+
+        return await BuildPolicyDtoAsync(category, policy);
     }
 
-    public async Task DeletePolicyAsync(int categoryId)
+    // MySQL datetime(6) giữ tới micro-giây: cắt sẵn để giá trị trả về lúc lưu trùng với giá trị đọc lại từ DB.
+    private static DateTime NowUtc()
     {
+        var now = DateTime.UtcNow;
+        return new DateTime(now.Ticks - now.Ticks % 10, DateTimeKind.Utc);
+    }
+
+    private async Task<LifecyclePolicyDto> BuildPolicyDtoAsync(AssetCategory category, AssetCategoryLifecyclePolicy policy)
+    {
+        var names = policy.UpdatedByUserId is { } id
+            ? await _repository.GetUserNamesAsync(new[] { id })
+            : new Dictionary<int, string>();
+        return ToPolicyDto(category, policy, names);
+    }
+
+    public async Task DeletePolicyAsync(int categoryId, int? version = null)
+    {
+        if (!version.HasValue)
+        {
+            throw new ArgumentException("Thiếu version của cấu hình cần đặt về mặc định (tải lại trang để lấy bản mới nhất).");
+        }
+
         var policy = await _repository.GetPolicyByCategoryIdAsync(categoryId)
             ?? throw new LifecyclePolicyNotFoundException(categoryId);
 
+        // Chỉ xoá đúng bản mà người dùng đã nhìn thấy: không vô tình xoá ngưỡng riêng vừa được người khác chỉnh lại.
+        if (policy.Version != version.Value)
+        {
+            throw new LifecyclePolicyConflictException(
+                "Ngưỡng riêng của loại này vừa được người khác thay đổi nên chưa đặt về mặc định. Vui lòng tải lại để xem giá trị mới nhất.");
+        }
+
         _repository.RemovePolicy(policy);
-        await _repository.SaveChangesAsync();
+        try
+        {
+            await _repository.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new LifecyclePolicyConflictException(
+                "Ngưỡng riêng của loại này vừa được người khác thay đổi hoặc đã bị xoá. Vui lòng tải lại trang.");
+        }
     }
 
     // ---- nội bộ ----
@@ -347,11 +500,12 @@ public class LifecycleAnalysisService : ILifecycleAnalysisService
         int MaxAgeYears,
         int MaxFailureCount);
 
-    private static DateOnly Today() => DateOnly.FromDateTime(DateTime.UtcNow);
+    // Ngày lịch Việt Nam (không phải UTC): 00:00–07:00 giờ VN, ngày UTC còn là hôm qua nên tuổi/biên 'đúng N năm' và năm hiện tại sẽ lệch.
+    private static DateOnly Today() => VietnamTime.Today();
 
-    private async Task<List<EvaluatedAsset>> EvaluateAllAsync(int? departmentId, DateOnly today)
+    private async Task<List<EvaluatedAsset>> EvaluateAllAsync(int? departmentId, DateOnly today, int? categoryId = null)
     {
-        var rows = await _repository.GetAssetLifecycleRowsAsync(departmentId);
+        var rows = await _repository.GetAssetLifecycleRowsAsync(departmentId, categoryId);
         var policyByCategory = await LoadPolicyMapAsync();
 
         return rows.Select(row => EvaluateRow(row, policyByCategory, today)).ToList();
@@ -373,6 +527,9 @@ public class LifecycleAnalysisService : ILifecycleAnalysisService
 
     private static int ScoreOf(EvaluatedAsset item, double? ageYears) =>
         LifecycleCalculator.ComputePriorityScore(ageYears, item.MaxAgeYears, item.Row.TicketCount, item.MaxFailureCount);
+
+    private static PriorityScoreBreakdownDto BreakdownOf(EvaluatedAsset item, double? ageYears) =>
+        LifecycleCalculator.ExplainPriorityScore(ageYears, item.MaxAgeYears, item.Row.TicketCount, item.MaxFailureCount);
 
     private static string ReasonTextOf(EvaluatedAsset item, double? ageYears) =>
         LifecycleCalculator.BuildReasonText(
@@ -435,6 +592,7 @@ public class LifecycleAnalysisService : ILifecycleAnalysisService
             IsHighPriority = item.Evaluation.IsHighPriority,
             DueYear = item.Evaluation.DueYear!.Value,
             PriorityScore = ScoreOf(item, ageYears),
+            ScoreBreakdown = BreakdownOf(item, ageYears),
             ReasonText = ReasonTextOf(item, ageYears),
             WarrantyExpiry = row.WarrantyExpiry,
             IsUnderWarranty = IsUnderWarranty(row, today),
@@ -610,6 +768,7 @@ public class LifecycleAnalysisService : ILifecycleAnalysisService
             {
                 Year = year,
                 TicketCount = counts.TryGetValue(year, out var count) ? count : 0,
+                IsPartialYear = year == currentYear,
             })
             .ToList();
     }

@@ -5,6 +5,8 @@ public enum LockTarget
 {
     Asset,
     SoftwareLicense,
+    ForecastYear, // năm dự báo (khoá tên MySQL, không có dòng để khoá): tuần tự hoá việc tạo dự báo cùng năm.
+    Role, // dòng vai trò Admin IT: tuần tự hoá việc hạ/khoá/xoá Admin và việc sửa ma trận quyền.
 }
 
 // Chạy một đoạn nghiệp vụ trong transaction, sau khi khoá dòng (SELECT ... FOR UPDATE) của tài sản/license liên quan.

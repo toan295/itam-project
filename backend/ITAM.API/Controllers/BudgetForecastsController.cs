@@ -1,3 +1,4 @@
+using ITAM.API.Authorization;
 using FluentValidation;
 using ITAM.API.Models.DTOs;
 using ITAM.API.Models.DTOs.Forecasts;
@@ -5,13 +6,14 @@ using ITAM.API.Services.Implementations;
 using ITAM.API.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace ITAM.API.Controllers;
 
 // UC-17: Dự báo thay thế & ngân sách — chỉ Admin IT (Mục 8.2: /api/v1/forecasts).
 [ApiController]
 [Route("api/v1/forecasts")]
-[Authorize(Roles = "Admin IT")]
+[HasPermission(Permissions.ForecastsManage)]
 public class BudgetForecastsController : ControllerBase
 {
     private readonly IBudgetForecastService _service;
@@ -57,15 +59,28 @@ public class BudgetForecastsController : ControllerBase
         {
             return BadRequest(ApiResponse<object>.Fail(ex.Message));
         }
+        catch (Exception ex) when (ex is ForecastBusyException or ForecastInputConflictException)
+        {
+            return Conflict(ApiResponse<object>.Fail(ex.Message));
+        }
     }
 
     [HttpGet]
     public async Task<IActionResult> GetList(
         [FromQuery] int? year, [FromQuery] int? departmentId,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
+        [FromQuery] string? keyword = null, [FromQuery] string? kind = null,
+        [FromQuery] decimal? minBudget = null, [FromQuery] decimal? maxBudget = null, [FromQuery] string? sort = null)
     {
-        var result = await _service.GetPagedAsync(year, departmentId, page, pageSize);
-        return Ok(ApiResponse<object>.Ok(result));
+        try
+        {
+            var result = await _service.GetPagedAsync(year, departmentId, page, pageSize, keyword, kind, minBudget, maxBudget, sort);
+            return Ok(ApiResponse<object>.Ok(result));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<object>.Fail(ex.Message));
+        }
     }
 
     // {id:int}: route cố định "reference-prices" bên dưới không bị nhầm với {id}.
@@ -117,7 +132,7 @@ public class BudgetForecastsController : ControllerBase
 
         try
         {
-            var result = await _service.UpsertPriceAsync(categoryId, dto);
+            var result = await _service.UpsertPriceAsync(categoryId, dto, GetCurrentUserId());
             return Ok(ApiResponse<object>.Ok(result, "Đã lưu đơn giá tham khảo."));
         }
         catch (ArgumentException ex)
@@ -128,19 +143,31 @@ public class BudgetForecastsController : ControllerBase
         {
             return NotFound(ApiResponse<object>.Fail(ex.Message));
         }
+        catch (ForecastInputConflictException ex)
+        {
+            return Conflict(ApiResponse<object>.Fail(ex.Message));
+        }
     }
 
     [HttpDelete("reference-prices/{categoryId:int}")]
-    public async Task<IActionResult> DeleteReferencePrice(int categoryId)
+    public async Task<IActionResult> DeleteReferencePrice(int categoryId, [FromQuery] int? version = null)
     {
         try
         {
-            await _service.DeletePriceAsync(categoryId);
+            await _service.DeletePriceAsync(categoryId, version);
             return NoContent();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<object>.Fail(ex.Message));
         }
         catch (ReferencePriceNotFoundException ex)
         {
             return NotFound(ApiResponse<object>.Fail(ex.Message));
+        }
+        catch (ForecastInputConflictException ex)
+        {
+            return Conflict(ApiResponse<object>.Fail(ex.Message));
         }
     }
 
@@ -177,7 +204,7 @@ public class BudgetForecastsController : ControllerBase
 
         try
         {
-            var result = await _expansionService.UpsertPlanAsync(year, departmentId, dto);
+            var result = await _expansionService.UpsertPlanAsync(year, departmentId, dto, GetCurrentUserId());
             return Ok(ApiResponse<object>.Ok(result, "Đã lưu kế hoạch mở rộng."));
         }
         catch (ArgumentException ex)
@@ -188,23 +215,31 @@ public class BudgetForecastsController : ControllerBase
         {
             return NotFound(ApiResponse<object>.Fail(ex.Message));
         }
-        catch (ExpansionPlanConflictException ex)
+        catch (Exception ex) when (ex is ExpansionPlanConflictException or ForecastInputConflictException)
         {
             return Conflict(ApiResponse<object>.Fail(ex.Message));
         }
     }
 
     [HttpDelete("expansion-plans/{year:int}/{departmentId:int}")]
-    public async Task<IActionResult> DeleteExpansionPlan(int year, int departmentId)
+    public async Task<IActionResult> DeleteExpansionPlan(int year, int departmentId, [FromQuery] int? version = null)
     {
         try
         {
-            await _expansionService.DeletePlanAsync(year, departmentId);
+            await _expansionService.DeletePlanAsync(year, departmentId, version);
             return NoContent();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<object>.Fail(ex.Message));
         }
         catch (ExpansionPlanNotFoundException ex)
         {
             return NotFound(ApiResponse<object>.Fail(ex.Message));
+        }
+        catch (ForecastInputConflictException ex)
+        {
+            return Conflict(ApiResponse<object>.Fail(ex.Message));
         }
     }
 
@@ -229,7 +264,7 @@ public class BudgetForecastsController : ControllerBase
 
         try
         {
-            var result = await _expansionService.UpsertRatioAsync(categoryId, dto);
+            var result = await _expansionService.UpsertRatioAsync(categoryId, dto, GetCurrentUserId());
             return Ok(ApiResponse<object>.Ok(result, "Đã lưu định mức thiết bị/người."));
         }
         catch (ArgumentException ex)
@@ -240,19 +275,34 @@ public class BudgetForecastsController : ControllerBase
         {
             return NotFound(ApiResponse<object>.Fail(ex.Message));
         }
+        catch (ForecastInputConflictException ex)
+        {
+            return Conflict(ApiResponse<object>.Fail(ex.Message));
+        }
     }
 
     [HttpDelete("device-ratios/{categoryId:int}")]
-    public async Task<IActionResult> DeleteDeviceRatio(int categoryId)
+    public async Task<IActionResult> DeleteDeviceRatio(int categoryId, [FromQuery] int? version = null)
     {
         try
         {
-            await _expansionService.DeleteRatioAsync(categoryId);
+            await _expansionService.DeleteRatioAsync(categoryId, version);
             return NoContent();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<object>.Fail(ex.Message));
         }
         catch (DeviceRatioNotFoundException ex)
         {
             return NotFound(ApiResponse<object>.Fail(ex.Message));
         }
+        catch (ForecastInputConflictException ex)
+        {
+            return Conflict(ApiResponse<object>.Fail(ex.Message));
+        }
     }
+
+    private int? GetCurrentUserId() =>
+        int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) ? userId : null;
 }

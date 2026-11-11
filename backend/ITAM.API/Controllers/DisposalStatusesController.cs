@@ -1,3 +1,4 @@
+using ITAM.API.Authorization;
 using System.Security.Claims;
 using FluentValidation;
 using ITAM.API.Models.DTOs;
@@ -28,7 +29,7 @@ public class DisposalStatusesController : ControllerBase
     public async Task<IActionResult> GetAll() => Ok(ApiResponse<object>.Ok(await _service.GetAllAsync()));
 
     [HttpPost]
-    [Authorize(Roles = "Admin IT")]
+    [HasPermission(Permissions.DisposalStatusesManage)]
     public async Task<IActionResult> Create(UpsertDisposalStatusRequestDto dto)
     {
         var validation = await _validator.ValidateAsync(dto);
@@ -49,7 +50,7 @@ public class DisposalStatusesController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Roles = "Admin IT")]
+    [HasPermission(Permissions.DisposalStatusesManage)]
     public async Task<IActionResult> Update(int id, UpsertDisposalStatusRequestDto dto)
     {
         var validation = await _validator.ValidateAsync(dto);
@@ -75,12 +76,12 @@ public class DisposalStatusesController : ControllerBase
 
     // Tạo lại các bước chính mặc định đã bị xoá.
     [HttpPost("restore-defaults")]
-    [Authorize(Roles = "Admin IT")]
+    [HasPermission(Permissions.DisposalStatusesManage)]
     public async Task<IActionResult> RestoreDefaults() =>
         Ok(ApiResponse<object>.Ok(await _service.RestoreDefaultsAsync(GetCurrentUserId()), "Đã khôi phục các bước mặc định."));
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = "Admin IT")]
+    [HasPermission(Permissions.DisposalStatusesManage)]
     public async Task<IActionResult> Delete(int id)
     {
         try

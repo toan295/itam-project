@@ -1,3 +1,4 @@
+using ITAM.API.Authorization;
 using System.Security.Claims;
 using FluentValidation;
 using ITAM.API.Models.DTOs;
@@ -77,7 +78,7 @@ public class AssetsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin IT,Manager")] // UC-05: chỉ Admin IT và Manager được thêm tài sản.
+    [HasPermission(Permissions.AssetsCreate)] // UC-05: chỉ Admin IT và Manager được thêm tài sản.
     public async Task<IActionResult> Create(CreateAssetRequestDto dto)
     {
         var validation = await _createValidator.ValidateAsync(dto);
@@ -112,7 +113,7 @@ public class AssetsController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Roles = "Admin IT,Manager")] // UC-06: chỉ Admin IT và Manager được sửa tài sản.
+    [HasPermission(Permissions.AssetsUpdate)] // UC-06: chỉ Admin IT và Manager được sửa tài sản.
     public async Task<IActionResult> Update(int id, UpdateAssetRequestDto dto)
     {
         var validation = await _updateValidator.ValidateAsync(dto);

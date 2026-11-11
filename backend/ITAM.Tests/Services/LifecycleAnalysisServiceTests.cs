@@ -15,7 +15,7 @@ public class LifecycleAnalysisServiceTests
     private const int CatSwitch = 12;
 
     // Dựng dữ liệu theo ngày tương đối so với hôm nay để test không phụ thuộc ngày chạy.
-    private static readonly DateOnly Today = DateOnly.FromDateTime(DateTime.UtcNow);
+    private static readonly DateOnly Today = VietnamTime.Today();
     private static readonly int Year = Today.Year;
 
     private readonly Mock<ILifecycleRepository> _repo = new();
@@ -28,7 +28,8 @@ public class LifecycleAnalysisServiceTests
             Options.Create(new LifecycleOptions { DefaultMaxAgeYears = 5, DefaultMaxFailureCount = 3 }));
 
         _repo.Setup(r => r.GetPoliciesAsync()).ReturnsAsync(new List<AssetCategoryLifecyclePolicy>());
-        _repo.Setup(r => r.GetTicketCountByYearAsync(It.IsAny<int?>(), It.IsAny<int>()))
+        _repo.Setup(r => r.GetUserNamesAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new Dictionary<int, string>());
+        _repo.Setup(r => r.GetTicketCountByYearAsync(It.IsAny<int?>(), It.IsAny<int>(), It.IsAny<int?>()))
             .ReturnsAsync(new List<TicketTrendPointDto>());
         _repo.Setup(r => r.GetCategoriesAsync()).ReturnsAsync(new List<AssetCategory>
         {
@@ -39,7 +40,7 @@ public class LifecycleAnalysisServiceTests
     }
 
     private void SetupRows(params AssetLifecycleRow[] rows) =>
-        _repo.Setup(r => r.GetAssetLifecycleRowsAsync(It.IsAny<int?>())).ReturnsAsync(rows.ToList());
+        _repo.Setup(r => r.GetAssetLifecycleRowsAsync(It.IsAny<int?>(), It.IsAny<int?>())).ReturnsAsync(rows.ToList());
 
     private void SetupPolicies(params AssetCategoryLifecyclePolicy[] policies) =>
         _repo.Setup(r => r.GetPoliciesAsync()).ReturnsAsync(policies.ToList());
@@ -106,7 +107,7 @@ public class LifecycleAnalysisServiceTests
         SetupRows(Row("A1", CatComputer, Today.AddYears(-9)));
 
         Assert.Empty(await _sut.GetReplacementCandidatesAsync(null, Year - 1));
-        _repo.Verify(r => r.GetAssetLifecycleRowsAsync(It.IsAny<int?>()), Times.Never);
+        _repo.Verify(r => r.GetAssetLifecycleRowsAsync(It.IsAny<int?>(), It.IsAny<int?>()), Times.Never);
     }
 
     [Fact]
@@ -114,7 +115,7 @@ public class LifecycleAnalysisServiceTests
     {
         await _sut.GetReplacementCandidatesAsync(7, Year);
 
-        _repo.Verify(r => r.GetAssetLifecycleRowsAsync(7), Times.Once);
+        _repo.Verify(r => r.GetAssetLifecycleRowsAsync(7, null), Times.Once);
     }
 
     [Fact]
@@ -274,6 +275,67 @@ public class LifecycleAnalysisServiceTests
         Assert.Equal(new[] { "A", "B", "C" }, result.Items.Select(item => item.AssetCode));
     }
 
+    // ---------- Bộ lọc nâng cao của danh sách đề xuất ----------
+
+    [Fact]
+    public async Task GetCurrentReplacementCandidatesAsync_AdvancedFilters_NarrowTheList()
+    {
+        SetupRows(
+            Row("PC-OLD", CatComputer, Today.AddYears(-9), tickets: 0),
+            Row("PC-FAILS", CatComputer, Today.AddYears(-1), tickets: 3),
+            Row("SW-WARR", CatSwitch, Today.AddYears(-8), warranty: Today.AddMonths(3)));
+
+        async Task<List<string>> Codes(string? keyword = null, string? reason = null, bool? warranty = null, int? minScore = null) =>
+            (await _sut.GetCurrentReplacementCandidatesAsync(null, null, "code", 1, 50, keyword, reason, warranty, minScore))
+                .Items.Select(i => i.AssetCode).ToList();
+
+        Assert.Equal(3, (await Codes()).Count);
+        Assert.Equal(new[] { "PC-FAILS", "PC-OLD" }, await Codes(keyword: "pc-"));
+        Assert.Equal(new[] { "PC-FAILS" }, await Codes(reason: "FailureCountExceeded"));
+        Assert.Equal(new[] { "PC-OLD", "SW-WARR" }, await Codes(reason: "AgeExceeded"));
+        Assert.Equal(new[] { "SW-WARR" }, await Codes(warranty: true));
+        Assert.Equal(new[] { "PC-FAILS", "PC-OLD" }, await Codes(warranty: false));
+        Assert.True((await Codes(minScore: 100)).Count <= 3);
+        Assert.Empty(await Codes(keyword: "khong-co"));
+    }
+
+    [Theory]
+    [InlineData("AgeDueSoon", null)]
+    [InlineData(null, -1)]
+    [InlineData(null, 101)]
+    public async Task GetCurrentReplacementCandidatesAsync_InvalidAdvancedFilter_ThrowsBeforeQueryingData(string? reason, int? minScore)
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _sut.GetCurrentReplacementCandidatesAsync(null, null, "score", 1, 20, reason: reason, minScore: minScore));
+
+        _repo.Verify(r => r.GetAssetLifecycleRowsAsync(It.IsAny<int?>(), It.IsAny<int?>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetUpcomingAsync_AdvancedFilters_NarrowTheList()
+    {
+        SetupRows(
+            Row("UP-AGE", CatComputer, Today.AddYears(-4).AddMonths(-6)),
+            Row("UP-FAIL", CatComputer, Today.AddYears(-1), tickets: 2));
+
+        async Task<List<string>> Codes(string? keyword = null, string? reason = null, int? minTickets = null) =>
+            (await _sut.GetUpcomingAsync(null, null, 12, 1, 50, keyword, reason, minTickets)).Items.Select(i => i.AssetCode).ToList();
+
+        Assert.Equal(2, (await Codes()).Count);
+        Assert.Equal(new[] { "UP-AGE" }, await Codes(reason: "AgeDueSoon"));
+        Assert.Equal(new[] { "UP-FAIL" }, await Codes(reason: "NearFailureThreshold"));
+        Assert.Equal(new[] { "UP-FAIL" }, await Codes(minTickets: 1));
+        Assert.Equal(new[] { "UP-AGE" }, await Codes(keyword: "up-age"));
+    }
+
+    [Theory]
+    [InlineData("AgeExceeded", null)]
+    [InlineData(null, 0)]
+    public async Task GetUpcomingAsync_InvalidAdvancedFilter_Throws(string? reason, int? minTickets)
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => _sut.GetUpcomingAsync(null, null, 12, 1, 20, reason: reason, minTickets: minTickets));
+    }
+
     // ---------- GetUpcomingAsync ----------
 
     [Fact]
@@ -424,7 +486,7 @@ public class LifecycleAnalysisServiceTests
     public async Task GetStatsAsync_TicketTrend_FillsFiveYearsIncludingZeros()
     {
         SetupRows(Row("A1", CatComputer, Today.AddYears(-1)));
-        _repo.Setup(r => r.GetTicketCountByYearAsync(null, Year - 4))
+        _repo.Setup(r => r.GetTicketCountByYearAsync(null, Year - 4, null))
             .ReturnsAsync(new List<TicketTrendPointDto>
             {
                 new() { Year = Year - 2, TicketCount = 4 },
@@ -561,7 +623,7 @@ public class LifecycleAnalysisServiceTests
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _sut.GetCurrentReplacementCandidatesAsync(null, null, "Score; DROP", 1, 20));
 
-        _repo.Verify(r => r.GetAssetLifecycleRowsAsync(It.IsAny<int?>()), Times.Never);
+        _repo.Verify(r => r.GetAssetLifecycleRowsAsync(It.IsAny<int?>(), It.IsAny<int?>()), Times.Never);
     }
 
     [Fact]
@@ -844,7 +906,7 @@ public class LifecycleAnalysisServiceTests
     public async Task GetStatsAsync_DepartmentFilter_ByDepartmentContainsOnlyThatDepartment()
     {
         // Repository đã lọc theo phòng ban; Service phải truyền đúng departmentId và chỉ ghép những gì repository trả về.
-        _repo.Setup(r => r.GetAssetLifecycleRowsAsync(3)).ReturnsAsync(new List<AssetLifecycleRow>
+        _repo.Setup(r => r.GetAssetLifecycleRowsAsync(3, null)).ReturnsAsync(new List<AssetLifecycleRow>
         {
             Row("C1", CatComputer, Today.AddYears(-1), departmentId: 3, departmentName: "IT-C"),
         });
@@ -852,8 +914,8 @@ public class LifecycleAnalysisServiceTests
         var stats = await _sut.GetStatsAsync(3);
 
         Assert.Equal("IT-C", Assert.Single(stats.ByDepartment).DepartmentName);
-        _repo.Verify(r => r.GetAssetLifecycleRowsAsync(3), Times.Once);
-        _repo.Verify(r => r.GetTicketCountByYearAsync(3, Year - 4), Times.Once);
+        _repo.Verify(r => r.GetAssetLifecycleRowsAsync(3, null), Times.Once);
+        _repo.Verify(r => r.GetTicketCountByYearAsync(3, Year - 4, null), Times.Once);
     }
 
     [Fact]
@@ -897,9 +959,9 @@ public class LifecycleAnalysisServiceTests
 
         await _sut.GetStatsAsync(null);
 
-        _repo.Verify(r => r.GetAssetLifecycleRowsAsync(It.IsAny<int?>()), Times.Once);
+        _repo.Verify(r => r.GetAssetLifecycleRowsAsync(It.IsAny<int?>(), It.IsAny<int?>()), Times.Once);
         _repo.Verify(r => r.GetPoliciesAsync(), Times.Once);
-        _repo.Verify(r => r.GetTicketCountByYearAsync(It.IsAny<int?>(), It.IsAny<int>()), Times.Once);
+        _repo.Verify(r => r.GetTicketCountByYearAsync(It.IsAny<int?>(), It.IsAny<int>(), It.IsAny<int?>()), Times.Once);
     }
 
     [Fact]
@@ -909,7 +971,7 @@ public class LifecycleAnalysisServiceTests
 
         await _sut.GetUpcomingAsync(null, null, 12, 1, 20);
 
-        _repo.Verify(r => r.GetAssetLifecycleRowsAsync(It.IsAny<int?>()), Times.Once);
+        _repo.Verify(r => r.GetAssetLifecycleRowsAsync(It.IsAny<int?>(), It.IsAny<int?>()), Times.Once);
         _repo.Verify(r => r.GetPoliciesAsync(), Times.Once);
     }
 
@@ -1038,7 +1100,7 @@ public class LifecycleAnalysisServiceTests
         _repo.Verify(r => r.GetAssetLifecycleRowAsync(10), Times.Once);
         _repo.Verify(r => r.GetTicketsByAssetAsync(10), Times.Once);
         _repo.Verify(r => r.GetPoliciesAsync(), Times.Once);
-        _repo.Verify(r => r.GetAssetLifecycleRowsAsync(It.IsAny<int?>()), Times.Never);   // không nạp cả danh sách
+        _repo.Verify(r => r.GetAssetLifecycleRowsAsync(It.IsAny<int?>(), It.IsAny<int?>()), Times.Never);   // không nạp cả danh sách
     }
 
     // ---------- Chính sách ----------
@@ -1073,7 +1135,7 @@ public class LifecycleAnalysisServiceTests
         _repo.Setup(r => r.GetCategoryByIdAsync(CatComputer)).ReturnsAsync(new AssetCategory { Id = CatComputer, Name = "Máy tính" });
         _repo.Setup(r => r.GetPolicyByCategoryIdAsync(CatComputer)).ReturnsAsync(existing);
 
-        var result = await _sut.UpsertPolicyAsync(CatComputer, new UpsertLifecyclePolicyRequestDto { MaxAgeYears = 4, MaxFailureCount = 2 });
+        var result = await _sut.UpsertPolicyAsync(CatComputer, new UpsertLifecyclePolicyRequestDto { MaxAgeYears = 4, MaxFailureCount = 2, Version = 1 });
 
         _repo.Verify(r => r.AddPolicyAsync(It.IsAny<AssetCategoryLifecyclePolicy>()), Times.Never);
         Assert.Equal((4, 2), (existing.MaxAgeYears, existing.MaxFailureCount));
@@ -1098,7 +1160,7 @@ public class LifecycleAnalysisServiceTests
     {
         _repo.Setup(r => r.GetPolicyByCategoryIdAsync(CatComputer)).ReturnsAsync((AssetCategoryLifecyclePolicy?)null);
 
-        await Assert.ThrowsAsync<LifecyclePolicyNotFoundException>(() => _sut.DeletePolicyAsync(CatComputer));
+        await Assert.ThrowsAsync<LifecyclePolicyNotFoundException>(() => _sut.DeletePolicyAsync(CatComputer, 1));
     }
 
     [Fact]
@@ -1107,7 +1169,7 @@ public class LifecycleAnalysisServiceTests
         var existing = new AssetCategoryLifecyclePolicy { Id = 1, CategoryId = CatComputer, MaxAgeYears = 5, MaxFailureCount = 3 };
         _repo.Setup(r => r.GetPolicyByCategoryIdAsync(CatComputer)).ReturnsAsync(existing);
 
-        await _sut.DeletePolicyAsync(CatComputer);
+        await _sut.DeletePolicyAsync(CatComputer, 1);
 
         _repo.Verify(r => r.RemovePolicy(existing), Times.Once);
         _repo.Verify(r => r.SaveChangesAsync(), Times.Once);
@@ -1124,5 +1186,281 @@ public class LifecycleAnalysisServiceTests
         Assert.False(computer.IsOverridden);
         Assert.Equal((5, 3), (computer.MaxAgeYears, computer.MaxFailureCount));
         Assert.True(result.Single(p => p.CategoryId == CatSwitch).IsOverridden);
+    }
+
+    // ---------- Rà soát: quy tắc kết hợp ngưỡng, cấu hình duy nhất/đồng thời, phạm vi thống kê ----------
+
+    [Fact]
+    public async Task Candidates_EitherThresholdAloneTriggers_BothMakesHighPriority()
+    {
+        SetupRows(
+            Row("AGE", CatComputer, Today.AddYears(-6), tickets: 0),
+            Row("FAIL", CatComputer, Today.AddYears(-1), tickets: 3),
+            Row("BOTH", CatComputer, Today.AddYears(-6), tickets: 3),
+            Row("NONE", CatComputer, Today.AddYears(-1), tickets: 2));
+
+        var result = await _sut.GetReplacementCandidatesAsync(null, Year);
+
+        Assert.Equal(new[] { "AGE", "BOTH", "FAIL" }, result.Select(c => c.AssetCode).OrderBy(c => c, StringComparer.Ordinal));
+        Assert.False(result.Single(c => c.AssetCode == "AGE").IsHighPriority);
+        Assert.False(result.Single(c => c.AssetCode == "FAIL").IsHighPriority);
+        Assert.True(result.Single(c => c.AssetCode == "BOTH").IsHighPriority);
+    }
+
+    [Fact]
+    public async Task Candidates_ExactlyAtAgeThreshold_IsOverdueAndOneDayBeforeIsNot()
+    {
+        SetupRows(
+            Row("EXACT", CatComputer, Today.AddYears(-5)),
+            Row("DAYBEFORE", CatComputer, Today.AddYears(-5).AddDays(1)));
+
+        var result = await _sut.GetCurrentReplacementCandidatesAsync(null, null, "score", 1, 20);
+
+        Assert.Equal(new[] { "EXACT" }, result.Items.Select(i => i.AssetCode));
+    }
+
+    [Fact]
+    public async Task Candidates_PurchaseDateInFuture_NeverRecommendedByAgeAndExcludedFromAverageAge()
+    {
+        SetupRows(
+            Row("FUT", CatComputer, Today.AddYears(1)),
+            Row("OLD", CatComputer, Today.AddYears(-4)));
+
+        var candidates = await _sut.GetCurrentReplacementCandidatesAsync(null, null, "score", 1, 20);
+        var stats = await _sut.GetStatsAsync(null);
+
+        Assert.Empty(candidates.Items);
+        Assert.Equal(1, stats.AssetsWithFuturePurchaseDate);
+        Assert.Equal(0, stats.AssetsWithoutPurchaseDate);
+        Assert.InRange(stats.AverageAgeYears!.Value, 3.99, 4.01);   // chỉ tính tài sản có ngày mua hợp lệ
+        Assert.Equal(2, stats.AgeBuckets.Sum(b => b.Count));
+        Assert.Equal(1, stats.AgeBuckets[4].Count);                 // "Không rõ ngày mua" gồm cả ngày sai
+    }
+
+    [Fact]
+    public async Task Stats_AverageAndMedianUseTheSameDataset()
+    {
+        SetupRows(
+            Row("A", CatComputer, Today.AddYears(-1)),
+            Row("B", CatComputer, Today.AddYears(-3)),
+            Row("NODATE", CatComputer, null),
+            Row("FUT", CatComputer, Today.AddDays(10)));
+
+        var stats = await _sut.GetStatsAsync(null);
+
+        Assert.Equal(4, stats.TotalAssets);
+        Assert.InRange(stats.AverageAgeYears!.Value, 1.99, 2.01);
+        Assert.InRange(stats.MedianAgeYears!.Value, 1.99, 2.01);
+    }
+
+    [Fact]
+    public async Task Stats_PassesCategoryFilterToRepositoryAndTrend()
+    {
+        SetupRows(Row("A", CatSwitch, Today.AddYears(-1)));
+
+        var stats = await _sut.GetStatsAsync(2, CatSwitch);
+
+        _repo.Verify(r => r.GetAssetLifecycleRowsAsync(2, CatSwitch), Times.Once);
+        _repo.Verify(r => r.GetTicketCountByYearAsync(2, Year - 4, CatSwitch), Times.Once);
+        Assert.Equal((2, CatSwitch), (stats.DepartmentId, stats.CategoryId));
+        Assert.Equal(Today, stats.AsOfDate);
+    }
+
+    [Fact]
+    public async Task Stats_TotalTicketsAndTrendCurrentYearIsFlaggedPartial()
+    {
+        SetupRows(Row("A", CatComputer, Today.AddYears(-1), tickets: 3), Row("B", CatComputer, Today.AddYears(-1), tickets: 2));
+
+        var stats = await _sut.GetStatsAsync(null);
+
+        Assert.Equal(5, stats.TotalTickets);
+        Assert.Equal(new[] { false, false, false, false, true }, stats.TicketTrend.Select(t => t.IsPartialYear));
+    }
+
+    [Fact]
+    public async Task Stats_OverdueCountEqualsUnfilteredCandidateTotalForSameScope()
+    {
+        SetupRows(
+            Row("A", CatComputer, Today.AddYears(-6)),
+            Row("B", CatComputer, Today.AddYears(-1), tickets: 3),
+            Row("C", CatComputer, Today.AddYears(-1)));
+
+        var stats = await _sut.GetStatsAsync(null);
+        var list = await _sut.GetCurrentReplacementCandidatesAsync(null, null, "score", 1, 20);
+
+        Assert.Equal(stats.OverdueNowCount, list.TotalItems);
+    }
+
+    [Fact]
+    public async Task Candidates_KeywordIgnoresDiacriticsCaseAndExtraSpaces()
+    {
+        var row = Row("PC-01", CatComputer, Today.AddYears(-6));
+        row.AssetName = "Máy tính Đặt bàn";
+        SetupRows(row, Row("SW-01", CatSwitch, Today.AddYears(-6)));
+
+        var viaAccentless = await _sut.GetCurrentReplacementCandidatesAsync(null, null, "score", 1, 20, keyword: "  MAY   tinh dat ");
+        var viaCode = await _sut.GetCurrentReplacementCandidatesAsync(null, null, "score", 1, 20, keyword: "pc-01");
+
+        Assert.Equal("PC-01", Assert.Single(viaAccentless.Items).AssetCode);
+        Assert.Equal("PC-01", Assert.Single(viaCode.Items).AssetCode);
+    }
+
+    [Fact]
+    public async Task Candidates_EqualScores_AreOrderedByAgeThenAssetCode()
+    {
+        SetupRows(
+            Row("B", CatComputer, Today.AddYears(-6)),
+            Row("A", CatComputer, Today.AddYears(-6)),
+            Row("C", CatComputer, Today.AddYears(-7)));
+
+        var first = await _sut.GetCurrentReplacementCandidatesAsync(null, null, "score", 1, 20);
+        var second = await _sut.GetCurrentReplacementCandidatesAsync(null, null, "score", 1, 20);
+
+        Assert.Equal(new[] { "C", "A", "B" }, first.Items.Select(i => i.AssetCode));
+        Assert.Equal(first.Items.Select(i => i.AssetCode), second.Items.Select(i => i.AssetCode));
+    }
+
+    [Fact]
+    public async Task Candidates_ExposeScoreBreakdownMatchingScore()
+    {
+        SetupRows(Row("A", CatComputer, Today.AddYears(-6), tickets: 1));
+
+        var item = Assert.Single((await _sut.GetCurrentReplacementCandidatesAsync(null, null, "score", 1, 20)).Items);
+
+        Assert.Equal(item.PriorityScore, item.ScoreBreakdown.Score);
+        Assert.Equal("Age", item.ScoreBreakdown.DrivenBy);
+        Assert.Equal(5, item.ScoreBreakdown.MaxAgeYears);
+    }
+
+    [Fact]
+    public async Task GetPoliciesAsync_ReportsSourceDefaultsVersionAndEditor()
+    {
+        var updated = new DateTime(2026, 10, 1, 3, 0, 0, DateTimeKind.Utc);
+        SetupPolicies(new AssetCategoryLifecyclePolicy
+        {
+            CategoryId = CatSwitch, MaxAgeYears = 7, MaxFailureCount = 4, Version = 3, UpdatedAt = updated, UpdatedByUserId = 9,
+        });
+        _repo.Setup(r => r.GetUserNamesAsync(It.IsAny<IEnumerable<int>>()))
+            .ReturnsAsync(new Dictionary<int, string> { [9] = "Admin IT" });
+
+        var result = await _sut.GetPoliciesAsync();
+
+        var custom = result.Single(p => p.CategoryId == CatSwitch);
+        Assert.Equal(("Custom", 3, updated, "Admin IT"), (custom.Source, custom.Version, custom.UpdatedAt, custom.UpdatedByName));
+        var def = result.Single(p => p.CategoryId == CatComputer);
+        Assert.Equal("Default", def.Source);
+        Assert.Null(def.Version);
+        Assert.Equal((5, 3), (def.DefaultMaxAgeYears, def.DefaultMaxFailureCount));
+    }
+
+    [Fact]
+    public async Task UpsertPolicyAsync_NewPolicy_RecordsActorAndTime()
+    {
+        _repo.Setup(r => r.GetCategoryByIdAsync(CatComputer)).ReturnsAsync(new AssetCategory { Id = CatComputer, Name = "Máy tính" });
+        _repo.Setup(r => r.GetPolicyByCategoryIdAsync(CatComputer)).ReturnsAsync((AssetCategoryLifecyclePolicy?)null);
+
+        await _sut.UpsertPolicyAsync(CatComputer, new UpsertLifecyclePolicyRequestDto { MaxAgeYears = 4, MaxFailureCount = 2 }, actorUserId: 7);
+
+        _repo.Verify(r => r.AddPolicyAsync(It.Is<AssetCategoryLifecyclePolicy>(p => p.UpdatedByUserId == 7 && p.UpdatedAt.HasValue)), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(null)]   // client không gửi version nhưng đã có ngưỡng riêng (người khác vừa tạo)
+    [InlineData(1)]      // client cầm bản cũ
+    public async Task UpsertPolicyAsync_ExistingPolicyWithStaleOrMissingVersion_ConflictsWithoutSaving(int? version)
+    {
+        var existing = new AssetCategoryLifecyclePolicy { Id = 1, CategoryId = CatComputer, MaxAgeYears = 5, MaxFailureCount = 3, Version = 2 };
+        _repo.Setup(r => r.GetCategoryByIdAsync(CatComputer)).ReturnsAsync(new AssetCategory { Id = CatComputer, Name = "Máy tính" });
+        _repo.Setup(r => r.GetPolicyByCategoryIdAsync(CatComputer)).ReturnsAsync(existing);
+
+        await Assert.ThrowsAsync<LifecyclePolicyConflictException>(() =>
+            _sut.UpsertPolicyAsync(CatComputer, new UpsertLifecyclePolicyRequestDto { MaxAgeYears = 4, MaxFailureCount = 2, Version = version }));
+
+        Assert.Equal((5, 3), (existing.MaxAgeYears, existing.MaxFailureCount));
+        _repo.Verify(r => r.SaveChangesAsync(), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpsertPolicyAsync_VersionGivenButPolicyAlreadyReset_Conflicts()
+    {
+        _repo.Setup(r => r.GetCategoryByIdAsync(CatComputer)).ReturnsAsync(new AssetCategory { Id = CatComputer, Name = "Máy tính" });
+        _repo.Setup(r => r.GetPolicyByCategoryIdAsync(CatComputer)).ReturnsAsync((AssetCategoryLifecyclePolicy?)null);
+
+        await Assert.ThrowsAsync<LifecyclePolicyConflictException>(() =>
+            _sut.UpsertPolicyAsync(CatComputer, new UpsertLifecyclePolicyRequestDto { MaxAgeYears = 4, MaxFailureCount = 2, Version = 1 }));
+
+        _repo.Verify(r => r.AddPolicyAsync(It.IsAny<AssetCategoryLifecyclePolicy>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpsertPolicyAsync_SameValues_DoesNotSaveOrChangeAuditFields()
+    {
+        var stamp = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var existing = new AssetCategoryLifecyclePolicy { Id = 1, CategoryId = CatComputer, MaxAgeYears = 4, MaxFailureCount = 2, Version = 2, UpdatedAt = stamp, UpdatedByUserId = 1 };
+        _repo.Setup(r => r.GetCategoryByIdAsync(CatComputer)).ReturnsAsync(new AssetCategory { Id = CatComputer, Name = "Máy tính" });
+        _repo.Setup(r => r.GetPolicyByCategoryIdAsync(CatComputer)).ReturnsAsync(existing);
+
+        await _sut.UpsertPolicyAsync(CatComputer, new UpsertLifecyclePolicyRequestDto { MaxAgeYears = 4, MaxFailureCount = 2, Version = 2 }, actorUserId: 5);
+
+        _repo.Verify(r => r.SaveChangesAsync(), Times.Never);
+        Assert.Equal((stamp, 1), (existing.UpdatedAt, existing.UpdatedByUserId));
+    }
+
+    [Fact]
+    public async Task UpsertPolicyAsync_UniqueIndexViolationOnConcurrentCreate_ConflictsInsteadOfFailing()
+    {
+        _repo.Setup(r => r.GetCategoryByIdAsync(CatComputer)).ReturnsAsync(new AssetCategory { Id = CatComputer, Name = "Máy tính" });
+        _repo.Setup(r => r.GetPolicyByCategoryIdAsync(CatComputer)).ReturnsAsync((AssetCategoryLifecyclePolicy?)null);
+        _repo.Setup(r => r.SaveChangesAsync()).ThrowsAsync(new Microsoft.EntityFrameworkCore.DbUpdateException("duplicate"));
+
+        await Assert.ThrowsAsync<LifecyclePolicyConflictException>(() =>
+            _sut.UpsertPolicyAsync(CatComputer, new UpsertLifecyclePolicyRequestDto { MaxAgeYears = 4, MaxFailureCount = 2 }));
+    }
+
+    [Fact]
+    public async Task UpsertPolicyAsync_ConcurrencyExceptionOnSave_Conflicts()
+    {
+        var existing = new AssetCategoryLifecyclePolicy { Id = 1, CategoryId = CatComputer, MaxAgeYears = 5, MaxFailureCount = 3, Version = 2 };
+        _repo.Setup(r => r.GetCategoryByIdAsync(CatComputer)).ReturnsAsync(new AssetCategory { Id = CatComputer, Name = "Máy tính" });
+        _repo.Setup(r => r.GetPolicyByCategoryIdAsync(CatComputer)).ReturnsAsync(existing);
+        _repo.Setup(r => r.SaveChangesAsync()).ThrowsAsync(new Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException());
+
+        await Assert.ThrowsAsync<LifecyclePolicyConflictException>(() =>
+            _sut.UpsertPolicyAsync(CatComputer, new UpsertLifecyclePolicyRequestDto { MaxAgeYears = 4, MaxFailureCount = 2, Version = 2 }));
+    }
+
+    [Fact]
+    public async Task DeletePolicyAsync_MissingVersion_ThrowsArgumentExceptionAndKeepsPolicy()
+    {
+        var existing = new AssetCategoryLifecyclePolicy { Id = 1, CategoryId = CatComputer, Version = 2 };
+        _repo.Setup(r => r.GetPolicyByCategoryIdAsync(CatComputer)).ReturnsAsync(existing);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _sut.DeletePolicyAsync(CatComputer));
+
+        _repo.Verify(r => r.RemovePolicy(It.IsAny<AssetCategoryLifecyclePolicy>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeletePolicyAsync_StaleVersion_ConflictsAndDoesNotWipeNewerCustomConfig()
+    {
+        var existing = new AssetCategoryLifecyclePolicy { Id = 1, CategoryId = CatComputer, MaxAgeYears = 8, MaxFailureCount = 9, Version = 4 };
+        _repo.Setup(r => r.GetPolicyByCategoryIdAsync(CatComputer)).ReturnsAsync(existing);
+
+        await Assert.ThrowsAsync<LifecyclePolicyConflictException>(() => _sut.DeletePolicyAsync(CatComputer, 3));
+
+        _repo.Verify(r => r.RemovePolicy(It.IsAny<AssetCategoryLifecyclePolicy>()), Times.Never);
+        _repo.Verify(r => r.SaveChangesAsync(), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeletePolicyAsync_RemovesOnlyTheRequestedCategoryPolicy()
+    {
+        var computer = new AssetCategoryLifecyclePolicy { Id = 1, CategoryId = CatComputer, Version = 1 };
+        _repo.Setup(r => r.GetPolicyByCategoryIdAsync(CatComputer)).ReturnsAsync(computer);
+
+        await _sut.DeletePolicyAsync(CatComputer, 1);
+
+        _repo.Verify(r => r.RemovePolicy(computer), Times.Once);
+        _repo.Verify(r => r.GetPolicyByCategoryIdAsync(CatSwitch), Times.Never);
     }
 }

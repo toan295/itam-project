@@ -6,13 +6,16 @@ namespace ITAM.API.Validators;
 public class UpsertExpansionPlanRequestValidator : AbstractValidator<UpsertExpansionPlanRequestDto>
 {
     public const int MaxHeadcount = 5000;
+    public const int MinHeadcount = -5000;
     public const int NotesMaxLength = 500;
 
     public UpsertExpansionPlanRequestValidator()
     {
         RuleFor(x => x.AdditionalHeadcount)
-            .InclusiveBetween(0, MaxHeadcount)
-            .WithMessage($"Số nhân sự tăng thêm phải từ 0 đến {MaxHeadcount}.");
+            .InclusiveBetween(MinHeadcount, MaxHeadcount)
+            .WithMessage($"Thay đổi nhân sự phải từ {MinHeadcount} đến {MaxHeadcount} (âm = giảm).");
+
+        RuleFor(x => x.Version).GreaterThan(0).When(x => x.Version.HasValue).WithMessage("Version không hợp lệ.");
 
         RuleFor(x => x.Notes)
             .MaximumLength(NotesMaxLength)

@@ -1,12 +1,15 @@
+using ITAM.API.Repositories.Models;
 using ITAM.API.Models.Entities;
 
 namespace ITAM.API.Repositories.Interfaces;
 
 public interface IBudgetForecastRepository
 {
-    Task<(List<BudgetForecast> Items, int TotalItems)> GetPagedAsync(int? year, int? departmentId, int page, int pageSize);
+    Task<(List<BudgetForecast> Items, int TotalItems)> GetPagedAsync(
+        int? year, int? departmentId, int page, int pageSize, ForecastListExtras extras);
     Task<BudgetForecast?> GetByIdWithDetailsAsync(int id);
-    Task<BudgetForecast?> GetByYearAndDepartmentAsync(int year, int departmentId);
+    // Mọi dòng dự báo của năm (có tracking, GỒM dòng đã xoá mềm vì unique index (Năm, Phòng ban) vẫn tính chúng) — nạp một lần cho cả lần chạy.
+    Task<List<BudgetForecast>> GetForecastsByYearAsync(int year);
     Task<BudgetForecast?> GetTrackedByIdAsync(int id);
     Task AddAsync(BudgetForecast forecast);
     void Update(BudgetForecast forecast);
@@ -24,6 +27,12 @@ public interface IBudgetForecastRepository
     void UpdatePrice(AssetCategoryReferencePrice price);
     Task<List<(int Id, string Name)>> GetAllCategoriesAsync();
     Task<bool> CategoryExistsAsync(int categoryId);
+
+    // Dữ liệu nền cho mô hình mua thêm (đọc trực tiếp Employees/Assets qua AppDbContext, mỗi hàm đúng 1 truy vấn gom nhóm).
+    Task<Dictionary<int, int>> GetActiveEmployeeCountsAsync();                     // phòng ban -> số nhân viên đang hoạt động
+    Task<Dictionary<(int DepartmentId, int CategoryId), int>> GetUsableAssetCountsAsync();   // tài sản InUse/Maintenance theo (phòng ban, loại)
+    Task<Dictionary<int, int>> GetAssetsWithoutPurchaseDateCountsAsync();          // phòng ban -> số tài sản chưa thanh lý thiếu ngày mua
+    Task<Dictionary<int, string>> GetUserNamesAsync(IEnumerable<int> userIds);
 
     // Kế hoạch mở rộng nhân sự (departmentId = null → mọi phòng ban). GetPlanAsync có tracking để Service sửa trực tiếp.
     Task<List<DepartmentExpansionPlan>> GetPlansAsync(int year, int? departmentId);

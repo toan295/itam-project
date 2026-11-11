@@ -1,5 +1,7 @@
+using ITAM.API.Repositories.Models;
 using ITAM.API.Data;
 using ITAM.API.Models.Entities;
+using ITAM.API.Models.Enums;
 using ITAM.API.Repositories.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,16 +17,46 @@ public class BudgetForecastRepository : IBudgetForecastRepository
     }
 
     public async Task<(List<BudgetForecast> Items, int TotalItems)> GetPagedAsync(
-        int? year, int? departmentId, int page, int pageSize)
+        int? year, int? departmentId, int page, int pageSize, ForecastListExtras extras)
     {
         var query = _db.BudgetForecasts.AsNoTracking().Include(f => f.Department).AsQueryable();
         if (year.HasValue) query = query.Where(f => f.Year == year.Value);
         if (departmentId.HasValue) query = query.Where(f => f.DepartmentId == departmentId.Value);
 
+        if (!string.IsNullOrWhiteSpace(extras.Keyword))
+        {
+            var k = extras.Keyword.Trim();
+            query = query.Where(f => f.Department.Name.Contains(k) || (f.Notes != null && f.Notes.Contains(k)));
+        }
+
+        if (extras.Kind == "replacement")
+        {
+            query = query.Where(f => f.EstimatedReplacementCount > 0);
+        }
+        else if (extras.Kind == "expansion")
+        {
+            query = query.Where(f => f.EstimatedExpansionCount > 0);
+        }
+
+        if (extras.MinBudget.HasValue)
+        {
+            query = query.Where(f => f.EstimatedBudget + f.EstimatedExpansionBudget >= extras.MinBudget.Value);
+        }
+
+        if (extras.MaxBudget.HasValue)
+        {
+            query = query.Where(f => f.EstimatedBudget + f.EstimatedExpansionBudget <= extras.MaxBudget.Value);
+        }
+
         var total = await query.CountAsync();
-        var items = await query
-            .OrderByDescending(f => f.Year)
-            .ThenBy(f => f.Department.Name)
+        var ordered = extras.Sort switch
+        {
+            "budget" => query.OrderByDescending(f => f.EstimatedBudget + f.EstimatedExpansionBudget),
+            "department" => query.OrderBy(f => f.Department.Name).ThenByDescending(f => f.Year),
+            "generated" => query.OrderByDescending(f => f.GeneratedAt),
+            _ => query.OrderByDescending(f => f.Year).ThenBy(f => f.Department.Name),
+        };
+        var items = await ordered
             .ThenBy(f => f.Id)   // thứ tự ổn định khi phân trang
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
@@ -38,8 +70,8 @@ public class BudgetForecastRepository : IBudgetForecastRepository
 
     // Có tracking: Service sửa trực tiếp entity này rồi SaveChanges (upsert theo Năm + Phòng ban).
     // IgnoreQueryFilters: dòng đã xoá mềm vẫn chiếm chỗ ở unique index (Năm, Phòng ban) nên phải tìm thấy để khôi phục.
-    public Task<BudgetForecast?> GetByYearAndDepartmentAsync(int year, int departmentId) =>
-        _db.BudgetForecasts.IgnoreQueryFilters().FirstOrDefaultAsync(f => f.Year == year && f.DepartmentId == departmentId);
+    public Task<List<BudgetForecast>> GetForecastsByYearAsync(int year) =>
+        _db.BudgetForecasts.IgnoreQueryFilters().Where(f => f.Year == year).ToListAsync();
 
     public Task<BudgetForecast?> GetTrackedByIdAsync(int id) =>
         _db.BudgetForecasts.FirstOrDefaultAsync(f => f.Id == id);
@@ -80,6 +112,32 @@ public class BudgetForecastRepository : IBudgetForecastRepository
 
     public Task<bool> CategoryExistsAsync(int categoryId) =>
         _db.AssetCategories.AnyAsync(c => c.Id == categoryId);
+
+    public Task<Dictionary<int, int>> GetActiveEmployeeCountsAsync() =>
+        _db.Employees.AsNoTracking().Where(e => e.IsActive)
+            .GroupBy(e => e.DepartmentId).Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count);
+
+    // InUse + Maintenance = đáp ứng được nhu cầu (bảo trì là tạm thời). Broken không đáp ứng được; Disposed đã rời hệ thống.
+    public async Task<Dictionary<(int DepartmentId, int CategoryId), int>> GetUsableAssetCountsAsync() =>
+        (await _db.Assets.AsNoTracking()
+            .Where(a => a.Status == AssetStatus.InUse || a.Status == AssetStatus.Maintenance)
+            .GroupBy(a => new { a.DepartmentId, a.CategoryId }).Select(g => new { g.Key.DepartmentId, g.Key.CategoryId, Count = g.Count() })
+            .ToListAsync())
+        .ToDictionary(x => (x.DepartmentId, x.CategoryId), x => x.Count);
+
+    public Task<Dictionary<int, int>> GetAssetsWithoutPurchaseDateCountsAsync() =>
+        _db.Assets.AsNoTracking().Where(a => a.Status != AssetStatus.Disposed && a.PurchaseDate == null)
+            .GroupBy(a => a.DepartmentId).Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count);
+
+    public Task<Dictionary<int, string>> GetUserNamesAsync(IEnumerable<int> userIds)
+    {
+        var ids = userIds.Distinct().ToList();
+        return ids.Count == 0
+            ? Task.FromResult(new Dictionary<int, string>())
+            : _db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.FullName);
+    }
 
     public Task<List<DepartmentExpansionPlan>> GetPlansAsync(int year, int? departmentId)
     {

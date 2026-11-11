@@ -10,6 +10,7 @@ public interface IDisposalStatusRepository
     Task<bool> NameExistsAsync(string name, int? excludeId = null);
     Task<bool> IsUsedAsSubStatusAsync(int id);
     Task<bool> IsInUseAsync(int id); // đang là bước hiện tại HOẶC trạng thái phụ của ít nhất một phiếu.
+    Task<int> GetMaxSortOrderAsync();
     Task AddAsync(DisposalStatus status);
     void Remove(DisposalStatus status);
     Task<int> SaveChangesAsync();

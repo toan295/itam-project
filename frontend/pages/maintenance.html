@@ -10,10 +10,17 @@
     .eaims-table tr.row-urgent > td:first-child { box-shadow: inset 3px 0 0 #f4a3a3; }
     .eaims-table tr.row-high > td { background-color: #fffbea; }
     .eaims-table tr.row-high > td:first-child { box-shadow: inset 3px 0 0 #f2d16b; }
+    /* Bảng gọn: 6 cột, nội dung dài tự xuống dòng thay vì ép các cột khác; nút thao tác xếp dọc. */
+    .ticket-table td { vertical-align: top; }
+    .ticket-table .col-content { min-width: 220px; max-width: 360px; white-space: pre-wrap; word-break: break-word; }
+    .ticket-table .col-asset { min-width: 150px; }
+    .ticket-table .col-time { white-space: nowrap; font-size: .82rem; }
+    .ticket-actions { display: flex; flex-direction: column; gap: .3rem; min-width: 150px; }
+    .ticket-actions .btn { text-align: left; white-space: nowrap; }
   </style>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-  <link href="../shared/theme.css" rel="stylesheet">
+  <link href="../shared/theme.css?v=20261113" rel="stylesheet">
 </head>
 <body>
   <div class="eaims-shell">
@@ -23,48 +30,67 @@
       <div class="page-header">
         <div>
           <h1>Bảo trì & hỗ trợ kỹ thuật</h1>
-          <p>Tạo phiếu báo lỗi, nhận xử lý, cập nhật kết quả và xem thống kê bảo trì.</p>
+          <p id="pageSubtitle">Theo dõi yêu cầu bảo trì, phân công kỹ thuật viên, cập nhật kết quả và xem thống kê.</p>
         </div>
         <button class="btn btn-primary" id="openCreateBtn"><i class="bi bi-plus-lg"></i> Tạo phiếu</button>
       </div>
 
-      <div class="eaims-card mb-3">
+      <div class="eaims-card mb-3 filter-card">
         <div class="card-body py-3">
-          <form id="filterForm" class="row g-2 align-items-end">
-            <div class="col-auto d-none" id="statusFilterWrapper">
-              <label class="form-label">Kết quả xử lý</label>
-              <select class="form-select" id="status">
-                <option value="">-- Tất cả --</option>
-                <option value="Resolved">Đã xử lý</option>
-                <option value="Failed">Không xử lý được</option>
-              </select>
+          <form id="filterForm">
+            <div class="row g-2 align-items-end">
+              <div class="col-12 col-lg-3">
+                <label class="form-label">Tìm kiếm</label>
+                <div class="input-group"><span class="input-group-text bg-white"><i class="bi bi-search"></i></span><input class="form-control" id="keyword" placeholder="Mã/tên tài sản, nội dung, người báo..." autocomplete="off"></div>
+              </div>
+              <div class="col-6 col-lg-2 d-none" id="statusFilterWrapper">
+                <label class="form-label">Kết quả xử lý</label>
+                <select class="form-select" id="status"><option value="">-- Tất cả --</option><option value="Resolved">Đã xử lý</option><option value="Failed">Không xử lý được</option></select>
+              </div>
+              <div class="col-6 col-lg-2">
+                <label class="form-label">Mức độ khẩn</label>
+                <select class="form-select" id="priority"><option value="">-- Tất cả --</option><option value="Urgent">Khẩn cấp</option><option value="High">Cao</option><option value="Normal">Bình thường</option><option value="Low">Thấp</option></select>
+              </div>
+              <div class="col-6 col-lg-2" id="departmentFilterWrapper">
+                <label class="form-label">Phòng ban</label>
+                <select class="form-select" id="departmentId"><option value="">-- Tất cả --</option></select>
+              </div>
+              <div class="col-12 col-lg-auto ms-lg-auto d-flex gap-2">
+                <button class="btn btn-outline-secondary" type="button" id="resetFilterBtn"><i class="bi bi-x-circle"></i> Xoá lọc</button>
+              </div>
             </div>
-            <div class="col-auto">
-              <label class="form-label">Mức độ khẩn</label>
-              <select class="form-select" id="priority">
-                <option value="">-- Tất cả --</option>
-                <option value="Urgent">Khẩn cấp</option>
-                <option value="High">Cao</option>
-                <option value="Normal">Bình thường</option>
-                <option value="Low">Thấp</option>
-              </select>
+            <div id="advancedFilters">
+              <div class="row g-2 advanced-panel">
+              <div class="col-6 col-lg-3">
+                <label class="form-label">Loại tài sản</label>
+                <select class="form-select" id="categoryId"><option value="">-- Tất cả --</option></select>
+              </div>
+              <div class="col-6 col-lg-3 d-none" id="technicianFilterWrapper">
+                <label class="form-label">Kỹ thuật viên phụ trách</label>
+                <select class="form-select" id="technicianId"><option value="">-- Tất cả --</option></select>
+              </div>
+              <div class="col-6 col-lg-3" id="unassignedWrapper">
+                <label class="form-label">Phân công</label>
+                <select class="form-select" id="unassigned"><option value="">-- Tất cả --</option><option value="true">Chưa phân công kỹ thuật viên</option></select>
+              </div>
+              <div class="col-6 col-lg-3" id="pendingOverDaysWrapper">
+                <label class="form-label">Chờ xử lý quá (ngày)</label>
+                <input type="number" class="form-control" id="pendingOverDays" min="1" max="3650" placeholder="VD: 3">
+              </div>
+              <div class="col-6 col-lg-3">
+                <label class="form-label">Báo từ ngày</label>
+                <input class="form-control" id="fromDate" data-date-vi>
+              </div>
+              <div class="col-6 col-lg-3">
+                <label class="form-label">Báo đến ngày</label>
+                <input class="form-control" id="toDate" data-date-vi>
+              </div>
+              <div class="col-6 col-lg-3">
+                <label class="form-label">Sắp xếp</label>
+                <select class="form-select" id="sort"><option value="">Mặc định (gấp nhất trước)</option><option value="newest">Mới báo nhất</option><option value="oldest">Báo lâu nhất</option></select>
+              </div>
+              </div>
             </div>
-            <div class="col-auto" id="departmentFilterWrapper">
-              <label class="form-label">Phòng ban</label>
-              <select class="form-select" id="departmentId" style="width: 170px">
-                <option value="">-- Tất cả --</option>
-              </select>
-            </div>
-            <div class="col-auto">
-              <label class="form-label">Từ ngày</label>
-              <input type="date" class="form-control" id="fromDate">
-            </div>
-            <div class="col-auto">
-              <label class="form-label">Đến ngày</label>
-              <input type="date" class="form-control" id="toDate">
-            </div>
-            <div class="col-auto"><button class="btn btn-primary" type="submit"><i class="bi bi-search"></i> Lọc</button></div>
-            <div class="col-auto"><button class="btn btn-outline-secondary" type="button" id="resetFilterBtn">Xoá lọc</button></div>
           </form>
         </div>
       </div>
@@ -77,18 +103,17 @@
       <p class="text-muted small mb-2" id="sortHint"></p>
 
       <!-- Thống kê (UC-13) — chỉ Admin IT / Manager; dùng chung bộ lọc phòng ban + khoảng ngày ở trên.
-           Số phiếu theo tài sản-năm nằm ngay trong bảng phiếu bên dưới (cột "Số phiếu/năm"). -->
+           Số phiếu của từng tài sản trong năm báo hiển thị ngay dưới mã tài sản trong bảng bên dưới. -->
       <section id="statsSection" class="mb-4 d-none">
         <div class="row g-3" id="statsCards"></div>
       </section>
 
       <div class="eaims-table-wrap">
         <div class="table-responsive">
-          <table class="eaims-table">
+          <table class="eaims-table ticket-table">
             <thead><tr>
-              <th>Mức độ</th><th>Mã tài sản</th><th>Nội dung bảo trì</th><th>Trạng thái</th><th>Kỹ thuật viên</th>
-              <th>Ngày báo</th><th>Ngày xử lý</th>
-              <th class="text-end d-none" id="ticketCountHeader" title="Số phiếu của tài sản này trong năm báo (theo bộ lọc hiện tại)">Số phiếu/năm</th><th></th>
+              <th>Mức độ</th><th>Tài sản</th><th>Nội dung bảo trì</th><th>Trạng thái / Kỹ thuật viên</th>
+              <th>Thời gian</th><th class="text-end" id="actionsHeader">Thao tác</th>
             </tr></thead>
             <tbody id="ticketTableBody"></tbody>
           </table>
@@ -103,9 +128,9 @@
 
   <!-- Modal Tạo phiếu -->
   <div class="modal fade" id="ticketModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered">
       <div class="modal-content">
-        <form id="ticketForm">
+        <form id="ticketForm" novalidate>
           <div class="modal-header">
             <h5 class="modal-title">Tạo phiếu bảo trì</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -120,7 +145,7 @@
             </div>
             <div class="mb-2">
               <label class="form-label">Nội dung bảo trì / mô tả lỗi</label>
-              <textarea class="form-control" id="issueDescription" rows="3" required maxlength="1000"></textarea>
+              <textarea class="form-control" id="issueDescription" rows="3" required maxlength="1000" placeholder="VD: Máy không lên nguồn, quạt kêu to, cần kiểm tra và vệ sinh"></textarea>
             </div>
             <div class="mb-2">
               <label class="form-label">Mức độ khẩn</label>
@@ -143,9 +168,9 @@
 
   <!-- Modal Cập nhật kết quả xử lý -->
   <div class="modal fade" id="statusModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered">
       <div class="modal-content">
-        <form id="statusForm">
+        <form id="statusForm" novalidate>
           <div class="modal-header">
             <h5 class="modal-title" id="statusModalTitle">Cập nhật kết quả</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -153,19 +178,20 @@
           <div class="modal-body">
             <div id="statusModalError" class="alert alert-danger d-none py-2"></div>
             <input type="hidden" id="statusTicketId">
+            <input type="hidden" id="statusVersion">
             <div class="mb-2">
-              <label class="form-label">Kết quả</label>
+              <label class="form-label">Trạng thái phiếu sau khi đóng <span class="text-danger">*</span></label>
               <select class="form-select" id="newStatus" required>
-                <option value="Resolved">Đã xử lý (Resolved)</option>
-                <option value="Failed">Không xử lý được (Failed)</option>
+                <option value="Resolved">Đã xử lý xong</option>
+                <option value="Failed">Không xử lý được</option>
               </select>
             </div>
             <div class="mb-2">
-              <label class="form-label">Ghi chú xử lý</label>
-              <textarea class="form-control" id="statusNotes" rows="3" maxlength="1000"></textarea>
+              <label class="form-label" id="statusNotesLabel">Kết quả xử lý <span class="text-danger">*</span></label>
+              <textarea class="form-control" id="statusNotes" rows="4" maxlength="1000" minlength="5" required placeholder="Mô tả việc đã làm: nguyên nhân, cách khắc phục, linh kiện đã thay..."></textarea>
             </div>
             <div class="alert alert-warning py-2 small mb-0">
-              Phiếu đã đóng (Resolved/Failed) sẽ không thể đổi lại trạng thái.
+              Phiếu đã đóng sẽ không thể mở lại hoặc đổi trạng thái. Nếu "Không xử lý được", tài sản chuyển sang Hỏng và có thể tạo phiếu mới.
             </div>
           </div>
           <div class="modal-footer">
@@ -179,7 +205,7 @@
 
   <!-- Modal đổi mức độ khẩn (Admin IT / Manager) -->
   <div class="modal fade" id="priorityModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered">
       <div class="modal-content">
         <form id="priorityForm">
           <div class="modal-header">
@@ -189,6 +215,7 @@
           <div class="modal-body">
             <div id="priorityModalError" class="alert alert-danger d-none py-2"></div>
             <input type="hidden" id="priorityTicketId">
+            <input type="hidden" id="priorityVersion">
             <label class="form-label">Mức độ khẩn</label>
             <select class="form-select" id="priorityValue" required>
               <option value="Urgent">Khẩn cấp</option>
@@ -208,18 +235,24 @@
 
   <!-- Modal Gán kỹ thuật viên (Admin IT) -->
   <div class="modal fade" id="assignModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered">
       <div class="modal-content">
-        <form id="assignForm">
+        <form id="assignForm" novalidate>
           <div class="modal-header">
-            <h5 class="modal-title">Gán kỹ thuật viên</h5>
+            <h5 class="modal-title" id="assignModalTitle">Gán kỹ thuật viên</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
             <div id="assignModalError" class="alert alert-danger d-none py-2"></div>
             <input type="hidden" id="assignTicketId">
-            <label class="form-label">Kỹ thuật viên</label>
+            <input type="hidden" id="assignVersion">
+            <div class="small text-muted mb-2" id="assignCurrent"></div>
+            <label class="form-label">Kỹ thuật viên <span class="text-danger">*</span></label>
             <select class="form-select" id="assignTechnicianId" required></select>
+            <div class="mt-2 d-none" id="assignReasonWrapper">
+              <label class="form-label">Lý do đổi người phụ trách <span class="text-danger">*</span></label>
+              <textarea class="form-control" id="assignReason" rows="2" maxlength="500" placeholder="VD: Kỹ thuật viên cũ nghỉ phép, cần cân bằng khối lượng..."></textarea>
+            </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huỷ</button>
@@ -230,9 +263,12 @@
     </div>
   </div>
 
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="../shared/api-client.js"></script>
-  <script src="../shared/nav.js"></script>
-  <script src="../assets/js/maintenance.js"></script>
+  <script src="../shared/api-client.js?v=20261113"></script>
+  <script src="../shared/nav.js?v=20261113"></script>
+  <script src="../shared/form-helpers.js?v=20261113"></script>
+  <script src="../shared/filter-bar.js?v=20261113"></script>
+  <script src="../assets/js/maintenance.js?v=20261113"></script>
 </body>
 </html>

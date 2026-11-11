@@ -1,3 +1,4 @@
+using ITAM.API.Authorization;
 using ITAM.API.Models.DTOs;
 using ITAM.API.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -10,7 +11,7 @@ namespace ITAM.API.Controllers;
 // là quyết định kiến trúc lớn ngoài phạm vi hiện tại.
 [ApiController]
 [Route("api/v1/roles")]
-[Authorize(Roles = "Admin IT")]
+[HasPermission(Permissions.UsersManage)]
 public class RolesController : ControllerBase
 {
     private readonly IRoleService _roleService;

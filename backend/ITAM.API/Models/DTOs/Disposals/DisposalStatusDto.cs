@@ -16,5 +16,6 @@ public class UpsertDisposalStatusRequestDto
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string Color { get; set; } = "slate";
-    public int SortOrder { get; set; }
+    // Thứ tự hiển thị. Bỏ trống = tự xếp cuối danh sách. Bước chính (1–5) có thứ tự cố định theo luồng nên bị bỏ qua khi sửa.
+    public int? SortOrder { get; set; }
 }

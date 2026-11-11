@@ -1,3 +1,4 @@
+using ITAM.API.Repositories.Models;
 using ITAM.API.Models.Entities;
 using ITAM.API.Models.Enums;
 
@@ -25,14 +26,5 @@ public interface IAssetRepository
     // Tài sản có phiếu bảo trì Pending đang được giao cho kỹ thuật viên này (dùng cho GET /assets/{id}).
 
     // UC-08: tìm kiếm/lọc nâng cao. Các tham số enum/bool đã được Service parse & validate trước.
-    Task<(List<Asset> Items, int TotalItems)> SearchAsync(
-        string? keyword,
-        int? departmentId,
-        int? categoryId,
-        AssetStatus? status,
-        int? purchaseYear,
-        bool? isUnderWarranty,
-        int? orAssignedTechnicianId,
-        int page,
-        int pageSize);
+    Task<(List<Asset> Items, int TotalItems)> SearchAsync(AssetQueryCriteria criteria, int page, int pageSize);
 }

@@ -1,6 +1,6 @@
 namespace ITAM.API.Helpers;
 
-// Chính sách mật khẩu dùng chung: mật khẩu người dùng tự đặt, mật khẩu mặc định và mật khẩu Admin IT khởi tạo.
+// Chính sách mật khẩu dùng chung: mật khẩu người dùng tự đặt (đổi mật khẩu, kích hoạt tài khoản) và mật khẩu Admin IT khởi tạo.
 // BCrypt chỉ xử lý tối đa 72 byte nên giới hạn trên là 72 ký tự.
 public static class PasswordPolicy
 {

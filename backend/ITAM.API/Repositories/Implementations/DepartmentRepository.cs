@@ -30,7 +30,13 @@ public class DepartmentRepository : IDepartmentRepository
 
     public void Update(Department department) => _db.Departments.Update(department);
 
-    public void Remove(Department department) => _db.Departments.Remove(department);
+    // Xoá mềm: giữ dòng trong CSDL, chỉ đánh dấu đã xoá.
+    public void Remove(Department department)
+    {
+        department.IsDeleted = true;
+        department.DeletedAt = DateTime.UtcNow;
+        _db.Departments.Update(department);
+    }
 
     public async Task<bool> IsReferencedAsync(int departmentId) =>
         await _db.Users.AnyAsync(u => u.DepartmentId == departmentId)

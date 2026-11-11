@@ -7,5 +7,9 @@ public class AssetCategoryDeviceRatio
     public int CategoryId { get; set; }
     public decimal DevicesPerPerson { get; set; }   // decimal(6,2), 0,01..20,00
 
+    public int Version { get; set; } = 1;           // optimistic concurrency, tự tăng khi sửa
+    public DateTime? UpdatedAt { get; set; }
+    public int? UpdatedByUserId { get; set; }
+
     public AssetCategory Category { get; set; } = null!;
 }

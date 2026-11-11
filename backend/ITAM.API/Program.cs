@@ -1,3 +1,4 @@
+using ITAM.API.Authorization;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
@@ -34,8 +35,15 @@ using Microsoft.OpenApi.Models;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITAM.API.Filters.AuditActionFilter>();
-builder.Services.AddControllers(options => options.Filters.AddService<ITAM.API.Filters.AuditActionFilter>());
+builder.Services.AddSingleton<ITAM.API.Auditing.AuditSnapshotReader>();
+builder.Services.AddSingleton<ITAM.API.Auditing.AuditEventWriter>();
+builder.Services.AddControllers(options =>
+{
+    options.Filters.AddService(typeof(ITAM.API.Filters.AuditActionFilter), ITAM.API.Filters.AuditActionFilter.FilterOrder);
+    options.Filters.Add<ITAM.API.Filters.ConcurrencyExceptionFilter>();
+});
 builder.Services.AddEndpointsApiExplorer();
 
 // Lỗi validate DTO tự động (do [ApiController]) cũng phải theo đúng chuẩn
@@ -93,20 +101,6 @@ builder.Services.AddOptions<LifecycleOptions>()
 builder.Services.AddSingleton<JwtHelper>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 
-// Mã hoá mật khẩu mặc định trong DB (Data Protection). Production PHẢI đặt DataProtection:KeysPath tới thư mục bền vững
-// (volume) — nếu không, mỗi lần khởi động lại (đặc biệt trên Linux/container) khoá bị sinh mới và giá trị đã mã hoá
-// không giải mã được nữa.
-var dataProtection = builder.Services.AddDataProtection().SetApplicationName("EAIMS");
-var dataProtectionKeysPath = builder.Configuration["DataProtection:KeysPath"];
-if (!string.IsNullOrWhiteSpace(dataProtectionKeysPath))
-{
-    dataProtection.PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath));
-}
-else if (!builder.Environment.IsDevelopment())
-{
-    Console.Error.WriteLine("CẢNH BÁO: chưa cấu hình DataProtection:KeysPath — khoá mã hoá có thể mất khi khởi động lại.");
-}
-builder.Services.AddSingleton<DefaultPasswordCipher>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ILoginAttemptTracker, LoginAttemptTracker>();
 builder.Services.AddScoped<IExclusiveSection, ExclusiveSection>(); // khoá dòng cho các thao tác "kiểm tra rồi ghi".
@@ -133,7 +127,6 @@ builder.Services.AddScoped<IRoleService, RoleService>();
 
 // UC-03: Quản lý người dùng & phân quyền — Admin IT.
 builder.Services.AddScoped<IUserRepository, UserRepository>();
-builder.Services.AddScoped<ISystemSettingRepository, SystemSettingRepository>();
 
 // Danh mục nhân viên nhận tài sản + mức độ khẩn phiếu bảo trì.
 builder.Services.AddScoped<IEmployeeRepository, EmployeeRepository>();
@@ -151,9 +144,13 @@ builder.Services.AddScoped<IValidator<CreateDisposalRequestDto>, CreateDisposalR
 builder.Services.AddScoped<IValidator<ProposeDisposalRequestDto>, ProposeDisposalRequestValidator>();
 builder.Services.AddScoped<IValidator<ReviewDisposalRequestDto>, ReviewDisposalRequestValidator>();
 builder.Services.AddScoped<IValidator<CompleteDisposalRequestDto>, CompleteDisposalRequestValidator>();
-builder.Services.AddScoped<IDefaultPasswordService, DefaultPasswordService>();
-builder.Services.AddScoped<IValidator<SetDefaultPasswordRequestDto>, SetDefaultPasswordRequestValidator>();
 builder.Services.AddScoped<IUserService, UserService>();
+// Xác nhận thông tin tài khoản qua email (Admin tạo/sửa user -> người dùng xác nhận đúng/báo sai).
+builder.Services.Configure<ITAM.API.Configurations.EmailSettings>(builder.Configuration.GetSection(ITAM.API.Configurations.EmailSettings.SectionName));
+builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
+builder.Services.AddScoped<IAccountActivationRepository, AccountActivationRepository>();
+builder.Services.AddScoped<IAccountActivationService, AccountActivationService>();
+builder.Services.AddScoped<IEmployeePortalService, EmployeePortalService>();
 builder.Services.AddScoped<IValidator<CreateUserRequestDto>, CreateUserRequestValidator>();
 builder.Services.AddScoped<IValidator<UpdateUserRequestDto>, UpdateUserRequestValidator>();
 
@@ -174,6 +171,8 @@ builder.Services.AddScoped<IValidator<UpdateTicketStatusRequestDto>, UpdateTicke
 // Module Nhật ký hệ thống (AuditLogs) — Tuần 7, Hoàng Đức Tú.
 builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
+builder.Services.Configure<ITAM.API.Configurations.BackupSettings>(builder.Configuration.GetSection(ITAM.API.Configurations.BackupSettings.SectionName));
+builder.Services.AddScoped<IBackupService, BackupService>();
 
 // Module Phân bổ & thu hồi tài sản (AssetAllocations) — Tuần 5, Hoàng Đức Tú.
 builder.Services.AddScoped<IAssetAllocationRepository, AssetAllocationRepository>();
@@ -182,6 +181,12 @@ builder.Services.AddScoped<IValidator<CreateAssetAllocationDto>, CreateAssetAllo
 builder.Services.AddScoped<IValidator<ReturnAssetAllocationDto>, ReturnAssetAllocationValidator>();
 
 // Module Vòng đời tài sản (UC-16) — Tuần 7 (lần 2).
+builder.Services.AddSingleton<ITAM.API.Reporting.IReportExporter, ITAM.API.Reporting.ReportExporter>();
+builder.Services.AddMemoryCache();
+builder.Services.AddScoped<IDashboardRepository, DashboardRepository>();
+builder.Services.AddScoped<IDashboardService, DashboardService>();
+builder.Services.AddScoped<IReportRepository, ReportRepository>();
+builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<ILifecycleRepository, LifecycleRepository>();
 builder.Services.AddScoped<ILifecycleAnalysisService, LifecycleAnalysisService>();
 builder.Services.AddScoped<IValidator<UpsertLifecyclePolicyRequestDto>, UpsertLifecyclePolicyRequestValidator>();
@@ -202,7 +207,7 @@ var corsAllowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins")
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(FrontendCorsPolicy, policy =>
-        policy.WithOrigins(corsAllowedOrigins).AllowAnyHeader().AllowAnyMethod());
+        policy.WithOrigins(corsAllowedOrigins).AllowAnyHeader().AllowAnyMethod().WithExposedHeaders("Content-Disposition", "X-Report-Rows"));
 });
 
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()
@@ -228,6 +233,20 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Secret)),
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
+        };
+
+        // Token cấp ở lần chạy trước của máy chủ không còn hiệu lực -> 401 -> giao diện quay về trang đăng nhập.
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = context =>
+            {
+                if (context.Principal?.FindFirst(ITAM.API.Helpers.ServerInstance.ClaimType)?.Value != ITAM.API.Helpers.ServerInstance.Id)
+                {
+                    context.Fail("Phiên đăng nhập thuộc lần chạy hệ thống trước.");
+                }
+
+                return Task.CompletedTask;
+            }
         };
     });
 
@@ -255,7 +274,16 @@ builder.Services.AddRateLimiter(options =>
 // dùng policy chung — policy "SameDepartmentOnly" (Tuần 2, chỉ phục vụ AuthorizationTestController
 // minh hoạ) đã được gỡ bỏ cùng handler/requirement liên quan, xác nhận với Hoàng Đức Tú không còn
 // module nào cần.
+// Phân quyền theo ma trận vai trò × quyền lưu trong DB: [HasPermission(...)] -> policy "perm:..." dựng động.
 builder.Services.AddAuthorization();
+builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+builder.Services.AddSingleton<IAuthorizationHandler, PermissionHandler>();
+builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, PermissionSourceAwareResultHandler>();
+builder.Services.AddSingleton<IRolePermissionCache>(sp => new RolePermissionCache(
+    sp.GetRequiredService<IServiceScopeFactory>(),
+    TimeSpan.FromSeconds(Math.Clamp(builder.Configuration.GetValue("Authorization:PermissionCacheSeconds", (int)RolePermissionCache.DefaultTtl.TotalSeconds), 1, 300))));
+builder.Services.AddScoped<IRolePermissionRepository, RolePermissionRepository>();
+builder.Services.AddScoped<IPermissionService, PermissionService>();
 
 var app = builder.Build();
 
@@ -301,10 +329,39 @@ app.Use(async (context, next) =>
         if (int.TryParse(userIdClaim, out var userId))
         {
             var dbContext = context.RequestServices.GetRequiredService<AppDbContext>();
-            var state = await dbContext.Users.AsNoTracking()
-                .Where(u => u.Id == userId)
-                .Select(u => new { u.IsActive, u.MustChangePassword, RoleName = u.Role.Name, u.DepartmentId })
-                .FirstOrDefaultAsync();
+            AccountState? state;
+            try
+            {
+                state = await dbContext.Users.AsNoTracking()
+                    .Where(u => u.Id == userId)
+                    .Select(u => new AccountState(u.IsActive, u.PendingActivation, u.MustChangePassword, u.Role.Name, u.DepartmentId))
+                    .FirstOrDefaultAsync();
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Không xác minh được tài khoản/quyền (mất kết nối DB...) -> từ chối, KHÔNG bao giờ mặc định cho qua.
+                context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Auth")
+                    .LogError(ex, "Không kiểm tra được trạng thái tài khoản; từ chối yêu cầu.");
+                context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                context.Response.Headers["Retry-After"] = "5";
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync(JsonSerializer.Serialize(
+                    ApiResponse<object>.Fail("Không kiểm tra được quyền do lỗi hệ thống. Vui lòng thử lại sau."),
+                    new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+                return;
+            }
+
+            // Tài khoản đang chờ kích hoạt / chờ đặt lại mật khẩu (Admin vừa tạo hoặc đặt lại): không dùng được API, kể cả
+            // với token cũ còn hạn — mật khẩu cũ đã mất hiệu lực nên phiên cũ cũng phải mất theo.
+            if (state is { IsActive: true, PendingActivation: true })
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync(JsonSerializer.Serialize(
+                    ApiResponse<object>.Fail("Tài khoản đang chờ kích hoạt hoặc đặt lại mật khẩu. Hãy dùng liên kết trong email."),
+                    new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+                return;
+            }
 
             // Token mang sẵn role/phòng ban lúc đăng nhập. Nếu Admin đã đổi vai trò/phòng ban của user, token cũ
             // (sống tới 60 phút) vẫn giữ quyền cũ -> từ chối để buộc đăng nhập lại và nhận quyền đúng.
@@ -322,14 +379,30 @@ app.Use(async (context, next) =>
                 return;
             }
 
-            // Đang dùng mật khẩu mặc định -> chỉ cho gọi /auth/* (đổi mật khẩu, xem hồ sơ) cho tới khi đổi xong.
+            // Mật khẩu khởi tạo (Admin IT đầu tiên từ cấu hình Bootstrap) -> chỉ cho gọi /auth/* (đổi mật khẩu, xem hồ sơ) cho tới khi đổi xong.
             if (state is { IsActive: true, MustChangePassword: true }
                 && !context.Request.Path.StartsWithSegments("/api/v1/auth"))
             {
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
                 context.Response.ContentType = "application/json";
                 await context.Response.WriteAsync(JsonSerializer.Serialize(
-                    ApiResponse<object>.Fail("Bạn đang dùng mật khẩu mặc định. Vui lòng đổi mật khẩu trước khi tiếp tục."),
+                    ApiResponse<object>.Fail("Bạn đang dùng mật khẩu khởi tạo. Vui lòng đổi mật khẩu trước khi tiếp tục."),
+                    new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+                return;
+            }
+
+            // Tài khoản nhân viên (vai trò Employee) chỉ được dùng cổng của mình: /auth/*, /my/* và gửi yêu cầu bảo trì
+            // (POST /maintenance-tickets — Service tự giới hạn ở tài sản họ đang được cấp). Mọi API khác bị chặn theo
+            // kiểu "mặc định cấm" để thêm module mới không vô tình mở dữ liệu cho nhân viên.
+            if (state is { IsActive: true } && string.Equals(state.RoleName, "Employee", StringComparison.Ordinal)
+                && !IsEmployeePortalRequest(context.Request))
+            {
+                await ITAM.API.Auditing.AuditDenied.RecordAsync(context, StatusCodes.Status403Forbidden,
+                    "Tài khoản nhân viên chỉ được xem tài sản của mình và gửi yêu cầu bảo trì.");
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync(JsonSerializer.Serialize(
+                    ApiResponse<object>.Fail("Tài khoản nhân viên chỉ được xem tài sản của mình và gửi yêu cầu bảo trì."),
                     new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
                 return;
             }
@@ -355,13 +428,11 @@ app.MapControllers();
 
 // Việc khởi tạo dữ liệu bắt buộc, chạy ở MỌI môi trường (cần schema đã migrate):
 //  - tạo Admin IT đầu tiên nếu cấu hình Bootstrap:* (xem AdminBootstrapper);
-//  - mã hoá mật khẩu mặc định cũ còn lưu dạng văn bản thuần.
 using (var startupScope = app.Services.CreateScope())
 {
     var startupDb = startupScope.ServiceProvider.GetRequiredService<AppDbContext>();
     var startupLogger = startupScope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
     await AdminBootstrapper.RunAsync(startupDb, builder.Configuration, startupLogger);
-    await startupScope.ServiceProvider.GetRequiredService<IDefaultPasswordService>().EnsureEncryptedAsync();
 }
 
 // Seed development data after the database schema has been created/migrated.
@@ -369,7 +440,32 @@ if (app.Environment.IsDevelopment())
 {
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await DbSeeder.SeedAsync(dbContext, scope.ServiceProvider.GetRequiredService<DefaultPasswordCipher>());
+    await DbSeeder.SeedAsync(dbContext);
+}
+
+// Ma trận quyền mặc định — chạy sau khi vai trò đã được tạo (bootstrap hoặc seed dev), ở mọi môi trường.
+using (var linkScope = app.Services.CreateScope())
+{
+    // Mọi tài khoản gắn với một hồ sơ nhân viên (1-1) — bù cho tài khoản chưa có hồ sơ (seed, bootstrap, dữ liệu cũ).
+    await EmployeeAccountLinker.EnsureAsync(
+        linkScope.ServiceProvider.GetRequiredService<AppDbContext>(),
+        linkScope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup"));
+}
+
+using (var permissionScope = app.Services.CreateScope())
+{
+    await PermissionSeeder.EnsureAsync(
+        permissionScope.ServiceProvider.GetRequiredService<AppDbContext>(),
+        permissionScope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup"));
 }
 
 app.Run();
+
+// Các request tài khoản nhân viên (vai trò Employee) được phép gọi.
+static bool IsEmployeePortalRequest(HttpRequest request) =>
+    request.Path.StartsWithSegments("/api/v1/auth")
+    || request.Path.StartsWithSegments("/api/v1/my")
+    || (HttpMethods.IsPost(request.Method)
+        && request.Path.Value?.TrimEnd('/').Equals("/api/v1/maintenance-tickets", StringComparison.OrdinalIgnoreCase) == true);
+
+internal sealed record AccountState(bool IsActive, bool PendingActivation, bool MustChangePassword, string RoleName, int DepartmentId);

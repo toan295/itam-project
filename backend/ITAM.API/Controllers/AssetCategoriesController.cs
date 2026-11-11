@@ -1,3 +1,4 @@
+using ITAM.API.Authorization;
 using FluentValidation;
 using ITAM.API.Models.DTOs;
 using ITAM.API.Models.DTOs.AssetCategories;
@@ -50,7 +51,7 @@ public class AssetCategoriesController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin IT")]
+    [HasPermission(Permissions.AssetCategoriesManage)]
     public async Task<IActionResult> Create(CreateAssetCategoryRequestDto dto)
     {
         var validation = await _createValidator.ValidateAsync(dto);
@@ -73,7 +74,7 @@ public class AssetCategoriesController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Roles = "Admin IT")]
+    [HasPermission(Permissions.AssetCategoriesManage)]
     public async Task<IActionResult> Update(int id, UpdateAssetCategoryRequestDto dto)
     {
         var validation = await _updateValidator.ValidateAsync(dto);
@@ -99,7 +100,7 @@ public class AssetCategoriesController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = "Admin IT")]
+    [HasPermission(Permissions.AssetCategoriesManage)]
     public async Task<IActionResult> Delete(int id)
     {
         try

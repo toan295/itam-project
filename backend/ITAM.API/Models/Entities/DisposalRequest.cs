@@ -33,6 +33,10 @@ public class DisposalRequest
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    // = AssetId khi phiếu còn đang xử lý, NULL khi đã kết thúc (Từ chối/Hoàn tất). Chỉ mục duy nhất trên cột này là chốt chặn
+    // ở database: mỗi tài sản tối đa MỘT phiếu đang xử lý (MySQL cho phép nhiều NULL nên phiếu lịch sử không bị ảnh hưởng).
+    public int? ActiveAssetId { get; set; }
+
     public Asset Asset { get; set; } = null!;
     public DisposalStatus Status { get; set; } = null!;
     public DisposalStatus? SubStatus { get; set; }

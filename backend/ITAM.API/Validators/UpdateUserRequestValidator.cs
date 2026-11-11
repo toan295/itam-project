@@ -7,14 +7,13 @@ public class UpdateUserRequestValidator : AbstractValidator<UpdateUserRequestDto
 {
     public UpdateUserRequestValidator()
     {
-        RuleFor(x => x.FullName)
-            .NotEmpty().WithMessage("Họ tên không được để trống.")
-            .MaximumLength(100).WithMessage("Họ tên không được vượt quá 100 ký tự.");
-        RuleFor(x => x.Email)
-            .NotEmpty().WithMessage("Email không được để trống.")
-            .EmailAddress().WithMessage("Email không đúng định dạng.")
-            .MaximumLength(150).WithMessage("Email không được vượt quá 150 ký tự.");
         RuleFor(x => x.RoleId).GreaterThan(0).WithMessage("Phải chọn vai trò (Role).");
-        RuleFor(x => x.DepartmentId).GreaterThan(0).WithMessage("Phải chọn phòng ban.");
+        RuleFor(x => x.FullName).MaximumLength(100).WithMessage("Họ tên không được vượt quá 100 ký tự.")
+            .Must(v => v is null || !string.IsNullOrWhiteSpace(v)).WithMessage("Họ tên không được để trống.");
+        RuleFor(x => x.Email).MaximumLength(150).WithMessage("Email không được vượt quá 150 ký tự.")
+            .EmailAddress().WithMessage("Email không hợp lệ.").When(x => x.Email is not null);
+        RuleFor(x => x.Phone).Must(v => string.IsNullOrWhiteSpace(v) || ITAM.API.Helpers.PhoneNumber.IsValid(v))
+            .WithMessage(ITAM.API.Helpers.PhoneNumber.InvalidMessage);
+        RuleFor(x => x.DepartmentId).GreaterThan(0).WithMessage("Phòng ban không hợp lệ.").When(x => x.DepartmentId.HasValue);
     }
 }

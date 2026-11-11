@@ -1,3 +1,4 @@
+using ITAM.API.Repositories.Models;
 using ITAM.Tests.Helpers;
 using ITAM.API.Models.DTOs.Disposals;
 using ITAM.API.Models.Entities;
@@ -374,31 +375,57 @@ public class DisposalRequestServiceTests
     [Fact]
     public async Task GetPagedAsync_Manager_IsForcedToOwnDepartment()
     {
-        _repoMock.Setup(r => r.GetPagedAsync(DeptIt, null, null, null, 1, 20)).ReturnsAsync((new List<DisposalRequest>(), 0));
+        _repoMock.Setup(r => r.GetPagedAsync(DeptIt, null, null, null, 1, 20, It.IsAny<DisposalListExtras>())).ReturnsAsync((new List<DisposalRequest>(), 0));
 
         await _sut.GetPagedAsync(DeptHr, null, null, 1, 20, "Manager", DeptIt, 9);
 
-        _repoMock.Verify(r => r.GetPagedAsync(DeptIt, null, null, null, 1, 20), Times.Once);
+        _repoMock.Verify(r => r.GetPagedAsync(DeptIt, null, null, null, 1, 20, It.IsAny<DisposalListExtras>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_AdvancedFilters_AreMappedToExtras()
+    {
+        _repoMock.Setup(r => r.GetPagedAsync(null, null, null, null, 1, 20, It.IsAny<DisposalListExtras>())).ReturnsAsync((new List<DisposalRequest>(), 0));
+
+        await _sut.GetPagedAsync(null, null, null, 1, 20, "Admin IT", null, 1,
+            keyword: "laptop", categoryId: 2, fromDate: new DateOnly(2026, 1, 1), toDate: new DateOnly(2026, 1, 31), sort: "oldest");
+
+        _repoMock.Verify(r => r.GetPagedAsync(null, null, null, null, 1, 20, It.Is<DisposalListExtras>(x =>
+            x.Keyword == "laptop" && x.CategoryId == 2 && x.Sort == "oldest"
+            && x.CreatedFrom == new DateTime(2026, 1, 1) && x.CreatedTo == new DateTime(2026, 2, 1))), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_FromAfterTo_Throws()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => _sut.GetPagedAsync(null, null, null, 1, 20, "Admin IT", null, 1,
+            fromDate: new DateOnly(2026, 6, 1), toDate: new DateOnly(2026, 1, 1)));
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_InvalidSort_Throws()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => _sut.GetPagedAsync(null, null, null, 1, 20, "Admin IT", null, 1, sort: "random"));
     }
 
     [Fact]
     public async Task GetPagedAsync_Technician_OnlyOwnRequests()
     {
-        _repoMock.Setup(r => r.GetPagedAsync(DeptHr, null, null, 6, 1, 20)).ReturnsAsync((new List<DisposalRequest>(), 0));
+        _repoMock.Setup(r => r.GetPagedAsync(DeptHr, null, null, 6, 1, 20, It.IsAny<DisposalListExtras>())).ReturnsAsync((new List<DisposalRequest>(), 0));
 
         await _sut.GetPagedAsync(DeptHr, null, null, 1, 20, "Technician", DeptIt, currentUserId: 6);
 
-        _repoMock.Verify(r => r.GetPagedAsync(DeptHr, null, null, 6, 1, 20), Times.Once);
+        _repoMock.Verify(r => r.GetPagedAsync(DeptHr, null, null, 6, 1, 20, It.IsAny<DisposalListExtras>()), Times.Once);
     }
 
     [Fact]
     public async Task GetPagedAsync_Admin_NotScopedToTechnician()
     {
-        _repoMock.Setup(r => r.GetPagedAsync(null, null, null, null, 1, 20)).ReturnsAsync((new List<DisposalRequest>(), 0));
+        _repoMock.Setup(r => r.GetPagedAsync(null, null, null, null, 1, 20, It.IsAny<DisposalListExtras>())).ReturnsAsync((new List<DisposalRequest>(), 0));
 
         await _sut.GetPagedAsync(null, null, null, 1, 20, "Admin IT", null, 1);
 
-        _repoMock.Verify(r => r.GetPagedAsync(null, null, null, null, 1, 20), Times.Once);
+        _repoMock.Verify(r => r.GetPagedAsync(null, null, null, null, 1, 20, It.IsAny<DisposalListExtras>()), Times.Once);
     }
 
     // ----- Thanh lý -> đồng bộ phiếu bảo trì / bước đã bị xoá / hàng đợi tài sản hỏng -----
@@ -452,5 +479,91 @@ public class DisposalRequestServiceTests
         Assert.Single(result.Items);
         Assert.Equal("PC-007", result.Items[0].AssetCode);
         Assert.Equal("HR", result.Items[0].DepartmentName);
+    }
+
+    // ----- Phiếu đang hoạt động duy nhất / đồng bộ với tài sản và license -----
+
+    [Fact]
+    public async Task CreateAsync_SetsActiveAssetIdSoDatabaseIndexGuardsDuplicates()
+    {
+        _assetRepoMock.Setup(r => r.GetByIdWithDetailsAsync(7))
+            .ReturnsAsync(new Asset { Id = 7, AssetCode = "PC-007", Status = AssetStatus.Broken });
+        DisposalRequest? added = null;
+        _repoMock.Setup(r => r.AddAsync(It.IsAny<DisposalRequest>()))
+            .Callback<DisposalRequest>(r => { r.Id = 1; added = r; }).Returns(Task.CompletedTask);
+        _repoMock.Setup(r => r.GetByIdWithDetailsAsync(1)).ReturnsAsync(() => MakeRequest(DisposalStatusCodes.Inspected));
+
+        await _sut.CreateAsync(new CreateDisposalRequestDto { AssetId = 7, InspectionNote = "Hỏng" }, 5);
+
+        Assert.Equal(7, added!.ActiveAssetId);
+    }
+
+    [Fact]
+    public async Task CreateAsync_DatabaseRejectsDuplicateActiveRequest_ThrowsConflict()
+    {
+        _assetRepoMock.Setup(r => r.GetByIdWithDetailsAsync(7))
+            .ReturnsAsync(new Asset { Id = 7, AssetCode = "PC-007", Status = AssetStatus.Broken });
+        _repoMock.Setup(r => r.AddAsync(It.IsAny<DisposalRequest>())).Returns(Task.CompletedTask);
+        _repoMock.SetupSequence(r => r.SaveChangesAsync())
+            .ThrowsAsync(new Microsoft.EntityFrameworkCore.DbUpdateException("duplicate", (Exception?)null));
+
+        await Assert.ThrowsAsync<DisposalConflictException>(
+            () => _sut.CreateAsync(new CreateDisposalRequestDto { AssetId = 7, InspectionNote = "Hỏng" }, 5));
+    }
+
+    [Fact]
+    public async Task RejectAsync_ClearsActiveAssetIdSoAssetCanGetNewRequest()
+    {
+        var request = MakeRequest(DisposalStatusCodes.Proposed, DeptIt);
+        request.ActiveAssetId = 7;
+        SetupRequest(request);
+
+        await _sut.RejectAsync(1, new ReviewDisposalRequestDto { Note = "Còn sửa được" }, 9, DeptIt);
+
+        Assert.Null(request.ActiveAssetId);
+    }
+
+    [Fact]
+    public async Task ApproveAsync_KeepsActiveAssetId()
+    {
+        var request = MakeRequest(DisposalStatusCodes.Proposed, DeptIt);
+        request.ActiveAssetId = 7;
+        SetupRequest(request);
+
+        await _sut.ApproveAsync(1, new ReviewDisposalRequestDto(), 9, DeptIt);
+
+        Assert.Equal(7, request.ActiveAssetId);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_ReleasesLicensesAndClearsActiveAssetIdInTheSameSave()
+    {
+        var request = MakeRequest(DisposalStatusCodes.Approved);
+        request.ActiveAssetId = 7;
+        SetupRequest(request);
+        _repoMock.Setup(r => r.ReleaseSoftwareLicensesAsync(7)).ReturnsAsync(3);
+
+        await _sut.CompleteAsync(1, new CompleteDisposalRequestDto { Note = "ok" }, 1);
+
+        Assert.Null(request.ActiveAssetId);
+        _repoMock.Verify(r => r.ReleaseSoftwareLicensesAsync(7), Times.Once);
+        _auditMock.Verify(a => a.RecordAsync(1, "Complete", "DisposalRequest", 1, It.IsAny<object?>(),
+            It.Is<object?>(o => o != null && o.ToString()!.Contains("ReleasedLicenses = 3"))), Times.Once);
+        _repoMock.Verify(r => r.SaveChangesAsync(), Times.Once);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_AutoClosedTicketGetsHistoryEntry()
+    {
+        var request = MakeRequest(DisposalStatusCodes.Approved);
+        SetupRequest(request);
+        var ticket = new MaintenanceTicket { Id = 3, AssetId = 7, Status = TicketStatus.Pending };
+        _ticketRepoMock.Setup(r => r.GetPendingByAssetAsync(7)).ReturnsAsync(new List<MaintenanceTicket> { ticket });
+
+        await _sut.CompleteAsync(1, new CompleteDisposalRequestDto(), 1);
+
+        var entry = Assert.Single(ticket.History);
+        Assert.Equal("AutoClosed", entry.Action);
+        Assert.Equal(TicketStatus.Failed, ticket.Status);
     }
 }

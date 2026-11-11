@@ -1,3 +1,5 @@
+using ITAM.API.Validators;
+using ITAM.API.Repositories.Models;
 using ITAM.API.Models.DTOs.AssetAllocations;
 using ITAM.API.Helpers;
 using ITAM.API.Models.DTOs.Common;
@@ -5,6 +7,7 @@ using ITAM.API.Models.Entities;
 using ITAM.API.Models.Enums;
 using ITAM.API.Repositories.Interfaces;
 using ITAM.API.Services.Interfaces;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace ITAM.API.Services.Implementations;
@@ -69,14 +72,37 @@ public class AssetAllocationService : IAssetAllocationService
             throw new DepartmentForbiddenException();
         }
 
+        // Manager chỉ thấy (và chỉ phân bổ cho) nhân viên thường — hồ sơ của Admin IT/Manager/Technician không hiện với họ.
+        if (string.Equals(currentUserRole, "Manager", StringComparison.Ordinal)
+            && employee.User?.Role?.Name is { } accountRole && !string.Equals(accountRole, "Employee", StringComparison.Ordinal))
+        {
+            throw new ArgumentException($"Nhân viên (EmployeeId={dto.EmployeeId}) không tồn tại.");
+        }
+
+        // Gửi lại cùng một yêu cầu (bấm hai lần, timeout rồi client/proxy retry): nếu lần đầu đã thành công thì trả lại đúng
+        // bản ghi đó thay vì báo lỗi "đã được cấp" gây hiểu nhầm. Chỉ coi là gửi lại khi trùng người nhận VÀ ngày giao.
+        var open = await _allocationRepository.GetOpenAllocationByAssetIdAsync(asset.Id);
+        if (open is not null)
+        {
+            if (open.EmployeeId == employee.Id && open.AllocatedDate == dto.AllocatedDate)
+            {
+                var existing = await _allocationRepository.GetByIdWithDetailsAsync(open.Id)
+                    ?? throw new AllocationNotFoundException(open.Id);
+                return MapToDto(existing);
+            }
+
+            throw new AssetAlreadyAllocatedException(asset.Id);
+        }
+
         if (asset.Status != AssetStatus.InUse)
         {
             throw new AssetNotAvailableForAllocationException(asset.Id);
         }
 
-        if (await _allocationRepository.HasOpenAllocationAsync(asset.Id))
+        if (asset.PurchaseDate.HasValue && dto.AllocatedDate < asset.PurchaseDate.Value)
         {
-            throw new AssetAlreadyAllocatedException(asset.Id);
+            throw new ArgumentException(
+                $"Ngày giao ({dto.AllocatedDate:dd/MM/yyyy}) không được trước ngày mua tài sản ({asset.PurchaseDate.Value:dd/MM/yyyy}).");
         }
 
         var allocation = new AssetAllocation
@@ -85,6 +111,8 @@ public class AssetAllocationService : IAssetAllocationService
             DepartmentId = employee.DepartmentId, // phòng ban nhận = phòng ban của nhân viên.
             EmployeeId = employee.Id,
             RecipientName = employee.FullName,    // bản chụp họ tên lúc phân bổ.
+            RecipientPosition = string.IsNullOrWhiteSpace(employee.Position) ? null : employee.Position.Trim(), // bản chụp chức danh.
+            ActiveAssetId = asset.Id,             // chốt chặn database: mỗi tài sản tối đa một phân bổ đang hiệu lực.
             AllocatedDate = dto.AllocatedDate,
             ReturnedDate = null,
             HandoverNote = NormalizeOptional(dto.HandoverNote),
@@ -98,7 +126,15 @@ public class AssetAllocationService : IAssetAllocationService
         };
 
         await _allocationRepository.AddAsync(allocation);
-        await _allocationRepository.SaveChangesAsync();
+        try
+        {
+            await _allocationRepository.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // Chỉ mục duy nhất ActiveAssetId: một phân bổ đang hiệu lực khác vừa được tạo cho tài sản này.
+            throw new AssetAlreadyAllocatedException(asset.Id);
+        }
 
         _logger.LogInformation(
             "Đã phân bổ AssetId={AssetId} cho DepartmentId={DepartmentId}, người nhận {RecipientName}.",
@@ -133,6 +169,15 @@ public class AssetAllocationService : IAssetAllocationService
 
         if (allocation.Status != AllocationStatus.Allocated || allocation.ReturnedDate is not null)
         {
+            // Gửi lại đúng yêu cầu thu hồi đã thành công (cùng ngày và tình trạng) -> trả lại kết quả cũ, không báo lỗi.
+            if (allocation.ReturnedDate == dto.ReturnedDate
+                && string.Equals(allocation.ReturnCondition?.ToString(), dto.Condition, StringComparison.Ordinal))
+            {
+                var done = await _allocationRepository.GetByIdWithDetailsAsync(id)
+                    ?? throw new AllocationNotFoundException(id);
+                return MapToDto(done);
+            }
+
             throw new AllocationAlreadyReturnedException(id);
         }
 
@@ -149,6 +194,7 @@ public class AssetAllocationService : IAssetAllocationService
         allocation.ReturnNote = string.IsNullOrWhiteSpace(dto.ReturnNote) ? null : dto.ReturnNote.Trim();
         allocation.ReceivedByUserId = currentUserId; // bên nhận lại trên biên bản thu hồi.
         allocation.Status = AllocationStatus.Returned;
+        allocation.ActiveAssetId = null; // lần phân bổ kết thúc: tài sản được phép phân bổ lại.
 
         // UC-15 bước 4: tài sản nhận lại ở tình trạng Damaged phải chuyển sang Broken.
         // Good giữ nguyên trạng thái hiện tại của Asset. allocation.Asset đã được Include ở trên nên
@@ -182,15 +228,71 @@ public class AssetAllocationService : IAssetAllocationService
         string? currentUserRole,
         int? currentUserDepartmentId,
         string? keyword = null,
-        int? employeeId = null)
+        int? employeeId = null,
+        int? categoryId = null,
+        DateOnly? allocatedFrom = null,
+        DateOnly? allocatedTo = null,
+        string? handoverCondition = null,
+        string? returnCondition = null,
+        int? holdingOverDays = null,
+        string? sort = null,
+        string? departmentScope = null)
     {
+        if (departmentScope is not null && departmentScope is not ("handover" or "employee" or "asset"))
+        {
+            throw new ArgumentException("departmentScope không hợp lệ. Phải là một trong: handover, employee, asset");
+        }
+
         var parsedStatus = ParseStatusOrThrow(status);
         var scopedDepartmentId = ResolveDepartmentScope(
             departmentId,
             currentUserRole,
             currentUserDepartmentId);
 
+        if (allocatedFrom.HasValue && allocatedTo.HasValue && allocatedFrom > allocatedTo)
+        {
+            throw new ArgumentException("allocatedFrom không được lớn hơn allocatedTo.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(handoverCondition) && !CreateAssetAllocationValidator.AllowedConditions.Contains(handoverCondition))
+        {
+            throw new ArgumentException($"handoverCondition không hợp lệ. Phải là một trong: {string.Join(", ", CreateAssetAllocationValidator.AllowedConditions)}");
+        }
+
+        AssetReturnCondition? parsedReturnCondition = null;
+        if (!string.IsNullOrWhiteSpace(returnCondition))
+        {
+            if (!Enum.GetNames<AssetReturnCondition>().Contains(returnCondition, StringComparer.Ordinal))
+            {
+                throw new ArgumentException($"returnCondition không hợp lệ. Phải là một trong: {string.Join(", ", Enum.GetNames<AssetReturnCondition>())}");
+            }
+
+            parsedReturnCondition = Enum.Parse<AssetReturnCondition>(returnCondition);
+        }
+
+        if (holdingOverDays is < 1 or > 3650)
+        {
+            throw new ArgumentException("holdingOverDays phải từ 1 đến 3650.");
+        }
+
+        if (sort is not null && sort is not ("newest" or "oldest"))
+        {
+            throw new ArgumentException("sort không hợp lệ. Phải là một trong: newest, oldest");
+        }
+
         (page, pageSize) = Paging.Normalize(page, pageSize);
+
+        var extras = new AllocationListExtras
+        {
+            CategoryId = categoryId,
+            AllocatedFrom = allocatedFrom,
+            AllocatedTo = allocatedTo,
+            HandoverCondition = string.IsNullOrWhiteSpace(handoverCondition) ? null : handoverCondition,
+            ReturnCondition = parsedReturnCondition,
+            HoldingBefore = holdingOverDays.HasValue ? VietnamTime.Today().AddDays(-holdingOverDays.Value) : null,
+            Sort = sort,
+            DepartmentScope = departmentScope ?? "handover",
+        };
 
         var (items, totalItems) = await _allocationRepository.GetPagedAsync(
             scopedDepartmentId,
@@ -198,7 +300,8 @@ public class AssetAllocationService : IAssetAllocationService
             keyword,
             employeeId,
             page,
-            pageSize);
+            pageSize,
+            extras);
 
         return new PagedResultDto<AssetAllocationResponseDto>
         {
@@ -254,8 +357,9 @@ public class AssetAllocationService : IAssetAllocationService
         var employeeParty = new DocumentPartyDto
         {
             FullName = allocation.Employee?.FullName ?? allocation.RecipientName,
-            Position = allocation.Employee?.Position,
-            DepartmentName = allocation.Employee?.Department?.Name ?? allocation.Department?.Name,
+            // Biên bản phản ánh thời điểm giao nhận: chức danh và phòng ban lấy từ bản chụp lúc giao, không đổi theo hồ sơ hiện tại.
+            Position = allocation.RecipientPosition ?? allocation.Employee?.Position,
+            DepartmentName = allocation.Department?.Name ?? allocation.Employee?.Department?.Name,
         };
 
         // Bên thực hiện phía công ty (người dùng hệ thống): chức danh = vai trò, bộ phận = phòng ban của người đó.
@@ -293,11 +397,24 @@ public class AssetAllocationService : IAssetAllocationService
         };
     }
 
+    // Cảnh báo "quá hạn bảo trì" cho các phân bổ ĐANG MỞ. Quy tắc:
+    //  - Mốc tính = lần bảo trì HOÀN TẤT gần nhất của tài sản; chưa có thì ngày mua; chưa có nữa thì ngày giao.
+    //    (Phiếu chờ xử lý / không xử lý được không phải "đã bảo trì".)
+    //  - Số ngày = hôm nay (giờ Việt Nam) − mốc. Quá hạn khi số ngày > ngưỡng.
+    //  - Tài sản đang có phiếu bảo trì chờ xử lý thì không cảnh báo (việc đã được tiếp nhận).
+    //  - Tính lại mỗi lần gọi từ dữ liệu hiện tại nên luôn phản ánh phiếu/ngày mới nhất; phân bổ đã thu hồi không còn xuất hiện.
+    //  - Mức ưu tiên: High khi số ngày >= 2 x ngưỡng, còn lại Normal.
     public async Task<IReadOnlyList<OverdueAllocationDto>> GetOverdueAsync(
         int thresholdDays,
         string? currentUserRole,
-        int? currentUserDepartmentId)
+        int? currentUserDepartmentId,
+        string? severity = null)
     {
+        if (severity is not null && severity is not ("High" or "Normal"))
+        {
+            throw new ArgumentException("severity không hợp lệ. Phải là một trong: High, Normal");
+        }
+
         thresholdDays = Math.Clamp(thresholdDays, 1, 3650);
         var scopedDepartmentId = ResolveDepartmentScope(
             null,
@@ -305,20 +422,52 @@ public class AssetAllocationService : IAssetAllocationService
             currentUserDepartmentId);
 
         var candidates = await _allocationRepository.GetOpenAllocationCandidatesAsync(scopedDepartmentId);
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = VietnamTime.Today();
 
         var result = new List<OverdueAllocationDto>();
         foreach (var candidate in candidates)
         {
+            if (candidate.HasPendingTicket)
+            {
+                continue;
+            }
+
             var lastMaintenanceDate = candidate.LastMaintenanceDate.HasValue
                 ? DateOnly.FromDateTime(candidate.LastMaintenanceDate.Value)
                 : (DateOnly?)null;
 
-            // Chưa từng có phiếu bảo trì -> dùng PurchaseDate; nếu cũng không có -> dùng AllocatedDate
-            // (Mục B2, "cảnh báo quá hạn bảo trì": đề xuất cụ thể hoá, chưa có UC riêng mô tả chi tiết).
-            var comparisonDate = lastMaintenanceDate ?? candidate.AssetPurchaseDate ?? candidate.AllocatedDate;
-            var daysSinceLastMaintenance = today.DayNumber - comparisonDate.DayNumber;
-            if (daysSinceLastMaintenance <= thresholdDays)
+            DateOnly referenceDate;
+            string source;
+            if (lastMaintenanceDate.HasValue || candidate.AssetPurchaseDate.HasValue)
+            {
+                // Lấy mốc muộn hơn giữa "bảo trì gần nhất" và "ngày mua" (bảo trì trước ngày mua là dữ liệu sai, không dùng).
+                var maintenance = lastMaintenanceDate ?? DateOnly.MinValue;
+                var purchase = candidate.AssetPurchaseDate ?? DateOnly.MinValue;
+                if (maintenance >= purchase)
+                {
+                    referenceDate = maintenance;
+                    source = "LastMaintenance";
+                }
+                else
+                {
+                    referenceDate = purchase;
+                    source = "PurchaseDate";
+                }
+            }
+            else
+            {
+                referenceDate = candidate.AllocatedDate;
+                source = "AllocatedDate";
+            }
+
+            var daysSince = today.DayNumber - referenceDate.DayNumber;
+            if (daysSince <= thresholdDays)
+            {
+                continue;
+            }
+
+            var level = daysSince >= thresholdDays * 2 ? "High" : "Normal";
+            if (severity is not null && level != severity)
             {
                 continue;
             }
@@ -332,11 +481,16 @@ public class AssetAllocationService : IAssetAllocationService
                 DepartmentName = candidate.DepartmentName,
                 RecipientName = candidate.RecipientName,
                 LastMaintenanceDate = lastMaintenanceDate,
-                DaysSinceLastMaintenance = daysSinceLastMaintenance,
+                DaysSinceLastMaintenance = daysSince,
+                ReferenceDate = referenceDate,
+                ReferenceSource = source,
+                AllocatedDate = candidate.AllocatedDate,
+                ThresholdDays = thresholdDays,
+                Severity = level,
             });
         }
 
-        return result.OrderByDescending(x => x.DaysSinceLastMaintenance).ToList();
+        return result.OrderByDescending(x => x.DaysSinceLastMaintenance).ThenBy(x => x.AssetCode, StringComparer.Ordinal).ToList();
     }
 
     private static string? NormalizeOptional(string? value) =>
@@ -396,7 +550,7 @@ public class AssetAllocationService : IAssetAllocationService
         RecipientName = allocation.RecipientName,
         EmployeeId = allocation.EmployeeId,
         EmployeeCode = allocation.Employee?.EmployeeCode,
-        EmployeePosition = allocation.Employee?.Position,
+        EmployeePosition = allocation.RecipientPosition ?? allocation.Employee?.Position,
         AllocatedDate = allocation.AllocatedDate,
         ReturnedDate = allocation.ReturnedDate,
         HandoverNote = allocation.HandoverNote,
@@ -406,5 +560,9 @@ public class AssetAllocationService : IAssetAllocationService
         ReturnCondition = allocation.ReturnCondition?.ToString(),
         ReturnNote = allocation.ReturnNote,
         Status = allocation.Status.ToString(),
+        AssetDepartmentName = allocation.Asset?.Department?.Name ?? "",
+        EmployeeCurrentDepartmentName = allocation.Employee?.Department?.Name,
+        IsOpen = allocation.Status == AllocationStatus.Allocated && allocation.ReturnedDate is null,
+        HoldingDays = Math.Max(0, (allocation.ReturnedDate ?? VietnamTime.Today()).DayNumber - allocation.AllocatedDate.DayNumber),
     };
 }

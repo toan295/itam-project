@@ -19,4 +19,10 @@ public class RoleRepository : IRoleRepository
 
     public Task<bool> ExistsAsync(int roleId) =>
         _db.Roles.AnyAsync(r => r.Id == roleId);
+
+    public Task<bool> HasNameAsync(int roleId, string roleName) =>
+        _db.Roles.AnyAsync(r => r.Id == roleId && r.Name == roleName);
+
+    public async Task<int?> GetIdByNameAsync(string roleName) =>
+        await _db.Roles.AsNoTracking().Where(r => r.Name == roleName).Select(r => (int?)r.Id).FirstOrDefaultAsync();
 }

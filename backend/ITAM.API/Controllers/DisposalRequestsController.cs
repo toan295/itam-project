@@ -1,3 +1,4 @@
+using ITAM.API.Authorization;
 using System.Security.Claims;
 using FluentValidation;
 using ITAM.API.Models.DTOs;
@@ -38,11 +39,21 @@ public class DisposalRequestsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetList(
         [FromQuery] int? departmentId, [FromQuery] int? assetId, [FromQuery] string? status,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
+        [FromQuery] string? keyword = null, [FromQuery] int? categoryId = null,
+        [FromQuery] DateOnly? fromDate = null, [FromQuery] DateOnly? toDate = null, [FromQuery] string? sort = null)
     {
-        var result = await _service.GetPagedAsync(
-            departmentId, assetId, status, page, pageSize, GetRole(), GetDepartmentId(), GetUserId());
-        return Ok(ApiResponse<object>.Ok(result));
+        try
+        {
+            var result = await _service.GetPagedAsync(
+                departmentId, assetId, status, page, pageSize, GetRole(), GetDepartmentId(), GetUserId(),
+                keyword, categoryId, fromDate, toDate, sort);
+            return Ok(ApiResponse<object>.Ok(result));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<object>.Fail(ex.Message));
+        }
     }
 
     // Tài sản Hỏng chưa có phiếu thanh lý đang mở.
@@ -56,7 +67,7 @@ public class DisposalRequestsController : ControllerBase
 
     // Bước 1: Technician kiểm tra tài sản.
     [HttpPost]
-    [Authorize(Roles = "Technician")]
+    [HasPermission(Permissions.DisposalsInspect)]
     public async Task<IActionResult> Create(CreateDisposalRequestDto dto)
     {
         var bad = await ValidateAsync(_createValidator, dto);
@@ -71,7 +82,7 @@ public class DisposalRequestsController : ControllerBase
 
     // Bước 2: Technician đề xuất thanh lý.
     [HttpPost("{id:int}/propose")]
-    [Authorize(Roles = "Technician")]
+    [HasPermission(Permissions.DisposalsInspect)]
     public async Task<IActionResult> Propose(int id, ProposeDisposalRequestDto dto)
     {
         var bad = await ValidateAsync(_proposeValidator, dto);
@@ -83,7 +94,7 @@ public class DisposalRequestsController : ControllerBase
 
     // Bước 3: Manager duyệt / từ chối (chỉ phiếu của phòng ban mình).
     [HttpPost("{id:int}/approve")]
-    [Authorize(Roles = "Manager")]
+    [HasPermission(Permissions.DisposalsApprove)]
     public async Task<IActionResult> Approve(int id, ReviewDisposalRequestDto dto)
     {
         var bad = await ValidateAsync(_reviewValidator, dto);
@@ -94,7 +105,7 @@ public class DisposalRequestsController : ControllerBase
     }
 
     [HttpPost("{id:int}/reject")]
-    [Authorize(Roles = "Manager")]
+    [HasPermission(Permissions.DisposalsApprove)]
     public async Task<IActionResult> Reject(int id, ReviewDisposalRequestDto dto)
     {
         var bad = await ValidateAsync(_reviewValidator, dto);
@@ -106,7 +117,7 @@ public class DisposalRequestsController : ControllerBase
 
     // Bước 4: Admin IT thực hiện thanh lý.
     [HttpPost("{id:int}/complete")]
-    [Authorize(Roles = "Admin IT")]
+    [HasPermission(Permissions.DisposalsExecute)]
     public async Task<IActionResult> Complete(int id, CompleteDisposalRequestDto dto)
     {
         var bad = await ValidateAsync(_completeValidator, dto);
@@ -117,7 +128,7 @@ public class DisposalRequestsController : ControllerBase
     }
 
     [HttpPatch("{id:int}/sub-status")]
-    [Authorize(Roles = "Admin IT")]
+    [HasPermission(Permissions.DisposalsExecute)]
     public Task<IActionResult> SetSubStatus(int id, SetDisposalSubStatusRequestDto dto) =>
         Run(async () =>
             Ok(ApiResponse<object>.Ok(await _service.SetSubStatusAsync(id, dto.SubStatusId, GetUserId()), "Đã cập nhật trạng thái phụ.")));

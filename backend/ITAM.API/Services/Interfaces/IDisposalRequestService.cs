@@ -7,7 +7,8 @@ public interface IDisposalRequestService
 {
     Task<PagedResultDto<DisposalRequestResponseDto>> GetPagedAsync(
         int? departmentId, int? assetId, string? statusCode, int page, int pageSize,
-        string? currentUserRole, int? currentUserDepartmentId, int currentUserId);
+        string? currentUserRole, int? currentUserDepartmentId, int currentUserId,
+        string? keyword = null, int? categoryId = null, DateOnly? fromDate = null, DateOnly? toDate = null, string? sort = null);
 
     // Tài sản đang ở trạng thái Hỏng và chưa có phiếu thanh lý đang mở — "hàng đợi" để Technician kiểm tra/đề xuất.
     Task<PagedResultDto<DisposalCandidateDto>> GetCandidatesAsync(

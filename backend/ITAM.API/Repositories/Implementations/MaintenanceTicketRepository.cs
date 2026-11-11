@@ -25,6 +25,7 @@ public class MaintenanceTicketRepository : IMaintenanceTicketRepository
         _db.MaintenanceTickets
             .Include(t => t.Asset)
             .Include(t => t.Technician)
+            .Include(t => t.ReportedBy)
             .FirstOrDefaultAsync(t => t.Id == id);
 
     public async Task AddAsync(MaintenanceTicket ticket) => await _db.MaintenanceTickets.AddAsync(ticket);
@@ -54,16 +55,44 @@ public class MaintenanceTicketRepository : IMaintenanceTicketRepository
     public Task<List<MaintenanceTicket>> GetPendingByAssetAsync(int assetId) =>
         _db.MaintenanceTickets.Where(t => t.AssetId == assetId && t.Status == TicketStatus.Pending).ToListAsync();
 
-    public Task<bool> TechnicianExistsAsync(int userId) =>
-        _db.Users.AnyAsync(u => u.Id == userId && u.IsActive && u.Role.Name == TechnicianRoleName);
-
-    public async Task<(List<MaintenanceTicket> Items, int TotalItems)> GetPagedAsync(
-        int? departmentId, int? assetId, TicketStatus? status, TicketPriority? priority, bool? closed,
-        DateTime? fromDate, DateTime? toDate, int? technicianScopeUserId, int page, int pageSize)
+    public async Task<(List<MaintenanceTicket> Items, int TotalItems)> GetByReporterPagedAsync(
+        int reportedByUserId, int page, int pageSize)
     {
         var query = _db.MaintenanceTickets.AsNoTracking()
             .Include(t => t.Asset)
             .Include(t => t.Technician)
+            .Where(t => t.ReportedByUserId == reportedByUserId);
+
+        var total = await query.CountAsync();
+        var items = await query
+            .OrderByDescending(t => t.ReportedDate).ThenByDescending(t => t.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+        return (items, total);
+    }
+
+    public Task<bool> TechnicianExistsAsync(int userId) =>
+        _db.Users.AnyAsync(u => u.Id == userId && u.IsActive && u.Role.Name == TechnicianRoleName);
+
+    public Task<string?> GetUserFullNameAsync(int userId) =>
+        _db.Users.Where(u => u.Id == userId).Select(u => (string?)u.FullName).FirstOrDefaultAsync();
+
+    public Task<List<MaintenanceTicketHistory>> GetHistoryAsync(int ticketId) =>
+        _db.MaintenanceTicketHistories.AsNoTracking()
+            .Where(h => h.TicketId == ticketId)
+            .OrderBy(h => h.CreatedAt).ThenBy(h => h.Id)
+            .ToListAsync();
+
+    public async Task<(List<MaintenanceTicket> Items, int TotalItems)> GetPagedAsync(
+        int? departmentId, int? assetId, TicketStatus? status, TicketPriority? priority, bool? closed,
+        DateTime? fromDate, DateTime? toDate, int? technicianScopeUserId, int page, int pageSize, string? keyword,
+        TicketListExtras extras)
+    {
+        var query = _db.MaintenanceTickets.AsNoTracking()
+            .Include(t => t.Asset)
+            .Include(t => t.Technician)
+            .Include(t => t.ReportedBy)
             .AsQueryable();
 
         if (departmentId.HasValue)
@@ -71,12 +100,20 @@ public class MaintenanceTicketRepository : IMaintenanceTicketRepository
             query = query.Where(t => t.Asset.DepartmentId == departmentId.Value);
         }
 
-        // Technician chỉ thấy phiếu được giao cho mình và phiếu chưa ai nhận (để tự nhận) — không thấy
-        // phiếu/tên của kỹ thuật viên khác.
+        // Technician chỉ thấy phiếu Admin đã phân công cho mình — không thấy phiếu chưa phân công hay của người khác.
         if (technicianScopeUserId.HasValue)
         {
             var me = technicianScopeUserId.Value;
-            query = query.Where(t => t.TechnicianId == me || t.TechnicianId == null);
+            query = query.Where(t => t.TechnicianId == me);
+        }
+
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            var kw = keyword.Trim();
+            query = query.Where(t =>
+                t.Asset.AssetCode.Contains(kw) || t.Asset.Name.Contains(kw) || t.IssueDescription.Contains(kw) ||
+                (t.ReportedBy != null && t.ReportedBy.FullName.Contains(kw)) ||
+                (t.Technician != null && t.Technician.FullName.Contains(kw)));
         }
 
         if (assetId.HasValue)
@@ -112,15 +149,41 @@ public class MaintenanceTicketRepository : IMaintenanceTicketRepository
             query = query.Where(t => t.ReportedDate < toDate.Value);
         }
 
+        if (extras.TechnicianId.HasValue)
+        {
+            query = query.Where(t => t.TechnicianId == extras.TechnicianId.Value);
+        }
+
+        if (extras.Unassigned == true)
+        {
+            query = query.Where(t => t.TechnicianId == null);
+        }
+
+        if (extras.CategoryId.HasValue)
+        {
+            query = query.Where(t => t.Asset.CategoryId == extras.CategoryId.Value);
+        }
+
+        if (extras.PendingBefore.HasValue)
+        {
+            query = query.Where(t => t.Status == TicketStatus.Pending && t.ReportedDate <= extras.PendingBefore.Value);
+        }
+
         var total = await query.CountAsync();
-        var items = await query
-            // Việc đang chờ xử lý lên trước; trong đó gấp nhất trước (Khẩn cấp -> Cao -> Bình thường -> Thấp),
+        var ordered = extras.Sort switch
+        {
+            "newest" => query.OrderByDescending(t => t.ReportedDate).ThenByDescending(t => t.Id),
+            "oldest" => query.OrderBy(t => t.ReportedDate).ThenBy(t => t.Id),
+            // Mặc định: việc đang chờ xử lý lên trước; trong đó gấp nhất trước (Khẩn cấp -> Cao -> Bình thường -> Thấp),
             // cùng mức thì phiếu báo sớm nhất (chờ lâu nhất) trước. Phiếu đã đóng nằm sau, mới nhất trước.
-            .OrderBy(t => t.Status != TicketStatus.Pending)
-            .ThenByDescending(t => t.Status == TicketStatus.Pending ? (int)t.Priority : 0)
-            .ThenBy(t => t.Status == TicketStatus.Pending ? t.ReportedDate : (DateTime?)null)
-            .ThenByDescending(t => t.ReportedDate)
-            .ThenByDescending(t => t.Id)
+            _ => query
+                .OrderBy(t => t.Status != TicketStatus.Pending)
+                .ThenByDescending(t => t.Status == TicketStatus.Pending ? (int)t.Priority : 0)
+                .ThenBy(t => t.Status == TicketStatus.Pending ? t.ReportedDate : (DateTime?)null)
+                .ThenByDescending(t => t.ReportedDate)
+                .ThenByDescending(t => t.Id),
+        };
+        var items = await ordered
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();

@@ -17,6 +17,10 @@ public class Asset
     public DateOnly? WarrantyExpiry { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    // Số phiên bản bản ghi — tự tăng mỗi lần lưu (AppDbContext.SaveChanges). Client gửi lại khi sửa để phát hiện
+    // dữ liệu đã bị người khác đổi (optimistic concurrency, trả 409).
+    public int Version { get; set; } = 1;
+
     public AssetCategory Category { get; set; } = null!;
     public Department Department { get; set; } = null!;
     public ICollection<AssetSoftwareLicense> AssetSoftwareLicenses { get; set; } = new List<AssetSoftwareLicense>();

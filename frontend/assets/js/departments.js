@@ -1,7 +1,7 @@
 const session = requireAuth("login.html");
 renderNav({ active: "departments", basePath: "../" });
 
-const isAdmin = session.role === "Admin IT";
+const isAdmin = can("departments.manage");
 let departmentModal;
 let currentItems = []; // Tra cứu lại theo id khi Sửa — không nhúng JSON vào onclick (tránh XSS).
 

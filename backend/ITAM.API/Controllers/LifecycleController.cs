@@ -1,3 +1,4 @@
+using ITAM.API.Authorization;
 using FluentValidation;
 using ITAM.API.Models.DTOs;
 using ITAM.API.Models.DTOs.Common;
@@ -6,12 +7,13 @@ using ITAM.API.Services.Implementations;
 using ITAM.API.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace ITAM.API.Controllers;
 
 [ApiController]
 [Route("api/v1/lifecycle")]
-[Authorize(Roles = "Admin IT")]
+[HasPermission(Permissions.LifecycleView)]
 public class LifecycleController : ControllerBase
 {
     private readonly ILifecycleAnalysisService _service;
@@ -27,9 +29,9 @@ public class LifecycleController : ControllerBase
 
     [HttpGet("stats")]
     [ProducesResponseType(typeof(ApiResponse<LifecycleStatsDto>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetStats([FromQuery] int? departmentId = null)
+    public async Task<IActionResult> GetStats([FromQuery] int? departmentId = null, [FromQuery] int? categoryId = null)
     {
-        var result = await _service.GetStatsAsync(departmentId);
+        var result = await _service.GetStatsAsync(departmentId, categoryId);
         return Ok(ApiResponse<LifecycleStatsDto>.Ok(result));
     }
 
@@ -41,7 +43,11 @@ public class LifecycleController : ControllerBase
         [FromQuery] int? categoryId = null,
         [FromQuery] string sortBy = "score",
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 20)
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? keyword = null,
+        [FromQuery] string? reason = null,
+        [FromQuery] bool? underWarranty = null,
+        [FromQuery] int? minScore = null)
     {
         try
         {
@@ -50,7 +56,11 @@ public class LifecycleController : ControllerBase
                 categoryId,
                 sortBy,
                 page,
-                pageSize);
+                pageSize,
+                keyword,
+                reason,
+                underWarranty,
+                minScore);
             return Ok(ApiResponse<PagedResultDto<ReplacementRecommendationDto>>.Ok(result));
         }
         catch (ArgumentException ex)
@@ -67,7 +77,10 @@ public class LifecycleController : ControllerBase
         [FromQuery] int? categoryId = null,
         [FromQuery] int months = 12,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 20)
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? keyword = null,
+        [FromQuery] string? reason = null,
+        [FromQuery] int? minTickets = null)
     {
         try
         {
@@ -76,7 +89,10 @@ public class LifecycleController : ControllerBase
                 categoryId,
                 months,
                 page,
-                pageSize);
+                pageSize,
+                keyword,
+                reason,
+                minTickets);
             return Ok(ApiResponse<PagedResultDto<UpcomingReplacementDto>>.Ok(result));
         }
         catch (ArgumentException ex)
@@ -114,6 +130,7 @@ public class LifecycleController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<LifecyclePolicyDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> UpsertPolicy(
         int categoryId,
         UpsertLifecyclePolicyRequestDto dto)
@@ -128,7 +145,7 @@ public class LifecycleController : ControllerBase
 
         try
         {
-            var result = await _service.UpsertPolicyAsync(categoryId, dto);
+            var result = await _service.UpsertPolicyAsync(categoryId, dto, GetCurrentUserId());
             return Ok(ApiResponse<LifecyclePolicyDto>.Ok(result, "Đã lưu ngưỡng vòng đời theo loại tài sản."));
         }
         catch (ArgumentException ex)
@@ -139,21 +156,39 @@ public class LifecycleController : ControllerBase
         {
             return NotFound(ApiResponse<object>.Fail(ex.Message));
         }
+        catch (LifecyclePolicyConflictException ex)
+        {
+            return Conflict(ApiResponse<object>.Fail(ex.Message));
+        }
     }
 
+    // "Về mặc định" MỘT loại: xoá ngưỡng riêng của đúng loại đó (không đụng loại khác), kèm version để không xoá nhầm bản mới hơn.
     [HttpDelete("policies/{categoryId:int}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> DeletePolicy(int categoryId)
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> DeletePolicy(int categoryId, [FromQuery] int? version = null)
     {
         try
         {
-            await _service.DeletePolicyAsync(categoryId);
+            await _service.DeletePolicyAsync(categoryId, version);
             return NoContent();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<object>.Fail(ex.Message));
         }
         catch (LifecyclePolicyNotFoundException ex)
         {
             return NotFound(ApiResponse<object>.Fail(ex.Message));
         }
+        catch (LifecyclePolicyConflictException ex)
+        {
+            return Conflict(ApiResponse<object>.Fail(ex.Message));
+        }
     }
+
+    private int? GetCurrentUserId() =>
+        int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) ? userId : null;
 }

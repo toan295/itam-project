@@ -1,3 +1,4 @@
+using ITAM.API.Repositories.Models;
 using ITAM.API.Models.DTOs.Assets;
 using ITAM.API.Helpers;
 using ITAM.API.Models.DTOs.Common;
@@ -88,6 +89,9 @@ public class AssetService : IAssetService
             throw new DepartmentForbiddenException();
         }
 
+        // Màn hình sửa đang giữ dữ liệu cũ (người khác đã đổi tài sản này) -> từ chối thay vì ghi đè.
+        ConcurrencyConflictException.EnsureCurrent(asset.Version, dto.Version);
+
         if (!TryParseAssetStatus(dto.Status, out var status))
         {
             throw new ArgumentException(
@@ -168,14 +172,21 @@ public class AssetService : IAssetService
         {
             if (!await _ticketRepo.HasPendingTicketAsync(assetId))
             {
-                await _ticketRepo.AddAsync(new MaintenanceTicket
+                var autoTicket = new MaintenanceTicket
                 {
                     AssetId = assetId,
                     IssueDescription = "Tài sản được chuyển sang trạng thái Bảo trì (phiếu tạo tự động từ trang Tài sản). Vui lòng cập nhật nội dung bảo trì.",
                     Status = TicketStatus.Pending,
                     Priority = TicketPriority.Normal,
                     ReportedDate = DateTime.UtcNow,
+                };
+                autoTicket.History.Add(new MaintenanceTicketHistory
+                {
+                    Action = "AutoCreated",
+                    ToValue = TicketPriority.Normal.ToString(),
+                    Reason = "Tạo tự động khi tài sản được chuyển sang trạng thái Bảo trì từ trang Tài sản.",
                 });
+                await _ticketRepo.AddAsync(autoTicket);
             }
         }
         else if (previous == AssetStatus.Maintenance && next != AssetStatus.Maintenance)
@@ -183,9 +194,17 @@ public class AssetService : IAssetService
             var closeAs = next == AssetStatus.Broken ? TicketStatus.Failed : TicketStatus.Resolved;
             foreach (var ticket in await _ticketRepo.GetPendingByAssetAsync(assetId))
             {
+                var autoNote = $"Đóng tự động: tài sản được đổi trạng thái sang {(next == AssetStatus.Broken ? "Hỏng" : "Đang sử dụng")} từ trang Tài sản.";
+                ticket.History.Add(new MaintenanceTicketHistory
+                {
+                    Action = "AutoClosed",
+                    FromValue = ticket.Status.ToString(),
+                    ToValue = closeAs.ToString(),
+                    Reason = autoNote,
+                });
                 ticket.Status = closeAs;
                 ticket.ResolvedDate = DateTime.UtcNow;
-                ticket.Notes = $"Đóng tự động: tài sản được đổi trạng thái sang {(next == AssetStatus.Broken ? "Hỏng" : "Đang sử dụng")} từ trang Tài sản.";
+                ticket.Notes = autoNote;
             }
         }
     }
@@ -237,9 +256,23 @@ public class AssetService : IAssetService
 
         var (page, pageSize) = Paging.Normalize(filter.Page, filter.PageSize);
 
+        ValidateAdvancedSearch(filter);
         var (items, total) = await _repo.SearchAsync(
-            filter.Keyword, scopedDepartmentId, filter.CategoryId, parsedStatus,
-            filter.PurchaseYear, isUnderWarranty, orAssignedTechnicianId: null,
+            new AssetQueryCriteria
+            {
+                Keyword = filter.Keyword,
+                DepartmentId = scopedDepartmentId,
+                CategoryId = filter.CategoryId,
+                Status = parsedStatus,
+                PurchaseYear = filter.PurchaseYear,
+                IsUnderWarranty = isUnderWarranty,
+                OrAssignedTechnicianId = null,
+                IsAllocated = filter.AllocationState switch { "allocated" => true, "free" => false, _ => null },
+                WarrantyExpiringInDays = filter.WarrantyExpiringInDays,
+                PurchasedFrom = filter.PurchasedFrom,
+                PurchasedTo = filter.PurchasedTo,
+                Sort = filter.Sort,
+            },
             page, pageSize);
 
         return new PagedResultDto<AssetResponseDto>
@@ -249,6 +282,36 @@ public class AssetService : IAssetService
             PageSize = pageSize,
             TotalItems = total,
         };
+    }
+
+    private static readonly string[] AssetSorts = { "code", "name", "purchaseDate", "warrantyExpiry", "newest" };
+
+    private static void ValidateAdvancedSearch(AssetSearchFilterDto f)
+    {
+        if (f.PurchaseYear.HasValue && (f.PurchaseYear < DateRules.MinPurchaseYear || f.PurchaseYear > DateRules.LatestAllowedDate().Year))
+        {
+            throw new ArgumentException($"Năm mua phải từ {DateRules.MinPurchaseYear} đến {DateRules.LatestAllowedDate().Year}.");
+        }
+
+        if (f.AllocationState is not null && f.AllocationState is not ("allocated" or "free"))
+        {
+            throw new ArgumentException("AllocationState không hợp lệ. Phải là một trong: allocated, free");
+        }
+
+        if (f.WarrantyExpiringInDays is < 1 or > 365)
+        {
+            throw new ArgumentException("WarrantyExpiringInDays phải từ 1 đến 365.");
+        }
+
+        if (f.PurchasedFrom.HasValue && f.PurchasedTo.HasValue && f.PurchasedFrom > f.PurchasedTo)
+        {
+            throw new ArgumentException("PurchasedFrom không được lớn hơn PurchasedTo.");
+        }
+
+        if (f.Sort is not null && !AssetSorts.Contains(f.Sort))
+        {
+            throw new ArgumentException($"Sort không hợp lệ. Phải là một trong: {string.Join(", ", AssetSorts)}");
+        }
     }
 
     private static AssetStatus? ParseStatusOrThrow(string? status)
@@ -372,5 +435,6 @@ public class AssetService : IAssetService
         PurchaseDate = a.PurchaseDate,
         WarrantyExpiry = a.WarrantyExpiry,
         IsUnderWarranty = a.WarrantyExpiry.HasValue && a.WarrantyExpiry.Value >= DateOnly.FromDateTime(DateTime.UtcNow),
+        Version = a.Version,
     };
 }

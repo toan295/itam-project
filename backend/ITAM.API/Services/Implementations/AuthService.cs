@@ -17,7 +17,6 @@ public class AuthService : IAuthService
     private readonly IUserRepository _userRepository;
     private readonly JwtHelper _jwtHelper;
     private readonly ILoginAttemptTracker _loginAttempts;
-    private readonly IDefaultPasswordService _defaultPassword;
     private readonly ILogger<AuthService> _logger;
     private readonly IAuditLogService _auditLog;
 
@@ -25,14 +24,12 @@ public class AuthService : IAuthService
         IUserRepository userRepository,
         JwtHelper jwtHelper,
         ILoginAttemptTracker loginAttempts,
-        IDefaultPasswordService defaultPassword,
         ILogger<AuthService> logger,
         IAuditLogService auditLog)
     {
         _userRepository = userRepository;
         _jwtHelper = jwtHelper;
         _loginAttempts = loginAttempts;
-        _defaultPassword = defaultPassword;
         _logger = logger;
         _auditLog = auditLog;
     }
@@ -93,6 +90,8 @@ public class AuthService : IAuthService
             Id = user.Id,
             FullName = user.FullName,
             Email = user.Email,
+            Phone = user.Phone,
+            DepartmentName = user.Department?.Name ?? string.Empty,
             Role = user.Role.Name,
             DepartmentId = user.DepartmentId,
             IsActive = user.IsActive,
@@ -121,12 +120,6 @@ public class AuthService : IAuthService
             throw new ArgumentException(policyError);
         }
 
-        // Không cho "đổi" sang lại chính mật khẩu mặc định (mọi tài khoản mới đều biết giá trị này).
-        if (await _defaultPassword.IsDefaultPasswordAsync(dto.NewPassword))
-        {
-            throw new ArgumentException("Mật khẩu mới không được trùng mật khẩu mặc định của hệ thống.");
-        }
-
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword, BCryptWorkFactor);
         user.MustChangePassword = false;
         await _auditLog.RecordAsync(user.Id, "ChangePassword", "User", user.Id);
@@ -143,7 +136,20 @@ public class AuthService : IAuthService
     {
         try
         {
-            await _auditLog.RecordAsync(userId, action, "User", userId, null, newValue);
+            if (action == "LoginFailed")
+            {
+                // Đăng nhập thất bại là yêu cầu bị TỪ CHỐI, không được ghi chung như một sự kiện thành công.
+                var reason = (newValue?.GetType().GetProperty("reason")?.GetValue(newValue) as string) == "AccountLocked"
+                    ? "Tài khoản đã bị khoá."
+                    : "Sai mật khẩu.";
+                await _auditLog.RecordEventAsync(new Auditing.AuditEvent(
+                    userId, action, "User", userId, Models.Entities.AuditOutcome.Rejected, null, null, 401, reason, newValue));
+            }
+            else
+            {
+                await _auditLog.RecordAsync(userId, action, "User", userId, null, newValue);
+            }
+
             await _userRepository.SaveChangesAsync();
         }
         catch (Exception ex)

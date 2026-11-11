@@ -11,6 +11,13 @@ public class UpsertEmployeeRequestValidator : AbstractValidator<UpsertEmployeeRe
             .NotEmpty().WithMessage("Họ tên không được để trống.")
             .MaximumLength(100).WithMessage("Họ tên không được vượt quá 100 ký tự.");
         RuleFor(x => x.DepartmentId).GreaterThan(0).WithMessage("Phải chọn phòng ban.");
+        RuleFor(x => x.Email)
+            .NotEmpty().WithMessage("Email không được để trống.")
+            .EmailAddress().WithMessage("Email không đúng định dạng.")
+            .MaximumLength(150).WithMessage("Email không được vượt quá 150 ký tự.");
+        RuleFor(x => x.Phone)
+            .NotEmpty().WithMessage("Số điện thoại không được để trống.")
+            .Must(ITAM.API.Helpers.PhoneNumber.IsValid).WithMessage(ITAM.API.Helpers.PhoneNumber.InvalidMessage);
         RuleFor(x => x.Position).MaximumLength(100).WithMessage("Chức danh không được vượt quá 100 ký tự.");
     }
 }

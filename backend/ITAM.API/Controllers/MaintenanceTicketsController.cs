@@ -1,3 +1,4 @@
+using ITAM.API.Authorization;
 using System.Security.Claims;
 using FluentValidation;
 using ITAM.API.Models.DTOs;
@@ -38,13 +39,16 @@ public class MaintenanceTicketsController : ControllerBase
     public async Task<IActionResult> GetList(
         [FromQuery] int? departmentId, [FromQuery] int? assetId, [FromQuery] string? status,
         [FromQuery] DateOnly? fromDate, [FromQuery] DateOnly? toDate,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? priority = null, [FromQuery] bool? closed = null)
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? priority = null, [FromQuery] bool? closed = null,
+        [FromQuery] string? keyword = null, [FromQuery] int? technicianId = null, [FromQuery] bool? unassigned = null,
+        [FromQuery] int? categoryId = null, [FromQuery] int? pendingOverDays = null, [FromQuery] string? sort = null)
     {
         try
         {
             var result = await _ticketService.GetPagedAsync(
                 departmentId, assetId, status, fromDate, toDate, page, pageSize,
-                GetCurrentUserRole(), GetCurrentUserDepartmentId(), GetCurrentUserId(), priority, closed);
+                GetCurrentUserRole(), GetCurrentUserDepartmentId(), GetCurrentUserId(), priority, closed, keyword,
+                technicianId, unassigned, categoryId, pendingOverDays, sort);
             return Ok(ApiResponse<object>.Ok(result));
         }
         catch (ArgumentException ex)
@@ -54,7 +58,7 @@ public class MaintenanceTicketsController : ControllerBase
     }
 
     [HttpGet("stats")] // UC-13: tác nhân chỉ gồm Admin IT, Manager (Manager bị giới hạn phòng ban trong Service).
-    [Authorize(Roles = "Admin IT,Manager")]
+    [HasPermission(Permissions.MaintenanceStats)]
     public async Task<IActionResult> GetStats(
         [FromQuery] int? departmentId, [FromQuery] int? assetId,
         [FromQuery] DateOnly? fromDate, [FromQuery] DateOnly? toDate)
@@ -86,7 +90,9 @@ public class MaintenanceTicketsController : ControllerBase
         }
     }
 
-    [HttpPost] // UC-11: mọi role đã đăng nhập đều được tạo phiếu.
+    // UC-11: phiếu do người dùng được cấp tài sản (Employee) báo lỗi; Admin IT/Manager tạo hộ khi cần. Technician không tạo.
+    [HttpPost]
+    [HasPermission(Permissions.MaintenanceCreate)]
     public async Task<IActionResult> Create(CreateMaintenanceTicketRequestDto dto)
     {
         var validation = await _createValidator.ValidateAsync(dto);
@@ -121,7 +127,23 @@ public class MaintenanceTicketsController : ControllerBase
         }
     }
 
-    [HttpPatch("{id:int}/assign")] // Admin IT/Manager gán tự do; Technician chỉ tự nhận — phân biệt trong Service.
+    [HttpGet("{id:int}/history")]
+    public async Task<IActionResult> GetHistory(int id)
+    {
+        try
+        {
+            var result = await _ticketService.GetHistoryAsync(
+                id, GetCurrentUserRole(), GetCurrentUserDepartmentId(), GetCurrentUserId());
+            return Ok(ApiResponse<object>.Ok(result));
+        }
+        catch (MaintenanceTicketNotFoundException ex)
+        {
+            return NotFound(ApiResponse<object>.Fail(ex.Message));
+        }
+    }
+
+    [HttpPatch("{id:int}/assign")] // Admin IT/Manager phân công kỹ thuật viên; Technician không tự nhận.
+    [HasPermission(Permissions.MaintenanceAssign)]
     public async Task<IActionResult> Assign(int id, AssignTechnicianRequestDto dto)
     {
         var validation = await _assignValidator.ValidateAsync(dto);
@@ -160,7 +182,7 @@ public class MaintenanceTicketsController : ControllerBase
     }
 
     [HttpPatch("{id:int}/status")]
-    [Authorize(Roles = "Admin IT,Technician")] // UC-12: Manager bị chặn ngay ở tầng này.
+    [HasPermission(Permissions.MaintenanceUpdateStatus)] // UC-12: Manager bị chặn ngay ở tầng này.
     public async Task<IActionResult> UpdateStatus(int id, UpdateTicketStatusRequestDto dto)
     {
         var validation = await _statusValidator.ValidateAsync(dto);
@@ -195,7 +217,7 @@ public class MaintenanceTicketsController : ControllerBase
 
     // Admin IT/Manager điều chỉnh mức độ khẩn (Manager bị giới hạn phòng ban trong Service).
     [HttpPatch("{id:int}/priority")]
-    [Authorize(Roles = "Admin IT,Manager")]
+    [HasPermission(Permissions.MaintenancePriority)]
     public async Task<IActionResult> UpdatePriority(int id, UpdateTicketPriorityRequestDto dto)
     {
         var validation = await _priorityValidator.ValidateAsync(dto);

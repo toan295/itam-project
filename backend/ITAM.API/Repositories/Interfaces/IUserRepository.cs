@@ -1,10 +1,11 @@
+using ITAM.API.Models.DTOs.Users;
 using ITAM.API.Models.Entities;
 
 namespace ITAM.API.Repositories.Interfaces;
 
 public interface IUserRepository
 {
-    Task<(List<User> Items, int TotalItems)> GetPagedAsync(int page, int pageSize, string? search);
+    Task<(List<User> Items, int TotalItems)> GetPagedAsync(int page, int pageSize, UserListFilter filter);
     Task<User?> GetByIdWithDetailsAsync(int id);
     Task<User?> GetByEmailAsync(string email);
     Task<User?> GetByEmailWithRoleAsync(string email);   // đăng nhập: cần tên Role để phát JWT.
@@ -12,6 +13,9 @@ public interface IUserRepository
     Task AddAsync(User user);
     void Update(User user);
     Task<int> SaveChangesAsync();
+
+    // Số phiếu bảo trì đang chờ xử lý được phân công cho người này — chặn xoá tài khoản kỹ thuật viên còn việc dở.
+    Task<int> CountPendingAssignedTicketsAsync(int userId);
 
     // Đếm số Admin IT đang active — dùng để chặn khoá/hạ quyền Admin IT cuối cùng của hệ thống.
     Task<int> CountActiveUsersInRoleAsync(int roleId, int? excludeUserId = null);

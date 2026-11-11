@@ -1,7 +1,7 @@
 const session = requireAuth("login.html");
 renderNav({ active: "allocations", basePath: "../" });
 
-const canManage = session.role === "Admin IT" || session.role === "Manager";
+const canManage = can("allocations.manage");
 let currentPage = 1;
 let currentItems = [];
 let assetSuggestionMap = new Map();
@@ -11,6 +11,8 @@ let departments = [];
 let searchTimer;
 const createModal = new bootstrap.Modal(document.getElementById("createAllocationModal"));
 const returnModal = new bootstrap.Modal(document.getElementById("returnAllocationModal"));
+const createGuard = guardUnsavedChanges(document.getElementById("createAllocationModal"), document.getElementById("createAllocationForm"));
+const returnGuard = guardUnsavedChanges(document.getElementById("returnAllocationModal"), document.getElementById("returnAllocationForm"));
 const quickEmployeeModal = new bootstrap.Modal(document.getElementById("quickEmployeeModal"));
 
 function todayIso() {
@@ -58,38 +60,65 @@ async function loadDepartments() {
   }
 }
 
+const ALLOCATION_FILTERS = ["keyword", "departmentId", "status", "filterCategoryId", "filterAllocatedFrom", "filterAllocatedTo",
+  "filterHoldingOverDays", "filterHandoverCondition", "filterReturnCondition", "filterSort"];
+const ALLOCATION_PARAMS = {
+  keyword: "keyword", departmentId: "departmentId", status: "status", filterCategoryId: "categoryId",
+  filterAllocatedFrom: "allocatedFrom", filterAllocatedTo: "allocatedTo", filterHoldingOverDays: "holdingOverDays",
+  filterHandoverCondition: "handoverCondition", filterReturnCondition: "returnCondition", filterSort: "sort",
+};
+let filterBar;
+
 function buildParams(page) {
-  const params = new URLSearchParams({ page, pageSize: 10 });
-  const departmentId = document.getElementById("departmentId").value;
-  const status = document.getElementById("status").value;
-  const keyword = document.getElementById("keyword").value.trim();
-  if (keyword) params.set("keyword", keyword);
-  if (departmentId) params.set("departmentId", departmentId);
-  if (status) params.set("status", status);
-  return params;
+  return filterBar.params(ALLOCATION_PARAMS, { page, pageSize: 10 });
 }
 
+async function loadCategoryFilter() {
+  try {
+    const categories = await api.get("/asset-categories");
+    document.getElementById("filterCategoryId").innerHTML = '<option value="">-- Tất cả --</option>' +
+      categories.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
+  } catch {
+    // Bộ lọc phụ — không chặn trang nếu không tải được.
+  }
+}
+
+let loadSeq = 0; // chỉ nhận kết quả của lần tải mới nhất
+
 async function loadAllocations(page = 1) {
+  const seq = ++loadSeq;
   currentPage = page;
   clearError();
+  document.getElementById("allocationTableBody").innerHTML =
+    '<tr><td colspan="8" class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Đang tải...</td></tr>';
   try {
     const result = await api.get(`/allocations?${buildParams(page)}`);
+    if (seq !== loadSeq) return;
+    if ((result.items || []).length === 0 && page > 1 && result.totalPages > 0) {
+      loadAllocations(result.totalPages);
+      return;
+    }
     currentItems = result.items || [];
     renderTable(currentItems);
     renderPagination(result.page, result.totalPages);
     document.getElementById("totalItemsLabel").textContent = `Tổng cộng: ${result.totalItems} lượt phân bổ`;
   } catch (err) {
+    if (seq !== loadSeq) return;
     currentItems = [];
-    renderTable([]);
+    renderTable([], true);
     renderPagination(1, 0);
     showError(err.message);
   }
 }
 
-function renderTable(items) {
+function renderTable(items, loadFailed = false) {
   const tbody = document.getElementById("allocationTableBody");
+  if (loadFailed) {
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><i class="bi bi-exclamation-triangle"></i><div class="title">Không tải được danh sách phân bổ</div><button class="btn btn-sm btn-outline-primary mt-2" onclick="loadAllocations(currentPage)"><i class="bi bi-arrow-clockwise"></i> Thử lại</button></div></td></tr>';
+    return;
+  }
   if (!items.length) {
-    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><i class="bi bi-inbox"></i><div class="title">Chưa có lịch sử phân bổ</div></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><i class="bi bi-inbox"></i><div class="title">Không có lượt phân bổ phù hợp</div><button class="btn btn-sm btn-outline-secondary mt-2" onclick="document.getElementById(\'resetFilterBtn\').click()"><i class="bi bi-x-circle"></i> Xoá bộ lọc</button></div></td></tr>';
     return;
   }
 
@@ -100,14 +129,16 @@ function renderTable(items) {
       : '<span class="badge-soft slate"><i class="bi bi-box-arrow-in-down-left"></i> Đã thu hồi</span>';
 
     return `<tr>
-      <td><div class="fw-semibold">${escapeHtml(item.assetCode)}</div><div class="small text-muted">${escapeHtml(item.assetName)}</div></td>
-      <td>${escapeHtml(item.departmentName)}</td>
+      <td class="fw-semibold">${escapeHtml(item.assetCode)}</td>
+      <td>${escapeHtml(item.departmentName)}
+        ${isOpen && item.employeeCurrentDepartmentName && item.employeeCurrentDepartmentName !== item.departmentName ? `<div class="small text-muted" title="Phòng ban hiện tại của nhân viên khác phòng ban ghi nhận lúc giao">Nhân viên hiện ở: ${escapeHtml(item.employeeCurrentDepartmentName)}</div>` : ""}</td>
       <td>
         <div class="fw-semibold">${escapeHtml(item.recipientName)}</div>
         <div class="small text-muted">${item.employeeCode ? escapeHtml(item.employeeCode) : "Chưa gắn hồ sơ"}${item.employeePosition ? ` · ${escapeHtml(item.employeePosition)}` : ""}</div>
       </td>
-      <td>${escapeHtml(item.allocatedDate)}</td>
-      <td>${item.returnedDate ? escapeHtml(item.returnedDate) : '<span class="text-muted">-</span>'}</td>
+      <td>${escapeHtml(DateVi.toDisplay(item.allocatedDate))}</td>
+      <td>${item.returnedDate ? escapeHtml(DateVi.toDisplay(item.returnedDate)) : '<span class="text-muted">-</span>'}</td>
+      <td class="text-nowrap">${item.holdingDays} ngày<div class="small text-muted">${isOpen ? "đang giữ" : "đã giữ"}</div></td>
       <td>${statusHtml}</td>
       <td class="text-end text-nowrap">
         <button class="btn btn-sm btn-outline-secondary me-1" onclick="printAllocation(${item.id}, 'handover')"><i class="bi bi-printer"></i> BB bàn giao</button>
@@ -129,32 +160,57 @@ function renderPagination(page, totalPages) {
 
 async function loadOverdue() {
   if (!canManage) return;
+  const threshold = document.getElementById("overdueThreshold").value;
+  const severity = document.getElementById("overdueSeverity").value;
   try {
-    const items = await api.get("/allocations/overdue?thresholdDays=180");
-    renderOverdue(items || []);
+    const params = new URLSearchParams({ thresholdDays: threshold });
+    if (severity) params.set("severity", severity);
+    const items = await api.get(`/allocations/overdue?${params}`);
+    renderOverdue(items || [], Number(threshold), Boolean(severity));
   } catch (err) {
     showError(err.message);
   }
 }
 
-function renderOverdue(items) {
+const OVERDUE_SOURCE = { LastMaintenance: "lần bảo trì hoàn tất gần nhất", PurchaseDate: "ngày mua (chưa từng bảo trì)", AllocatedDate: "ngày giao (thiếu ngày mua và lịch sử bảo trì)" };
+
+function renderOverdue(items, threshold, filtered) {
   const section = document.getElementById("overdueSection");
-  if (!items.length) {
+  // Còn bộ lọc mức ưu tiên đang bật thì vẫn hiện khung để người dùng bỏ lọc, kể cả khi kết quả rỗng.
+  if (!items.length && !filtered && threshold === 180) {
     section.classList.add("d-none");
     return;
   }
 
   section.classList.remove("d-none");
   document.getElementById("overdueCount").textContent = `${items.length} tài sản cần chú ý`;
-  document.getElementById("overdueList").innerHTML = items.map((item) => {
-    const badge = item.daysSinceLastMaintenance >= 365 ? "danger" : "warning";
-    const last = item.lastMaintenanceDate || "Chưa từng bảo trì";
-    return `<div class="d-flex justify-content-between border-top py-2">
-      <span><strong>${escapeHtml(item.assetCode)}</strong> - ${escapeHtml(item.assetName)} · ${escapeHtml(item.recipientName)} · ${escapeHtml(item.departmentName)}</span>
-      <span class="badge text-bg-${badge}">${item.daysSinceLastMaintenance} ngày · ${escapeHtml(last)}</span>
-    </div>`;
-  }).join("");
+  document.getElementById("overdueRule").textContent =
+    `Tài sản đang giao cho người dùng nhưng đã quá ${threshold} ngày chưa được bảo trì (tính từ lần bảo trì gần nhất, nếu chưa có thì từ ngày mua). Hãy nhờ kỹ thuật viên kiểm tra, bảo dưỡng định kỳ. Bấm vào một dòng để xem lịch sử phân bổ của tài sản đó.`;
+  document.getElementById("overdueList").innerHTML = items.length === 0
+    ? '<div class="border-top py-2 text-muted">Không có tài sản nào theo bộ lọc này.</div>'
+    : items.map((item) => {
+      const high = item.severity === "High";
+      return `<button type="button" class="btn btn-link text-start text-decoration-none w-100 border-top rounded-0 p-0 py-2" onclick="focusAllocationByAsset('${escapeHtml(item.assetCode)}')">
+        <div class="d-flex flex-column flex-md-row justify-content-between gap-1">
+          <span class="text-truncate"><strong>${escapeHtml(item.assetCode)}</strong> - ${escapeHtml(item.assetName)} · ${escapeHtml(item.recipientName)} · ${escapeHtml(item.departmentName)}</span>
+          <span class="badge text-bg-${high ? "danger" : "warning"} align-self-start flex-shrink-0">${high ? "Ưu tiên cao · " : ""}${item.daysSinceLastMaintenance} ngày</span>
+        </div>
+        <div class="text-muted">Mốc tính: ${escapeHtml(OVERDUE_SOURCE[item.referenceSource] || item.referenceSource)} — ${escapeHtml(DateVi.toDisplay(item.referenceDate))}</div>
+      </button>`;
+    }).join("");
 }
+
+// Bấm một cảnh báo: lọc danh sách phân bổ theo đúng tài sản (chỉ lượt đang giữ) và cuộn tới bảng.
+function focusAllocationByAsset(assetCode) {
+  document.getElementById("resetFilterBtn").click();
+  document.getElementById("keyword").value = assetCode;
+  document.getElementById("status").value = "Allocated";
+  filterBar.refreshBadge();
+  loadAllocations(1).then(() => document.getElementById("allocationTableBody").scrollIntoView({ behavior: "smooth", block: "start" }));
+}
+
+document.getElementById("overdueThreshold").addEventListener("change", loadOverdue);
+document.getElementById("overdueSeverity").addEventListener("change", loadOverdue);
 
 async function searchAssets(keyword = "") {
   try {
@@ -184,7 +240,7 @@ function openCreateModal() {
   document.getElementById("createAllocationForm").reset();
   document.getElementById("selectedAssetId").value = "";
   document.getElementById("selectedEmployeeId").value = "";
-  document.getElementById("allocatedDate").value = todayIso();
+  DateVi.set(document.getElementById("allocatedDate"), todayIso());
   document.getElementById("selectedEmployeeInfo").textContent = "Phòng ban nhận và chức danh lấy theo hồ sơ nhân viên.";
   hideModalError("createModalError");
   searchAssets();
@@ -195,7 +251,7 @@ function openCreateModal() {
 function openReturnModal(id) {
   document.getElementById("returnAllocationForm").reset();
   document.getElementById("returnAllocationId").value = String(id);
-  document.getElementById("returnedDate").value = todayIso();
+  DateVi.set(document.getElementById("returnedDate"), todayIso());
   document.getElementById("conditionGood").checked = true;
   hideModalError("returnModalError");
   returnModal.show();
@@ -240,6 +296,9 @@ document.getElementById("employeeSearchInput").addEventListener("input", (event)
 });
 document.getElementById("employeeSearchInput").addEventListener("change", syncSelectedEmployee);
 
+// Chỉ người có quyền tạo nhân viên mới thấy nút thêm nhanh (backend vẫn chặn 403 nếu gọi API trực tiếp).
+if (!can("employees.manage")) document.getElementById("quickAddEmployeeBtn").classList.add("d-none");
+
 document.getElementById("quickAddEmployeeBtn").addEventListener("click", () => {
   document.getElementById("quickEmployeeForm").reset();
   hideModalError("quickEmployeeError");
@@ -248,9 +307,15 @@ document.getElementById("quickAddEmployeeBtn").addEventListener("click", () => {
   quickEmployeeModal.show();
 });
 
-document.getElementById("quickEmployeeForm").addEventListener("submit", async (event) => {
+document.getElementById("quickEmployeeForm").addEventListener("submit", (event) => {
   event.preventDefault();
+  runLocked(event.currentTarget, async () => {
   hideModalError("quickEmployeeError");
+  const fullName = document.getElementById("quickEmployeeName").value.trim();
+  if (!fullName) {
+    showModalError("quickEmployeeError", "Vui lòng nhập họ tên nhân viên.");
+    return;
+  }
   try {
     const created = await api.post("/employees", {
       fullName: document.getElementById("quickEmployeeName").value.trim(),
@@ -265,6 +330,7 @@ document.getElementById("quickEmployeeForm").addEventListener("submit", async (e
   } catch (err) {
     showModalError("quickEmployeeError", err.message);
   }
+  });
 });
 
 // ===== In biên bản theo mẫu "Biên bản bàn giao tài sản" =====
@@ -286,7 +352,7 @@ function formatMoney(value) {
 }
 
 // Chức danh bên phía công ty lấy từ vai trò hệ thống -> hiển thị tên gọi tiếng Việt trên biên bản.
-const ROLE_TITLES = { "Admin IT": "Quản trị viên IT", Manager: "Quản lý phòng ban", Technician: "Kỹ thuật viên" };
+const ROLE_TITLES = { "Admin IT": "Quản trị viên IT", Manager: "Quản lý", Technician: "Nhân viên kỹ thuật" };
 
 function partyBlock(title, party) {
   party = { ...party, position: ROLE_TITLES[party.position] || party.position };
@@ -400,8 +466,17 @@ document.getElementById("assetSearchInput").addEventListener("input", (event) =>
 
 document.getElementById("assetSearchInput").addEventListener("change", syncSelectedAsset);
 
-document.getElementById("createAllocationForm").addEventListener("submit", async (event) => {
+// Thông báo lỗi dễ hiểu theo loại lỗi; mất kết nối (không có mã HTTP) thì nói rõ kết quả chưa xác định.
+function failureMessage(err, action) {
+  if (!err.status) {
+    return `Không nhận được phản hồi từ máy chủ — lượt ${action} có thể ĐÃ được ghi. Danh sách đã được tải lại; hãy kiểm tra, nếu chưa có thì bấm lại (gửi lại cùng một yêu cầu là an toàn, không bị ghi trùng).`;
+  }
+  return err.message;
+}
+
+document.getElementById("createAllocationForm").addEventListener("submit", (event) => {
   event.preventDefault();
+  runLocked(event.currentTarget, async () => {
   hideModalError("createModalError");
   syncSelectedAsset();
 
@@ -418,10 +493,15 @@ document.getElementById("createAllocationForm").addEventListener("submit", async
     return;
   }
 
+  if (!DateVi.value(document.getElementById("allocatedDate"))) {
+    showModalError("createModalError", "Vui lòng nhập ngày giao hợp lệ (dd/mm/yyyy).");
+    return;
+  }
+
   const payload = {
     assetId,
     employeeId,
-    allocatedDate: document.getElementById("allocatedDate").value,
+    allocatedDate: DateVi.value(document.getElementById("allocatedDate")),
     handoverCondition: document.getElementById("handoverCondition").value,
     handoverReason: document.getElementById("handoverReason").value.trim() || "Cấp phát tài sản phục vụ công việc",
     handoverLocation: document.getElementById("handoverLocation").value.trim() || null,
@@ -430,45 +510,58 @@ document.getElementById("createAllocationForm").addEventListener("submit", async
 
   try {
     await api.post("/allocations", payload);
+    createGuard.markClean();
     createModal.hide();
     await Promise.all([loadAllocations(1), loadOverdue()]);
   } catch (err) {
-    showModalError("createModalError", err.message);
+    showModalError("createModalError", failureMessage(err, "phân bổ"));
+    // Dữ liệu có thể đã đổi (tài sản vừa được cấp cho người khác) hoặc yêu cầu đã được ghi trước khi mất kết nối:
+    // tải lại để người dùng thấy trạng thái thật.
+    searchAssets(document.getElementById("assetSearchInput").value);
+    loadAllocations(currentPage);
+    loadOverdue();
   }
+  });
 });
 
-document.getElementById("returnAllocationForm").addEventListener("submit", async (event) => {
+document.getElementById("returnAllocationForm").addEventListener("submit", (event) => {
   event.preventDefault();
+  runLocked(event.currentTarget, async () => {
   hideModalError("returnModalError");
 
   const id = Number(document.getElementById("returnAllocationId").value);
   const condition = document.querySelector('input[name="returnCondition"]:checked').value;
+  if (!DateVi.value(document.getElementById("returnedDate"))) {
+    showModalError("returnModalError", "Vui lòng nhập ngày thu hồi hợp lệ (dd/mm/yyyy).");
+    return;
+  }
+
   const payload = {
-    returnedDate: document.getElementById("returnedDate").value,
+    returnedDate: DateVi.value(document.getElementById("returnedDate")),
     condition,
     returnNote: document.getElementById("returnNote").value.trim() || null,
   };
 
   try {
     await api.post(`/allocations/${id}/return`, payload);
+    returnGuard.markClean();
     returnModal.hide();
     await Promise.all([loadAllocations(currentPage), loadOverdue()]);
   } catch (err) {
-    showModalError("returnModalError", err.message);
+    showModalError("returnModalError", failureMessage(err, "thu hồi"));
+    loadAllocations(currentPage);
+    loadOverdue();
   }
+  });
 });
 
-document.getElementById("filterForm").addEventListener("submit", (event) => {
-  event.preventDefault();
-  loadAllocations(1);
+filterBar = initFilterBar({
+  fields: ALLOCATION_FILTERS, uncounted: ["filterSort"], textFields: ["keyword", "filterHoldingOverDays"],
+  onChange: () => loadAllocations(1),
+  // Manager luôn bị giữ ở phòng ban của mình: form.reset() không được xoá lựa chọn cố định đó.
+  onReset: () => { if (session.role === "Manager") document.getElementById("departmentId").value = String(session.departmentId); },
 });
 
-document.getElementById("resetFilterBtn").addEventListener("click", () => {
-  document.getElementById("status").value = "";
-  document.getElementById("keyword").value = "";
-  if (session.role !== "Manager") document.getElementById("departmentId").value = "";
-  loadAllocations(1);
-});
-
+loadCategoryFilter();
 loadDepartments().then(() => loadAllocations());
 loadOverdue();

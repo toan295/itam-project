@@ -1,3 +1,4 @@
+using ITAM.API.Repositories.Models;
 using ITAM.API.Models.DTOs.Common;
 using ITAM.API.Helpers;
 using ITAM.API.Models.DTOs.Disposals;
@@ -5,6 +6,7 @@ using ITAM.API.Models.Entities;
 using ITAM.API.Models.Enums;
 using ITAM.API.Repositories.Interfaces;
 using ITAM.API.Services.Interfaces;
+using Microsoft.EntityFrameworkCore;
 
 namespace ITAM.API.Services.Implementations;
 
@@ -41,9 +43,20 @@ public class DisposalRequestService : IDisposalRequestService
 
     public async Task<PagedResultDto<DisposalRequestResponseDto>> GetPagedAsync(
         int? departmentId, int? assetId, string? statusCode, int page, int pageSize,
-        string? currentUserRole, int? currentUserDepartmentId, int currentUserId)
+        string? currentUserRole, int? currentUserDepartmentId, int currentUserId,
+        string? keyword = null, int? categoryId = null, DateOnly? fromDate = null, DateOnly? toDate = null, string? sort = null)
     {
         (page, pageSize) = Paging.Normalize(page, pageSize);
+
+        if (fromDate.HasValue && toDate.HasValue && fromDate > toDate)
+        {
+            throw new ArgumentException("fromDate không được lớn hơn toDate.");
+        }
+
+        if (sort is not null && sort is not ("newest" or "oldest"))
+        {
+            throw new ArgumentException("sort không hợp lệ. Phải là một trong: newest, oldest");
+        }
 
         // Manager chỉ thấy phiếu của tài sản thuộc phòng ban mình; Admin IT/Technician thấy tất cả.
         var scopedDepartmentId = IsManager(currentUserRole)
@@ -51,7 +64,15 @@ public class DisposalRequestService : IDisposalRequestService
             : departmentId;
 
         var (items, total) = await _repo.GetPagedAsync(
-            scopedDepartmentId, assetId, statusCode, IsTechnician(currentUserRole) ? currentUserId : null, page, pageSize);
+            scopedDepartmentId, assetId, statusCode, IsTechnician(currentUserRole) ? currentUserId : null, page, pageSize,
+            new DisposalListExtras
+            {
+                Keyword = keyword,
+                CategoryId = categoryId,
+                CreatedFrom = fromDate?.ToDateTime(TimeOnly.MinValue),
+                CreatedTo = toDate?.AddDays(1).ToDateTime(TimeOnly.MinValue),   // cận trên loại trừ -> gồm trọn ngày toDate.
+                Sort = sort,
+            });
         return new PagedResultDto<DisposalRequestResponseDto>
         {
             Items = items.Select(MapToDto).ToList(),
@@ -128,10 +149,20 @@ public class DisposalRequestService : IDisposalRequestService
             InspectionNote = dto.InspectionNote.Trim(),
             InspectedByUserId = currentUserId,
             InspectedAt = DateTime.UtcNow,
+            ActiveAssetId = asset.Id,
         };
 
         await _repo.AddAsync(request);
-        await _repo.SaveChangesAsync(); // cần Id để ghi audit log.
+        try
+        {
+            await _repo.SaveChangesAsync(); // cần Id để ghi audit log.
+        }
+        catch (DbUpdateException)
+        {
+            // Chốt chặn cuối ở database (chỉ mục duy nhất ActiveAssetId): có phiếu đang xử lý khác vừa được tạo cho tài sản này.
+            throw new DisposalConflictException(
+                $"Tài sản {asset.AssetCode} đang có một phiếu thanh lý chưa kết thúc.");
+        }
 
         await _auditLogService.RecordAsync(
             currentUserId, "Create", "DisposalRequest", request.Id, null,
@@ -186,6 +217,11 @@ public class DisposalRequestService : IDisposalRequestService
 
         var target = approve ? DisposalStatusCodes.Approved : DisposalStatusCodes.Rejected;
         request.Status = await GetStatusAsync(target);
+        if (!approve)
+        {
+            request.ActiveAssetId = null; // bị từ chối: phiếu kết thúc, tài sản được phép lập phiếu mới.
+        }
+
         request.ReviewNote = note;
         request.ReviewedByUserId = currentUserId;
         request.ReviewedAt = DateTime.UtcNow;
@@ -223,17 +259,29 @@ public class DisposalRequestService : IDisposalRequestService
         // Tài sản đã thanh lý thì các phiếu bảo trì đang chờ không còn ý nghĩa: đóng tự động (Không xử lý được).
         foreach (var ticket in await _ticketRepo.GetPendingByAssetAsync(request.AssetId))
         {
+            ticket.History.Add(new MaintenanceTicketHistory
+            {
+                Action = "AutoClosed",
+                FromValue = ticket.Status.ToString(),
+                ToValue = TicketStatus.Failed.ToString(),
+                Reason = "Đóng tự động: tài sản đã được thanh lý.",
+                ActorUserId = currentUserId,
+            });
             ticket.Status = TicketStatus.Failed;
             ticket.ResolvedDate = DateTime.UtcNow;
             ticket.Notes = "Đóng tự động: tài sản đã được thanh lý.";
         }
 
+        // Tài sản đã thanh lý không còn dùng phần mềm: giải phóng các lượt license đang gán (cùng một lần lưu với phiếu).
+        var releasedLicenses = await _repo.ReleaseSoftwareLicensesAsync(request.AssetId);
+
+        request.ActiveAssetId = null;
         request.Status = await GetStatusAsync(DisposalStatusCodes.Completed);
         request.CompletionNote = string.IsNullOrWhiteSpace(dto.Note) ? null : dto.Note.Trim();
         request.CompletedByUserId = currentUserId;
         request.CompletedAt = DateTime.UtcNow;
 
-        return await SaveTransitionAsync(request, currentUserId, "Complete", DisposalStatusCodes.Approved);
+        return await SaveTransitionAsync(request, currentUserId, "Complete", DisposalStatusCodes.Approved, releasedLicenses);
     }
 
     public async Task<DisposalRequestResponseDto> SetSubStatusAsync(int id, int? subStatusId, int currentUserId)
@@ -270,11 +318,14 @@ public class DisposalRequestService : IDisposalRequestService
     // ----- helpers -----
 
     private async Task<DisposalRequestResponseDto> SaveTransitionAsync(
-        DisposalRequest request, int currentUserId, string action, string fromCode)
+        DisposalRequest request, int currentUserId, string action, string fromCode, int releasedLicenses = 0)
     {
         await _auditLogService.RecordAsync(
             currentUserId, action, "DisposalRequest", request.Id,
-            new { Status = fromCode }, new { Status = request.Status.Code });
+            new { Status = fromCode },
+            releasedLicenses > 0
+                ? new { Status = request.Status.Code, ReleasedLicenses = releasedLicenses }
+                : new { Status = request.Status.Code, ReleasedLicenses = 0 });
         await _repo.SaveChangesAsync();
         return MapToDto(request);
     }

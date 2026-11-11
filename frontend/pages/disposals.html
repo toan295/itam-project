@@ -6,7 +6,7 @@
   <title>Thanh lý tài sản - EAIMS</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-  <link href="../shared/theme.css" rel="stylesheet">
+  <link href="../shared/theme.css?v=20261113" rel="stylesheet">
 </head>
 <body>
   <div class="eaims-shell">
@@ -16,6 +16,7 @@
       <div class="page-header">
         <div>
           <h1>Thanh lý tài sản</h1>
+          <p>Theo dõi quy trình thanh lý tài sản hỏng: kiểm tra, đề xuất, duyệt và hoàn tất.</p>
         </div>
         <button class="btn btn-primary d-none" id="openCreateBtn"><i class="bi bi-clipboard-check"></i> Kiểm tra tài sản</button>
         <button class="btn btn-primary d-none" id="openStatusCreateBtn"><i class="bi bi-plus-lg"></i> Thêm trạng thái</button>
@@ -32,18 +33,45 @@
 
       <!-- Tab: Phiếu thanh lý -->
       <section id="requestsSection">
-        <div class="eaims-card mb-3">
-          <div class="card-body py-3">
-            <form id="filterForm" class="row g-2 align-items-end">
-              <div class="col-auto">
+      <div class="eaims-card mb-3 filter-card">
+        <div class="card-body py-3">
+          <form id="filterForm">
+            <div class="row g-2 align-items-end">
+              <div class="col-12 col-lg-4">
+                <label class="form-label">Tìm kiếm</label>
+                <div class="input-group"><span class="input-group-text bg-white"><i class="bi bi-search"></i></span><input class="form-control" id="keyword" placeholder="Mã/tên tài sản, lý do, hình thức, người kiểm tra/đề xuất" autocomplete="off"></div>
+              </div>
+              <div class="col-6 col-lg-3">
                 <label class="form-label">Trạng thái</label>
                 <select class="form-select" id="filterStatus"><option value="">-- Tất cả --</option></select>
               </div>
-              <div class="col-auto"><button class="btn btn-primary" type="submit"><i class="bi bi-search"></i> Lọc</button></div>
-              <div class="col-auto"><button class="btn btn-outline-secondary" type="button" id="resetFilterBtn">Xoá lọc</button></div>
-            </form>
-          </div>
+              <div class="col-6 col-lg-2" id="filterDepartmentWrapper">
+                <label class="form-label">Phòng ban</label>
+                <select class="form-select" id="filterDepartmentId"><option value="">-- Tất cả --</option></select>
+              </div>
+              <div class="col-12 col-lg-auto ms-lg-auto d-flex gap-2">
+                <button class="btn btn-outline-secondary" type="button" id="resetFilterBtn"><i class="bi bi-x-circle"></i> Xoá lọc</button>
+              </div>
+            </div>
+            <div id="advancedFilters">
+              <div class="row g-2 advanced-panel">
+              <div class="col-6 col-lg-3">
+                <label class="form-label">Loại tài sản</label>
+                <select class="form-select" id="filterCategoryId"><option value="">-- Tất cả --</option></select>
+              </div>
+              <div class="col-6 col-lg-3">
+                <label class="form-label">Ngày tạo phiếu</label>
+                <input class="form-control" id="filterFromDate" data-date-vi>
+              </div>
+              <div class="col-6 col-lg-3">
+                <label class="form-label">Sắp xếp</label>
+                <select class="form-select" id="filterSort"><option value="">Mới lập nhất</option><option value="oldest">Lập lâu nhất</option></select>
+              </div>
+              </div>
+            </div>
+          </form>
         </div>
+      </div>
 
         <div class="eaims-table-wrap">
           <div class="table-responsive">
@@ -63,10 +91,7 @@
 
       <!-- Tab: Tài sản hỏng chưa có phiếu thanh lý -->
       <section id="candidatesSection" class="d-none">
-        <p class="text-muted small">
-          Tài sản đang ở trạng thái <strong>Hỏng</strong> và chưa có phiếu thanh lý đang mở. Technician kiểm tra tài sản rồi đề xuất thanh lý
-          (hoặc sửa chữa nếu còn dùng được thì đổi lại trạng thái ở trang Tài sản/Bảo trì).
-        </p>
+        <p class="text-muted small">Tài sản đang <strong>Hỏng</strong> và chưa có phiếu thanh lý. Kỹ thuật viên kiểm tra rồi đề xuất thanh lý.</p>
         <div class="eaims-table-wrap">
           <div class="table-responsive">
             <table class="eaims-table">
@@ -83,11 +108,6 @@
 
       <!-- Tab: Quản lý trạng thái (Admin IT) -->
       <section id="statusesSection" class="d-none">
-        <p class="text-muted small">
-          <strong>Bước chính</strong> của luồng: đổi được tên, màu, thứ tự; xoá được khi <em>chưa có phiếu nào đang dùng</em>.
-          Xoá một bước chính sẽ khiến thao tác tương ứng bị chặn cho tới khi bấm <strong>Khôi phục bước mặc định</strong>.
-          <strong>Trạng thái phụ</strong> do bạn thêm: Admin IT gán thủ công vào phiếu (vd "Chờ chứng từ"), không làm đổi luồng duyệt.
-        </p>
         <div class="alert alert-warning py-2 d-none" id="missingStepsAlert">
           <i class="bi bi-exclamation-triangle"></i> Quy trình thanh lý đang thiếu bước: <strong id="missingStepsList"></strong>.
           <button class="btn btn-sm btn-warning ms-2" id="restoreDefaultsBtn"><i class="bi bi-arrow-counterclockwise"></i> Khôi phục bước mặc định</button>
@@ -96,7 +116,7 @@
           <div class="table-responsive">
             <table class="eaims-table">
               <thead><tr>
-                <th style="width:70px">Thứ tự</th><th>Tên</th><th>Loại</th><th>Mô tả</th><th class="text-end">Thao tác</th>
+                <th style="width:70px">Thứ tự</th><th>Tên</th><th>Mô tả</th><th class="text-end">Thao tác</th>
               </tr></thead>
               <tbody id="statusTableBody"></tbody>
             </table>
@@ -220,8 +240,8 @@
                 </select>
               </div>
               <div class="col-6">
-                <label class="form-label">Thứ tự</label>
-                <input type="number" class="form-control" id="statusSortOrder" min="0" max="1000" value="10" required>
+                <label class="form-label">Thứ tự hiển thị</label>
+                <input type="number" class="form-control" id="statusSortOrder" min="6" max="1000" placeholder="Tự động (xếp cuối)">
               </div>
             </div>
           </div>
@@ -235,8 +255,10 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="../shared/api-client.js"></script>
-  <script src="../shared/nav.js"></script>
-  <script src="../assets/js/disposals.js"></script>
+  <script src="../shared/api-client.js?v=20261113"></script>
+  <script src="../shared/nav.js?v=20261113"></script>
+  <script src="../shared/form-helpers.js?v=20261113"></script>
+  <script src="../shared/filter-bar.js?v=20261113"></script>
+  <script src="../assets/js/disposals.js?v=20261113"></script>
 </body>
 </html>

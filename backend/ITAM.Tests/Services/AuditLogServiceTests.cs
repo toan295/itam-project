@@ -1,3 +1,4 @@
+using ITAM.API.Repositories.Models;
 using System.Text.Json;
 using ITAM.API.Models.Entities;
 using ITAM.API.Repositories.Interfaces;
@@ -68,7 +69,7 @@ public class AuditLogServiceTests
     public async Task GetPagedAsync_FilterByEntityName_PassesFilterToRepository()
     {
         _repository
-            .Setup(x => x.GetPagedAsync(1, 20, null, "User", null, null, null))
+            .Setup(x => x.GetPagedAsync(1, 20, null, "User", null, null, null, It.IsAny<AuditLogListExtras>()))
             .ReturnsAsync((new List<AuditLog>(), 0));
 
         var service = CreateService();
@@ -76,7 +77,7 @@ public class AuditLogServiceTests
         await service.GetPagedAsync(1, 20, entityName: "User");
 
         _repository.Verify(
-            x => x.GetPagedAsync(1, 20, null, "User", null, null, null),
+            x => x.GetPagedAsync(1, 20, null, "User", null, null, null, It.IsAny<AuditLogListExtras>()),
             Times.Once);
     }
 
@@ -85,8 +86,11 @@ public class AuditLogServiceTests
     {
         var fromDate = new DateTime(2026, 9, 1);
         var toDate = new DateTime(2026, 9, 30);
+        // Ngày lọc là ngày lịch Việt Nam (UTC+7): 01/09 00:00 VN = 31/08 17:00 UTC; hết 30/09 VN = 30/09 17:00 UTC (không bao gồm).
+        var fromUtc = new DateTime(2026, 8, 31, 17, 0, 0, DateTimeKind.Utc);
+        var toUtcExclusive = new DateTime(2026, 9, 30, 17, 0, 0, DateTimeKind.Utc);
         _repository
-            .Setup(x => x.GetPagedAsync(1, 20, null, null, null, fromDate, toDate))
+            .Setup(x => x.GetPagedAsync(1, 20, null, null, null, fromUtc, toUtcExclusive, It.IsAny<AuditLogListExtras>()))
             .ReturnsAsync((new List<AuditLog>(), 0));
 
         var service = CreateService();
@@ -94,7 +98,7 @@ public class AuditLogServiceTests
         await service.GetPagedAsync(1, 20, fromDate: fromDate, toDate: toDate);
 
         _repository.Verify(
-            x => x.GetPagedAsync(1, 20, null, null, null, fromDate, toDate),
+            x => x.GetPagedAsync(1, 20, null, null, null, fromUtc, toUtcExclusive, It.IsAny<AuditLogListExtras>()),
             Times.Once);
     }
 
@@ -114,7 +118,8 @@ public class AuditLogServiceTests
 
         await service.RecordAsync(1, "Update", "User", 5, null, new { A = 1 });
 
-        _repository.Verify(x => x.Add(It.Is<AuditLog>(l => l.UserId == 1 && l.EntityId == 5)), Times.Once);
+        _repository.Verify(x => x.Add(It.Is<AuditLog>(l => l.UserId == 1 && l.EntityId == 5 && l.Outcome == "Success")), Times.Once);
+        _repository.Verify(x => x.GetActorSnapshotAsync(1), Times.Once);
         _repository.VerifyNoOtherCalls();
     }
 
@@ -135,6 +140,31 @@ public class AuditLogServiceTests
         var service = CreateService();
 
         await Assert.ThrowsAsync<ArgumentException>(() => service.RecordAsync(1, new string('a', 51), "User", 1));
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_KeywordEntityIdAndSort_AreMappedToExtras()
+    {
+        _repository
+            .Setup(x => x.GetPagedAsync(1, 20, null, null, null, null, null, It.IsAny<AuditLogListExtras>()))
+            .ReturnsAsync((new List<AuditLog>(), 0));
+
+        var service = CreateService();
+
+        await service.GetPagedAsync(1, 20, keyword: "laptop", entityId: 12, sort: "oldest");
+
+        _repository.Verify(
+            x => x.GetPagedAsync(1, 20, null, null, null, null, null,
+                It.Is<AuditLogListExtras>(e => e.Keyword == "laptop" && e.EntityId == 12 && e.Sort == "oldest")),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_InvalidSort_Throws()
+    {
+        var service = CreateService();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.GetPagedAsync(1, 20, sort: "random"));
     }
 
     [Fact]

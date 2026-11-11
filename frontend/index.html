@@ -6,7 +6,26 @@
   <title>Trang chủ - EAIMS</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-  <link href="shared/theme.css" rel="stylesheet">
+  <link href="shared/theme.css?v=20261113" rel="stylesheet">
+  <style>
+    .chart-box { position: relative; height: 260px; }
+    .chart-box.tall { height: 320px; }
+    /* Biểu đồ giãn theo chiều cao thẻ (thẻ cạnh nó cao hơn) để không bị khoảng trắng phía dưới */
+    .chart-box.fill { height: auto; flex: 1 1 auto; min-height: 260px; }
+    .chart-box.fill canvas { position: absolute; inset: 0; }
+    .eaims-card.fill-card { display: flex; flex-direction: column; }
+    .card-body.fill-body { display: flex; flex-direction: column; flex: 1 1 auto; }
+    #topBody td { vertical-align: middle; }
+    #topBody td:first-child { white-space: nowrap; }
+    .widget-note { font-size: .8rem; color: var(--bs-secondary-color, #6c757d); }
+    .stat-card .value { font-variant-numeric: tabular-nums; }
+    .stat-card > div { min-width: 0; }
+    .stat-card .label { overflow-wrap: anywhere; }
+    .dash-bar { gap: .5rem; }
+    .skeleton { background: linear-gradient(90deg, #e9eef3 25%, #f4f7fa 37%, #e9eef3 63%); background-size: 400% 100%; animation: sk 1.4s ease infinite; border-radius: .5rem; }
+    @keyframes sk { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+    @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+  </style>
 </head>
 <body>
   <div class="eaims-shell">
@@ -20,55 +39,104 @@
         </div>
       </div>
 
-      <div class="row g-3 mb-4">
-        <div class="col-6 col-lg-3">
-          <div class="stat-card">
-            <div class="icon-box tint-primary"><i class="bi bi-laptop"></i></div>
-            <div><div class="value" id="statAssets">–</div><div class="label">Tổng số tài sản</div></div>
-          </div>
-        </div>
-        <div class="col-6 col-lg-3">
-          <div class="stat-card">
-            <div class="icon-box tint-slate"><i class="bi bi-tags"></i></div>
-            <div><div class="value" id="statCategories">–</div><div class="label">Loại tài sản</div></div>
-          </div>
-        </div>
-        <div class="col-6 col-lg-3">
-          <div class="stat-card">
-            <div class="icon-box tint-info"><i class="bi bi-key"></i></div>
-            <div><div class="value" id="statLicenses">–</div><div class="label">Giấy phép phần mềm</div></div>
-          </div>
-        </div>
-        <div class="col-6 col-lg-3">
-          <div class="stat-card">
-            <div class="icon-box tint-warning"><i class="bi bi-exclamation-triangle"></i></div>
-            <div><div class="value" id="statExpiring">–</div><div class="label">License sắp hết hạn (30 ngày)</div></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="row g-3 mb-4">
-        <div class="col-lg-5">
-          <div class="eaims-card h-100">
-            <div class="card-body">
-              <h6 class="fw-bold mb-3">Phân bố trạng thái tài sản</h6>
-              <div id="statusChartEmpty" class="empty-state d-none py-4">
-                <i class="bi bi-pie-chart"></i>
-                <div class="title">Chưa có tài sản nào</div>
+      <!-- ===== Dashboard (chỉ người có quyền dashboard.view) ===== -->
+      <section id="dashboard" class="d-none" aria-label="Dashboard phân tích">
+        <div class="eaims-card mb-3">
+          <div class="card-body py-2">
+            <div class="d-flex flex-wrap align-items-end dash-bar">
+              <div id="deptFilterBox">
+                <label class="form-label mb-0 small" for="dashDepartment">Phòng ban</label>
+                <select class="form-select form-select-sm" id="dashDepartment"><option value="">Toàn hệ thống</option></select>
               </div>
-              <canvas id="statusChart" height="210"></canvas>
+              <div id="scopeLockedBox" class="d-none">
+                <div class="small text-muted">Phạm vi</div>
+                <span class="badge text-bg-secondary" id="scopeLockedLabel"></span>
+              </div>
+              <div class="ms-auto d-flex align-items-center gap-2">
+                <span class="widget-note" id="generatedLabel" aria-live="polite"></span>
+                <button class="btn btn-sm btn-outline-primary" id="refreshBtn" type="button"><i class="bi bi-arrow-clockwise"></i> Làm mới</button>
+              </div>
             </div>
           </div>
         </div>
-        <div class="col-lg-7">
-          <div class="eaims-card h-100">
-            <div class="card-body">
-              <h6 class="fw-bold mb-3">License sắp hết hạn / gần giới hạn</h6>
-              <div id="expiringList"></div>
-            </div>
+
+        <div id="dashError" class="alert alert-danger d-none d-flex justify-content-between align-items-center" role="alert">
+          <span id="dashErrorText"></span>
+          <button class="btn btn-sm btn-outline-danger" id="retryBtn" type="button">Thử lại</button>
+        </div>
+
+        <!-- Thẻ số liệu -->
+        <div class="row g-3 mb-3" id="statRow">
+          <div class="col-12 col-md-6 col-xl-3" data-stat="total"><div class="stat-card"><div class="icon-box tint-primary"><i class="bi bi-laptop"></i></div><div><div class="value" id="vTotal">–</div><div class="label">Tổng tài sản <span class="widget-note">(chưa thanh lý)</span></div></div></div></div>
+          <div class="col-12 col-md-6 col-xl-3" data-stat="inuse"><div class="stat-card"><div class="icon-box tint-success"><i class="bi bi-check2-circle"></i></div><div><div class="value" id="vInUse">–</div><div class="label">Đang sử dụng</div></div></div></div>
+          <div class="col-12 col-md-6 col-xl-3" data-stat="maint"><div class="stat-card"><div class="icon-box tint-warning"><i class="bi bi-tools"></i></div><div><div class="value" id="vMaint">–</div><div class="label">Đang bảo trì</div></div></div></div>
+          <div class="col-12 col-md-6 col-xl-3" data-stat="broken"><div class="stat-card"><div class="icon-box tint-danger"><i class="bi bi-x-octagon"></i></div><div><div class="value" id="vBroken">–</div><div class="label">Hỏng</div></div></div></div>
+          <div class="col-12 col-md-6 col-xl-3" data-stat="tickets"><div class="stat-card"><div class="icon-box tint-info"><i class="bi bi-ticket-detailed"></i></div><div><div class="value" id="vTickets">–</div><div class="label">Phiếu bảo trì đang xử lý</div></div></div></div>
+          <div class="col-12 col-md-6 col-xl-3" data-stat="overdue"><div class="stat-card"><div class="icon-box tint-danger"><i class="bi bi-hourglass-bottom"></i></div><div><div class="value" id="vOverdue">–</div><div class="label">Cần thay thế <span class="widget-note">(đã vượt ngưỡng)</span></div></div></div></div>
+          <div class="col-12 col-md-6 col-xl-3" data-stat="license"><div class="stat-card"><div class="icon-box tint-info"><i class="bi bi-key"></i></div><div><div class="value" id="vLicense">–</div><div class="label">Giấy phép sắp hết hạn <span class="widget-note">(30 ngày)</span></div></div></div></div>
+        </div>
+
+        <!-- Tình trạng thiết bị -->
+        <div class="row g-3 mb-3">
+          <div class="col-lg-4" data-widget="assetStatus">
+            <div class="eaims-card h-100"><div class="card-body">
+              <h6 class="fw-bold mb-2">Tình trạng thiết bị</h6>
+              <div class="chart-box"><canvas id="chStatus" role="img" aria-label="Biểu đồ tình trạng thiết bị"></canvas></div>
+              <div class="widget-state"></div>
+            </div></div>
+          </div>
+          <div class="col-lg-8" data-widget="byCategory">
+            <div class="eaims-card h-100"><div class="card-body">
+              <h6 class="fw-bold mb-2">Tình trạng theo loại tài sản</h6>
+              <div class="chart-box"><canvas id="chCategory" role="img" aria-label="Biểu đồ tình trạng theo loại tài sản"></canvas></div>
+              <div class="widget-state"></div>
+            </div></div>
           </div>
         </div>
-      </div>
+
+        <div class="row g-3 mb-3">
+          <div class="col-12" data-widget="byDepartment" id="deptWidget">
+            <div class="eaims-card h-100"><div class="card-body">
+              <h6 class="fw-bold mb-2">Tình trạng theo phòng ban</h6>
+              <div class="chart-box"><canvas id="chDepartment" role="img" aria-label="Biểu đồ tình trạng theo phòng ban"></canvas></div>
+              <div class="widget-state"></div>
+            </div></div>
+          </div>
+        </div>
+
+        <!-- Tỷ lệ lỗi -->
+        <div class="row g-3 mb-3">
+          <div class="col-12 col-xl-6" data-widget="failure">
+            <div class="eaims-card h-100 fill-card"><div class="card-body fill-body">
+              <h6 class="fw-bold mb-1">Tỷ lệ lỗi theo loại</h6>
+              <div class="widget-note mb-2" id="failureNote">Tỷ lệ = số thiết bị từng có ít nhất 1 phiếu bảo trì ÷ số thiết bị của loại.</div>
+              <div class="chart-box fill"><canvas id="chFailure" role="img" aria-label="Biểu đồ tỷ lệ lỗi theo loại tài sản"></canvas></div>
+              <div class="widget-state"></div>
+            </div></div>
+          </div>
+          <div class="col-12 col-xl-6" data-widget="failure" data-part="top">
+            <div class="eaims-card h-100"><div class="card-body">
+              <h6 class="fw-bold mb-2">Top 10 thiết bị lỗi nhiều nhất</h6>
+              <div class="table-responsive">
+                <table class="eaims-table">
+                  <thead><tr><th>Mã</th><th>Tên</th><th>Phòng ban</th><th class="text-end">Phiếu</th><th class="text-end">Không sửa được</th></tr></thead>
+                  <tbody id="topBody"></tbody>
+                </table>
+              </div>
+              <div class="widget-state"></div>
+            </div></div>
+          </div>
+          <div class="col-12 col-xl-6" data-widget="licenses">
+            <div class="eaims-card h-100"><div class="card-body">
+              <h6 class="fw-bold mb-2">Giấy phép phần mềm</h6>
+              <div id="licenseBody"></div>
+              <div class="widget-state"></div>
+            </div></div>
+          </div>
+        </div>
+      </section>
+
+      <div id="noDashboard" class="alert alert-info d-none">Vai trò của bạn chưa được cấp quyền xem Dashboard. Dùng các mục bên dưới hoặc menu bên trái.</div>
 
       <h6 class="fw-bold mb-3">Truy cập nhanh</h6>
       <div class="row g-3">
@@ -120,105 +188,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-  <script src="shared/api-client.js"></script>
-  <script src="shared/nav.js"></script>
-  <script>
-    const session = requireAuth("pages/login.html");
-    if (session) {
-      renderNav({ active: "home", basePath: "" });
-
-      // Ẩn các thẻ truy cập nhanh mà vai trò hiện tại không có quyền dùng (khớp phân quyền backend).
-      document.querySelectorAll("[data-roles]").forEach((el) => {
-        if (!el.dataset.roles.split(",").includes(session.role)) el.remove();
-      });
-      document.getElementById("welcomeName").textContent = `Chào mừng trở lại, ${session.fullName} 👋`;
-
-      const STATUS_LABELS = { InUse: "Đang dùng", Maintenance: "Bảo trì", Broken: "Hỏng", Disposed: "Đã thanh lý" };
-      const STATUS_COLORS = { InUse: "#15803d", Maintenance: "#b45309", Broken: "#b91c1c", Disposed: "#64748b" };
-
-      // API giới hạn pageSize tối đa 100 (vượt quá sẽ bị đưa về 20) nên phải duyệt đủ mọi trang, nếu không biểu
-      // đồ trạng thái chỉ đếm 20 tài sản đầu trong khi tổng số lại là toàn bộ.
-      async function loadAllAssets() {
-        const items = [];
-        let page = 1;
-        let result;
-        do {
-          result = await api.get(`/assets/search?page=${page}&pageSize=100`);
-          items.push(...(result.items || []));
-          page += 1;
-        } while (page <= result.totalPages);
-        return { totalItems: result.totalItems, items };
-      }
-
-      loadAllAssets().then((r) => {
-        document.getElementById("statAssets").textContent = r.totalItems;
-        renderStatusChart(r.items);
-      }).catch(() => { document.getElementById("statAssets").textContent = "–"; });
-
-      api.get("/asset-categories").then((r) => document.getElementById("statCategories").textContent = r.length).catch(() => {});
-
-      if (session.role === "Admin IT") {
-        api.get("/software-licenses?page=1&pageSize=1").then((r) => document.getElementById("statLicenses").textContent = r.totalItems).catch(() => {});
-        api.get("/software-licenses/expiring-soon?days=30").then((items) => {
-          document.getElementById("statExpiring").textContent = items.length;
-          renderExpiringList(items);
-        }).catch(() => {});
-      } else {
-        document.getElementById("statLicenses").textContent = "🔒";
-        document.getElementById("statExpiring").textContent = "🔒";
-        document.getElementById("expiringList").innerHTML =
-          '<div class="empty-state py-4"><i class="bi bi-lock"></i><div class="title">Chỉ Admin IT xem được mục này</div></div>';
-      }
-
-      function renderStatusChart(items) {
-        if (items.length === 0) {
-          document.getElementById("statusChartEmpty").classList.remove("d-none");
-          document.getElementById("statusChart").classList.add("d-none");
-          return;
-        }
-        const counts = {};
-        items.forEach((a) => { counts[a.status] = (counts[a.status] || 0) + 1; });
-        const labels = Object.keys(counts);
-        new Chart(document.getElementById("statusChart"), {
-          type: "doughnut",
-          data: {
-            labels: labels.map((s) => STATUS_LABELS[s] || s),
-            datasets: [{
-              data: labels.map((s) => counts[s]),
-              backgroundColor: labels.map((s) => STATUS_COLORS[s] || "#94a3b8"),
-              borderWidth: 0,
-            }],
-          },
-          options: {
-            plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 12 } } } },
-            cutout: "68%",
-          },
-        });
-      }
-
-      function renderExpiringList(items) {
-        const el = document.getElementById("expiringList");
-        if (items.length === 0) {
-          el.innerHTML = '<div class="empty-state py-4"><i class="bi bi-check-circle"></i><div class="title">Không có license nào sắp hết hạn</div></div>';
-          return;
-        }
-        const today = new Date();
-        el.innerHTML = items.slice(0, 6).map((item) => {
-          const daysLeft = Math.ceil((new Date(item.expiryDate) - today) / 86400000);
-          const badge = item.isExpired
-            ? '<span class="badge-soft danger"><i class="bi bi-x-circle"></i> Đã hết hạn</span>'
-            : `<span class="badge-soft warning"><i class="bi bi-clock"></i> Còn ${daysLeft} ngày</span>`;
-          return `
-            <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
-              <div>
-                <div class="fw-semibold">${escapeHtml(item.softwareName)}</div>
-                <div class="text-muted small">${escapeHtml(item.licenseKey)} · Hết hạn ${item.expiryDate}</div>
-              </div>
-              ${badge}
-            </div>`;
-        }).join("");
-      }
-    }
-  </script>
+  <script src="shared/api-client.js?v=20261113"></script>
+  <script src="shared/nav.js?v=20261113"></script>
+  <script src="assets/js/dashboard.js?v=20261113"></script>
 </body>
 </html>

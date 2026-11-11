@@ -1,3 +1,4 @@
+using ITAM.API.Authorization;
 using System.Security.Claims;
 using FluentValidation;
 using ITAM.API.Models.DTOs;
@@ -12,7 +13,7 @@ namespace ITAM.API.Controllers;
 // UC-03: Quản lý người dùng & phân quyền — chỉ Admin IT.
 [ApiController]
 [Route("api/v1/users")]
-[Authorize(Roles = "Admin IT")]
+[HasPermission(Permissions.UsersManage)]
 public class UsersController : ControllerBase
 {
     private readonly IUserService _userService;
@@ -30,10 +31,24 @@ public class UsersController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetList([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? search = null)
+    public async Task<IActionResult> GetList(
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? search = null,
+        [FromQuery] int? roleId = null, [FromQuery] int? departmentId = null, [FromQuery] bool? isActive = null,
+        [FromQuery] string? activation = null, [FromQuery] string? sort = null)
     {
-        var result = await _userService.GetPagedAsync(page, pageSize, search);
-        return Ok(ApiResponse<object>.Ok(result));
+        var filter = new UserListFilter
+        {
+            Search = search, RoleId = roleId, DepartmentId = departmentId, IsActive = isActive, Activation = activation, Sort = sort,
+        };
+        try
+        {
+            var result = await _userService.GetPagedAsync(page, pageSize, filter);
+            return Ok(ApiResponse<object>.Ok(result));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<object>.Fail(ex.Message));
+        }
     }
 
     [HttpGet("{id:int}")]
@@ -64,13 +79,13 @@ public class UsersController : ControllerBase
         {
             var result = await _userService.CreateAsync(dto, GetCurrentUserId());
             return CreatedAtAction(nameof(GetById), new { id = result.Id },
-                ApiResponse<object>.Ok(result, "Tạo người dùng thành công. Mật khẩu ban đầu là mật khẩu mặc định của hệ thống."));
+                ApiResponse<object>.Ok(result, "Đã tạo tài khoản (chờ kích hoạt). " + (result.ActivationDispatch?.Message ?? "")));
         }
         catch (EmailAlreadyExistsException ex)
         {
             return Conflict(ApiResponse<object>.Fail(ex.Message));
         }
-        catch (DefaultPasswordNotConfiguredException ex)
+        catch (InvalidOperationException ex)
         {
             return Conflict(ApiResponse<object>.Fail(ex.Message));
         }
@@ -107,6 +122,10 @@ public class UsersController : ControllerBase
         {
             return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Fail(ex.Message));
         }
+        catch (SelfRoleChangeNotAllowedException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Fail(ex.Message));
+        }
         catch (LastAdminProtectionException ex)
         {
             return StatusCode(StatusCodes.Status409Conflict, ApiResponse<object>.Fail(ex.Message));
@@ -117,14 +136,14 @@ public class UsersController : ControllerBase
         }
     }
 
-    // Admin IT đặt lại mật khẩu HỘ một người dùng khác về mật khẩu mặc định (cấu hình UserDefaults).
+    // Admin IT đặt lại mật khẩu HỘ một người dùng khác: mật khẩu cũ mất hiệu lực ngay, hệ thống gửi liên kết để người đó tự đặt mật khẩu mới.
     [HttpPost("{id:int}/reset-password")]
     public async Task<IActionResult> ResetPassword(int id)
     {
         try
         {
             var result = await _userService.ResetPasswordAsync(id, GetCurrentUserId());
-            return Ok(ApiResponse<object>.Ok(result, "Đã đặt lại mật khẩu của người dùng về mật khẩu mặc định."));
+            return Ok(ApiResponse<object>.Ok(result, "Đã vô hiệu mật khẩu cũ. " + (result.ActivationDispatch?.Message ?? "")));
         }
         catch (UserNotFoundException ex)
         {
@@ -134,9 +153,68 @@ public class UsersController : ControllerBase
         {
             return BadRequest(ApiResponse<object>.Fail(ex.Message));
         }
-        catch (DefaultPasswordNotConfiguredException ex)
+        catch (ActivationResendTooSoonException ex)
+        {
+            return StatusCode(StatusCodes.Status429TooManyRequests, ApiResponse<object>.Fail(ex.Message));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<object>.Fail(ex.Message));
+        }
+    }
+
+    // Xoá tài khoản (xoá mềm, giữ lịch sử). 204 khi thành công.
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Delete(int id)
+    {
+        try
+        {
+            await _userService.DeleteAsync(id, GetCurrentUserId());
+            return NoContent();
+        }
+        catch (UserNotFoundException ex)
+        {
+            return NotFound(ApiResponse<object>.Fail(ex.Message));
+        }
+        catch (SelfDeleteNotAllowedException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Fail(ex.Message));
+        }
+        catch (LastAdminProtectionException ex)
         {
             return Conflict(ApiResponse<object>.Fail(ex.Message));
+        }
+        catch (UserHasPendingWorkException ex)
+        {
+            return Conflict(ApiResponse<object>.Fail(ex.Message));
+        }
+    }
+
+    // Nhân viên đang hoạt động chưa có tài khoản — để chọn khi tạo tài khoản vai trò Nhân viên.
+    [HttpGet("employee-candidates")]
+    public async Task<IActionResult> GetEmployeeCandidates([FromQuery] string? keyword = null) =>
+        Ok(ApiResponse<object>.Ok(await _userService.GetEmployeeCandidatesAsync(keyword)));
+
+    // Gửi lại email kích hoạt cho tài khoản nhân viên đang chờ kích hoạt.
+    [HttpPost("{id:int}/resend-activation")]
+    public async Task<IActionResult> ResendActivation(int id)
+    {
+        try
+        {
+            var result = await _userService.ResendActivationAsync(id, GetCurrentUserId());
+            return Ok(ApiResponse<object>.Ok(result, result.ActivationDispatch?.Message ?? "Đã xử lý yêu cầu gửi lại email kích hoạt."));
+        }
+        catch (UserNotFoundException ex)
+        {
+            return NotFound(ApiResponse<object>.Fail(ex.Message));
+        }
+        catch (ActivationResendTooSoonException ex)
+        {
+            return StatusCode(StatusCodes.Status429TooManyRequests, ApiResponse<object>.Fail(ex.Message));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<object>.Fail(ex.Message));
         }
     }
 

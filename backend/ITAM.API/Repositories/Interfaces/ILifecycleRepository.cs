@@ -5,11 +5,12 @@ namespace ITAM.API.Repositories.Interfaces;
 
 public interface ILifecycleRepository
 {
-    Task<IReadOnlyList<AssetLifecycleRow>> GetAssetLifecycleRowsAsync(int? departmentId);
+    Task<IReadOnlyList<AssetLifecycleRow>> GetAssetLifecycleRowsAsync(int? departmentId, int? categoryId);
     // M2: một tài sản (null nếu không tồn tại hoặc đã Disposed) cùng danh sách phiếu bảo trì, mới nhất trước.
     Task<AssetLifecycleRow?> GetAssetLifecycleRowAsync(int assetId);
     Task<IReadOnlyList<AssetTicketSummaryDto>> GetTicketsByAssetAsync(int assetId);
-    Task<IReadOnlyList<TicketTrendPointDto>> GetTicketCountByYearAsync(int? departmentId, int fromYear);
+    Task<IReadOnlyList<TicketTrendPointDto>> GetTicketCountByYearAsync(int? departmentId, int fromYear, int? categoryId);
+    Task<IReadOnlyDictionary<int, string>> GetUserNamesAsync(IEnumerable<int> userIds);
     Task<IReadOnlyList<AssetCategoryLifecyclePolicy>> GetPoliciesAsync();
     Task<IReadOnlyList<AssetCategory>> GetCategoriesAsync();
     Task<AssetCategory?> GetCategoryByIdAsync(int categoryId);

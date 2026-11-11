@@ -1,3 +1,4 @@
+using ITAM.API.Authorization;
 using System.Security.Claims;
 using FluentValidation;
 using ITAM.API.Models.DTOs;
@@ -29,7 +30,7 @@ public class AssetAllocationsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin IT,Manager")]
+    [HasPermission(Permissions.AllocationsManage)]
     public async Task<IActionResult> Create(CreateAssetAllocationDto dto)
     {
         var validation = await _createValidator.ValidateAsync(dto);
@@ -76,7 +77,7 @@ public class AssetAllocationsController : ControllerBase
     }
 
     [HttpPost("{id:int}/return")]
-    [Authorize(Roles = "Admin IT,Manager")]
+    [HasPermission(Permissions.AllocationsManage)]
     public async Task<IActionResult> Return(int id, ReturnAssetAllocationDto dto)
     {
         var validation = await _returnValidator.ValidateAsync(dto);
@@ -121,14 +122,22 @@ public class AssetAllocationsController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Roles = "Admin IT,Manager")] // UC-14/UC-15: tác nhân chỉ gồm Admin IT, Manager.
+    [HasPermission(Permissions.AllocationsManage)] // UC-14/UC-15: tác nhân chỉ gồm Admin IT, Manager.
     public async Task<IActionResult> GetList(
         [FromQuery] int? departmentId,
         [FromQuery] string? status,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] string? keyword = null,
-        [FromQuery] int? employeeId = null)
+        [FromQuery] int? employeeId = null,
+        [FromQuery] int? categoryId = null,
+        [FromQuery] DateOnly? allocatedFrom = null,
+        [FromQuery] DateOnly? allocatedTo = null,
+        [FromQuery] string? handoverCondition = null,
+        [FromQuery] string? returnCondition = null,
+        [FromQuery] int? holdingOverDays = null,
+        [FromQuery] string? sort = null,
+        [FromQuery] string? departmentScope = null)
     {
         try
         {
@@ -140,7 +149,15 @@ public class AssetAllocationsController : ControllerBase
                 GetCurrentUserRole(),
                 GetCurrentUserDepartmentId(),
                 keyword,
-                employeeId);
+                employeeId,
+                categoryId,
+                allocatedFrom,
+                allocatedTo,
+                handoverCondition,
+                returnCondition,
+                holdingOverDays,
+                sort,
+                departmentScope);
 
             return Ok(ApiResponse<object>.Ok(result));
         }
@@ -151,7 +168,7 @@ public class AssetAllocationsController : ControllerBase
     }
 
     [HttpGet("{id:int}")]
-    [Authorize(Roles = "Admin IT,Manager")]
+    [HasPermission(Permissions.AllocationsManage)]
     public async Task<IActionResult> GetById(int id)
     {
         try
@@ -170,7 +187,7 @@ public class AssetAllocationsController : ControllerBase
 
     // Dữ liệu in "Biên bản bàn giao/thu hồi tài sản" theo mẫu (kind=handover|return).
     [HttpGet("{id:int}/document")]
-    [Authorize(Roles = "Admin IT,Manager")]
+    [HasPermission(Permissions.AllocationsManage)]
     public async Task<IActionResult> GetDocument(int id, [FromQuery] string? kind = null)
     {
         try
@@ -190,15 +207,23 @@ public class AssetAllocationsController : ControllerBase
     }
 
     [HttpGet("overdue")]
-    [Authorize(Roles = "Admin IT,Manager")]
-    public async Task<IActionResult> GetOverdue([FromQuery] int thresholdDays = 180)
+    [HasPermission(Permissions.AllocationsManage)]
+    public async Task<IActionResult> GetOverdue([FromQuery] int thresholdDays = 180, [FromQuery] string? severity = null)
     {
-        var result = await _service.GetOverdueAsync(
-            thresholdDays,
-            GetCurrentUserRole(),
-            GetCurrentUserDepartmentId());
+        try
+        {
+            var result = await _service.GetOverdueAsync(
+                thresholdDays,
+                GetCurrentUserRole(),
+                GetCurrentUserDepartmentId(),
+                severity);
 
-        return Ok(ApiResponse<object>.Ok(result));
+            return Ok(ApiResponse<object>.Ok(result));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<object>.Fail(ex.Message));
+        }
     }
 
     private int? GetCurrentUserId() =>

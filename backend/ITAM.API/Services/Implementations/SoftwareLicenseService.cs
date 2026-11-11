@@ -5,6 +5,7 @@ using ITAM.API.Models.Entities;
 using ITAM.API.Repositories.Interfaces;
 using ITAM.API.Repositories.Models;
 using ITAM.API.Services.Interfaces;
+using Microsoft.EntityFrameworkCore;
 
 namespace ITAM.API.Services.Implementations;
 
@@ -30,11 +31,34 @@ public class SoftwareLicenseService : ISoftwareLicenseService
     public async Task<PagedResultDto<SoftwareLicenseResponseDto>> GetPagedAsync(
         int page = 1,
         int pageSize = 20,
-        string? search = null)
+        string? search = null,
+        string? state = null,
+        DateOnly? expiryFrom = null,
+        DateOnly? expiryTo = null,
+        string? sortBy = null,
+        string? assignment = null)
     {
         (page, pageSize) = Paging.Normalize(page, pageSize);
 
-        var (items, totalItems) = await _repository.GetPagedAsync(page, pageSize, search);
+        if (expiryFrom.HasValue && expiryTo.HasValue && expiryFrom > expiryTo)
+        {
+            throw new ArgumentException("expiryFrom không được lớn hơn expiryTo.");
+        }
+
+        var today = VietnamTime.Today();
+        var filter = new SoftwareLicenseFilter
+        {
+            Search = search,
+            State = ParseEnumOrThrow<LicenseStateFilter>(state, "state"),
+            ExpiryFrom = expiryFrom,
+            ExpiryTo = expiryTo,
+            SortBy = ParseEnumOrThrow<LicenseSortBy>(sortBy, "sortBy") ?? LicenseSortBy.Name,
+            Assignment = ParseEnumOrThrow<LicenseAssignmentFilter>(assignment, "assignment"),
+            Today = today,
+            WarningDate = today.AddDays(DefaultWarningDays),
+        };
+
+        var (items, totalItems) = await _repository.GetPagedAsync(page, pageSize, filter);
 
         return new PagedResultDto<SoftwareLicenseResponseDto>
         {
@@ -51,6 +75,25 @@ public class SoftwareLicenseService : ISoftwareLicenseService
             ?? throw new KeyNotFoundException($"Không tìm thấy license có Id = {id}.");
 
         return MapToResponse(license, DefaultWarningDays);
+    }
+
+    public async Task<IReadOnlyList<LicenseAssignmentDto>> GetAssignmentsAsync(int id)
+    {
+        if (await _repository.GetEntityByIdAsync(id) is null)
+        {
+            throw new KeyNotFoundException($"Không tìm thấy license có Id = {id}.");
+        }
+
+        var assignments = await _repository.GetAssignmentsAsync(id);
+        return assignments.Select(a => new LicenseAssignmentDto
+        {
+            AssetId = a.AssetId,
+            AssetCode = a.Asset.AssetCode,
+            AssetName = a.Asset.Name,
+            DepartmentName = a.Asset.Department?.Name ?? string.Empty,
+            AssetStatus = a.Asset.Status.ToString(),
+            AssignedDate = a.AssignedDate,
+        }).ToList();
     }
 
     public async Task<SoftwareLicenseResponseDto> CreateAsync(CreateSoftwareLicenseDto dto)
@@ -70,13 +113,27 @@ public class SoftwareLicenseService : ISoftwareLicenseService
             Notes = NormalizeOptionalText(dto.Notes)
         };
 
-        await _repository.AddAsync(license);
+        try
+        {
+            await _repository.AddAsync(license);
+        }
+        catch (DbUpdateException)
+        {
+            // Hai request cùng tạo một key: ràng buộc duy nhất ở database là chốt chặn cuối.
+            throw new InvalidOperationException($"LicenseKey '{licenseKey}' đã tồn tại.");
+        }
+
         _logger.LogInformation("Created software license {LicenseId} ({SoftwareName})", license.Id, license.SoftwareName);
 
         return await GetByIdAsync(license.Id);
     }
 
-    public async Task<SoftwareLicenseResponseDto> UpdateAsync(int id, UpdateSoftwareLicenseDto dto)
+    // Sửa/xoá cũng vào cùng ổ khoá với gán: nếu không, MaxUsage có thể bị hạ xuống dưới số đang dùng ngay lúc có
+    // một lượt gán đang chạy, hoặc license bị xoá giữa lúc đang gán.
+    public Task<SoftwareLicenseResponseDto> UpdateAsync(int id, UpdateSoftwareLicenseDto dto) =>
+        _exclusive.RunAsync(LockTarget.SoftwareLicense, id, () => UpdateCoreAsync(id, dto));
+
+    private async Task<SoftwareLicenseResponseDto> UpdateCoreAsync(int id, UpdateSoftwareLicenseDto dto)
     {
         var license = await _repository.GetEntityByIdAsync(id)
             ?? throw new KeyNotFoundException($"Không tìm thấy license có Id = {id}.");
@@ -106,7 +163,14 @@ public class SoftwareLicenseService : ISoftwareLicenseService
         return await GetByIdAsync(id);
     }
 
-    public async Task DeleteAsync(int id)
+    public Task DeleteAsync(int id) =>
+        _exclusive.RunAsync(LockTarget.SoftwareLicense, id, async () =>
+        {
+            await DeleteCoreAsync(id);
+            return true;
+        });
+
+    private async Task DeleteCoreAsync(int id)
     {
         var license = await _repository.GetEntityByIdAsync(id)
             ?? throw new KeyNotFoundException($"Không tìm thấy license có Id = {id}.");
@@ -140,10 +204,22 @@ public class SoftwareLicenseService : ISoftwareLicenseService
             throw new KeyNotFoundException($"Không tìm thấy tài sản có AssetId = {assetId}.");
         }
 
+        // Quy tắc kiểm tra ở backend, không dựa vào việc giao diện có ẩn nút hay không.
+        if (license.ExpiryDate < VietnamTime.Today())
+        {
+            throw new InvalidOperationException(
+                $"License đã hết hạn ngày {license.ExpiryDate:dd/MM/yyyy}, không thể gán thêm. Hãy gia hạn (cập nhật ngày hết hạn) trước.");
+        }
+
+        if (await _repository.IsAssetDisposedAsync(assetId))
+        {
+            throw new InvalidOperationException("Tài sản đã được thanh lý, không thể gán license.");
+        }
+
         if (await _repository.IsAssignedAsync(id, assetId))
         {
             throw new InvalidOperationException(
-                $"License Id = {id} đã được gán cho AssetId = {assetId}, không thể gán trùng.");
+                "License này đã được gán cho tài sản đó (mỗi cặp license – tài sản chỉ gán một lần).");
         }
 
         var currentUsage = await _repository.GetCurrentUsageAsync(id);
@@ -157,14 +233,21 @@ public class SoftwareLicenseService : ISoftwareLicenseService
         {
             LicenseId = id,
             AssetId = assetId,
-            AssignedDate = DateOnly.FromDateTime(DateTime.UtcNow)
+            AssignedDate = VietnamTime.Today()
         });
 
         _logger.LogInformation("Assigned software license {LicenseId} to asset {AssetId}", id, assetId);
         return await GetByIdAsync(id);
     }
 
-    public async Task UnassignAsync(int id, int assetId)
+    public Task UnassignAsync(int id, int assetId) =>
+        _exclusive.RunAsync(LockTarget.SoftwareLicense, id, async () =>
+        {
+            await UnassignCoreAsync(id, assetId);
+            return true;
+        });
+
+    private async Task UnassignCoreAsync(int id, int assetId)
     {
         if (await _repository.GetEntityByIdAsync(id) is null)
         {
@@ -184,7 +267,7 @@ public class SoftwareLicenseService : ISoftwareLicenseService
     public async Task<IReadOnlyList<SoftwareLicenseResponseDto>> GetExpiringSoonAsync(int days = 30)
     {
         days = Math.Clamp(days, 1, 365);
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = VietnamTime.Today();
         var endDate = today.AddDays(days);
 
         var licenses = await _repository.GetExpiringSoonAsync(today, endDate);
@@ -195,11 +278,16 @@ public class SoftwareLicenseService : ISoftwareLicenseService
         SoftwareLicenseSnapshot license,
         int warningDays)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = VietnamTime.Today();
         var warningDate = today.AddDays(warningDays);
         var usagePercentage = license.MaxUsage <= 0
             ? 0m
             : Math.Round(license.CurrentUsage * 100m / license.MaxUsage, 2);
+
+        var isExpired = license.ExpiryDate < today;
+        var isFull = license.CurrentUsage >= license.MaxUsage;
+        var isNearLimit = !isFull && usagePercentage >= NearUsageLimitPercentage;
+        var isExpiringSoon = license.ExpiryDate >= today && license.ExpiryDate <= warningDate;
 
         return new SoftwareLicenseResponseDto
         {
@@ -210,11 +298,31 @@ public class SoftwareLicenseService : ISoftwareLicenseService
             MaxUsage = license.MaxUsage,
             CurrentUsage = license.CurrentUsage,
             UsagePercentage = usagePercentage,
-            IsExpired = license.ExpiryDate < today,
-            IsExpiringSoon = license.ExpiryDate >= today && license.ExpiryDate <= warningDate,
-            IsNearUsageLimit = usagePercentage >= NearUsageLimitPercentage,
+            IsExpired = isExpired,
+            IsExpiringSoon = isExpiringSoon,
+            IsNearUsageLimit = isNearLimit,
+            IsFull = isFull,
+            RemainingSlots = Math.Max(0, license.MaxUsage - license.CurrentUsage),
+            Status = isExpired ? "Expired" : isFull ? "Full" : isNearLimit ? "NearLimit" : isExpiringSoon ? "ExpiringSoon" : "Active",
             Notes = license.Notes
         };
+    }
+
+    // Khớp đúng tên enum (không phân biệt hoa/thường) — Enum.TryParse còn nhận cả chuỗi số nên kiểm tra tên trước.
+    private static TEnum? ParseEnumOrThrow<TEnum>(string? value, string paramName) where TEnum : struct, Enum
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var match = Enum.GetNames<TEnum>().FirstOrDefault(n => string.Equals(n, value.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (match is null)
+        {
+            throw new ArgumentException($"{paramName} không hợp lệ. Phải là một trong: {string.Join(", ", Enum.GetNames<TEnum>())}");
+        }
+
+        return Enum.Parse<TEnum>(match);
     }
 
     private static string? NormalizeOptionalText(string? value)

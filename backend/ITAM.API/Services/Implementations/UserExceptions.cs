@@ -17,6 +17,13 @@ public class SelfLockNotAllowedException : Exception
 
 // Bảo vệ hệ thống khỏi bị khoá chết hoàn toàn: không cho khoá hoặc hạ quyền Admin IT đang active
 // cuối cùng — nếu không, sẽ không còn ai có quyền quản trị để khôi phục lại.
+public class SelfRoleChangeNotAllowedException : Exception
+{
+    public SelfRoleChangeNotAllowedException() : base("Bạn không thể tự đổi vai trò của chính mình. Hãy nhờ một Admin IT khác thực hiện.")
+    {
+    }
+}
+
 public class LastAdminProtectionException : Exception
 {
     public LastAdminProtectionException()
@@ -32,6 +39,22 @@ public class SelfPasswordResetNotAllowedException : Exception
     public SelfPasswordResetNotAllowedException()
         : base("Không thể tự đặt lại mật khẩu của chính mình qua chức năng quản trị. " +
                "Hãy dùng \"Đổi mật khẩu\", hoặc nhờ Admin IT khác đặt lại nếu bạn quên mật khẩu.")
+    {
+    }
+}
+
+public class SelfDeleteNotAllowedException : Exception
+{
+    public SelfDeleteNotAllowedException() : base("Bạn không thể tự xoá tài khoản của chính mình.")
+    {
+    }
+}
+
+// Kỹ thuật viên còn phiếu bảo trì đang chờ xử lý được phân công cho họ.
+public class UserHasPendingWorkException : Exception
+{
+    public UserHasPendingWorkException(int pendingTickets)
+        : base($"Tài khoản còn {pendingTickets} phiếu bảo trì đang chờ xử lý được phân công. Hãy phân công lại cho kỹ thuật viên khác trước khi xoá.")
     {
     }
 }

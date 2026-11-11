@@ -4,6 +4,7 @@ namespace ITAM.API.Models.DTOs.Lifecycle;
 public class ReplacementRecommendationDto : AssetReplacementCandidateDto
 {
     public int PriorityScore { get; set; }
+    public PriorityScoreBreakdownDto ScoreBreakdown { get; set; } = new();   // giải trình điểm: tự tính lại được
     public string ReasonText { get; set; } = string.Empty;
     public DateOnly? WarrantyExpiry { get; set; }
     public bool IsUnderWarranty { get; set; }

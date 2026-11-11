@@ -9,6 +9,9 @@ public class CreateAssetAllocationValidator : AbstractValidator<CreateAssetAlloc
     // Danh sách cố định để tình trạng lúc bàn giao thống nhất (không gõ tự do).
     public static readonly string[] AllowedConditions = { "Mới", "Tốt", "Bình thường", "Cũ" };
 
+    // Để trống (null/rỗng) là hợp lệ; nhập mà toàn khoảng trắng là lỗi nhập liệu.
+    private static bool NotWhitespaceOnly(string? value) => string.IsNullOrEmpty(value) || value.Trim().Length > 0;
+
     public CreateAssetAllocationValidator()
     {
         RuleFor(x => x.AssetId)
@@ -26,12 +29,15 @@ public class CreateAssetAllocationValidator : AbstractValidator<CreateAssetAlloc
             .WithMessage($"Tình trạng bàn giao không hợp lệ. Phải là một trong: {string.Join(", ", AllowedConditions)}.");
 
         RuleFor(x => x.HandoverReason)
-            .MaximumLength(255).WithMessage("Lý do bàn giao không được vượt quá 255 ký tự.");
+            .MaximumLength(255).WithMessage("Lý do bàn giao không được vượt quá 255 ký tự.")
+            .Must(NotWhitespaceOnly).WithMessage("Lý do bàn giao không được chỉ chứa khoảng trắng.");
 
         RuleFor(x => x.HandoverLocation)
-            .MaximumLength(200).WithMessage("Địa điểm bàn giao không được vượt quá 200 ký tự.");
+            .MaximumLength(200).WithMessage("Địa điểm bàn giao không được vượt quá 200 ký tự.")
+            .Must(NotWhitespaceOnly).WithMessage("Địa điểm bàn giao không được chỉ chứa khoảng trắng.");
 
         RuleFor(x => x.HandoverNote)
-            .MaximumLength(500).WithMessage("Ghi chú bàn giao không được vượt quá 500 ký tự.");
+            .MaximumLength(500).WithMessage("Ghi chú bàn giao không được vượt quá 500 ký tự.")
+            .Must(NotWhitespaceOnly).WithMessage("Ghi chú bàn giao không được chỉ chứa khoảng trắng.");
     }
 }

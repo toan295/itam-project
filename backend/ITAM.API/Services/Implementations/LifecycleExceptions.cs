@@ -16,3 +16,11 @@ public class LifecycleAssetNotFoundException : Exception
     {
     }
 }
+
+// Cấu hình ngưỡng đã bị người khác tạo/sửa/xoá kể từ lúc client tải (hoặc hai yêu cầu tạo cùng lúc) — trả 409.
+public class LifecyclePolicyConflictException : Exception
+{
+    public LifecyclePolicyConflictException(string message) : base(message)
+    {
+    }
+}

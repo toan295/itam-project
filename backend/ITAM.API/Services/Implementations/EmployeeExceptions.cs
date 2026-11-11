@@ -14,3 +14,12 @@ public class EmployeeConflictException : Exception
     {
     }
 }
+
+// Admin ngừng hoạt động hồ sơ gắn với tài khoản của chính mình sẽ tự khoá mình — 403 (cùng quy tắc "không tự khoá" ở màn Người dùng).
+public class EmployeeSelfDeactivationException : Exception
+{
+    public EmployeeSelfDeactivationException()
+        : base("Bạn không thể ngừng hoạt động hồ sơ gắn với tài khoản của chính mình (tài khoản sẽ bị khoá).")
+    {
+    }
+}

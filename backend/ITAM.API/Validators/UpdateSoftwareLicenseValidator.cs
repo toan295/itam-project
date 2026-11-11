@@ -16,11 +16,11 @@ public class UpdateSoftwareLicenseValidator : AbstractValidator<UpdateSoftwareLi
             .MaximumLength(255).WithMessage("LicenseKey không được vượt quá 255 ký tự.");
 
         RuleFor(dto => dto.ExpiryDate)
-            .Must(date => date != default)
-            .WithMessage("Ngày hết hạn không hợp lệ.");
+            .Must(date => date.Year >= 1990 && date.Year <= 2100)
+            .WithMessage("Ngày hết hạn không hợp lệ (phải trong khoảng năm 1990–2100).");
 
         RuleFor(dto => dto.MaxUsage)
-            .GreaterThan(0).WithMessage("MaxUsage phải lớn hơn 0.");
+            .InclusiveBetween(1, 100000).WithMessage("MaxUsage phải là số nguyên từ 1 đến 100.000.");
 
         RuleFor(dto => dto.Notes)
             .MaximumLength(500).WithMessage("Ghi chú không được vượt quá 500 ký tự.");

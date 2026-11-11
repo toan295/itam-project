@@ -34,6 +34,28 @@ public class DateValidatorsTests
         Assert.True(result.IsValid);
     }
 
+    [Theory]
+    [InlineData(1900, 1, 1)]
+    [InlineData(20, 5, 5)]
+    [InlineData(1989, 12, 31)]
+    public void CreateAsset_PurchaseDateBeforeMinYear_IsInvalid(int y, int m, int d)
+    {
+        var result = new CreateAssetRequestValidator().Validate(Asset(new DateOnly(y, m, d)));
+
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateAssetRequestDto.PurchaseDate));
+    }
+
+    [Fact]
+    public void CreateAsset_WarrantyMoreThan30YearsAway_IsInvalid()
+    {
+        var dto = Asset(Today.AddYears(-1));
+        dto.WarrantyExpiry = Today.AddYears(31);
+
+        var result = new CreateAssetRequestValidator().Validate(dto);
+
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateAssetRequestDto.WarrantyExpiry));
+    }
+
     [Fact]
     public void CreateAsset_NoPurchaseDate_IsValid()
     {

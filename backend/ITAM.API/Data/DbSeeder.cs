@@ -8,23 +8,21 @@ namespace ITAM.API.Data;
 public static class DbSeeder
 {
     private const int BCryptWorkFactor = 11;
-    private const string AdminEmail = "admin@eaims.local";
+    private const string AdminEmail = "admin@gmail.com";
     private const string AdminPassword = "Admin@123";
 
     // Mật khẩu dùng chung cho các tài khoản demo Manager/Technician bên dưới — chỉ phục vụ
     // seed dữ liệu Development để test nhanh (đăng nhập thử từng vai trò), KHÔNG áp dụng cho
-    // tài khoản thật: tài khoản do Admin IT tạo qua UsersController dùng mật khẩu mặc định
-    // (cấu hình UserDefaults:DefaultPassword) và nên được người dùng đổi ngay sau lần đăng nhập đầu.
+    // tài khoản thật: tài khoản do Admin IT tạo qua UsersController không có mật khẩu — người dùng tự đặt mật khẩu qua
+    // liên kết kích hoạt trong email.
     private const string DemoPassword = "Demo@123";
-    private const string InitialDefaultPassword = "Eaims@123";
 
-    public static async Task SeedAsync(AppDbContext context, DefaultPasswordCipher cipher)
+    public static async Task SeedAsync(AppDbContext context)
     {
         await SeedRolesAsync(context);
         await SeedDepartmentsAsync(context);
         await SeedAssetCategoriesAsync(context);
         await SeedAdminUserAsync(context);
-        await SeedDefaultPasswordAsync(context, cipher);
 
         // Bộ dữ liệu demo mở rộng — phục vụ trình bày/test giao diện đầy đủ chức năng.
         // Ghi chú cho Hoàng Đức Tú: đây là phần thêm mới (không đổi 4 hàm seed nền tảng phía trên),
@@ -36,6 +34,7 @@ public static class DbSeeder
         await SeedDemoMaintenanceTicketsAsync(context);
         await SeedDemoEmployeesAsync(context);
         await SeedDemoAssetAllocationsAsync(context);
+        await SeedDemoEmployeeAccountsAsync(context);
         await SeedDemoDisposalRequestsAsync(context);
         // Chưa seed BudgetForecasts / AuditLogs / ImportLogs: chưa có module nào đọc/ghi các bảng này
         // (UC-17 Tuần 7-8, AuditLog Service và Import Tuần 9+) — seed sớm dễ lệch với thiết kế sau này.
@@ -43,7 +42,7 @@ public static class DbSeeder
 
     private static async Task SeedRolesAsync(AppDbContext context)
     {
-        var roleNames = new[] { "Admin IT", "Manager", "Technician" };
+        var roleNames = new[] { "Admin IT", "Manager", "Technician", "Employee" };
 
         foreach (var roleName in roleNames)
         {
@@ -99,7 +98,7 @@ public static class DbSeeder
 
         foreach (var department in departments)
         {
-            if (!await context.Departments.AnyAsync(item => item.Name == department.Name))
+            if (!await context.Departments.IgnoreQueryFilters().AnyAsync(item => item.Name == department.Name))
             {
                 context.Departments.Add(department);
             }
@@ -129,7 +128,7 @@ public static class DbSeeder
 
         foreach (var categoryName in categoryNames)
         {
-            if (!await context.AssetCategories.AnyAsync(category => category.Name == categoryName))
+            if (!await context.AssetCategories.IgnoreQueryFilters().AnyAsync(category => category.Name == categoryName))
             {
                 context.AssetCategories.Add(new AssetCategory { Name = categoryName });
             }
@@ -157,6 +156,7 @@ public static class DbSeeder
         {
             FullName = "EAIMS Admin",
             Email = AdminEmail,
+            Phone = "0901234000",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(AdminPassword, BCryptWorkFactor),
             RoleId = adminRole.Id,
             DepartmentId = itDepartment.Id,
@@ -165,18 +165,6 @@ public static class DbSeeder
         };
 
         context.Users.Add(admin);
-        await context.SaveChangesAsync();
-    }
-
-    // Mật khẩu mặc định ban đầu (chỉ Development) để Admin IT cấp tài khoản ngay được; Admin sửa/xoá trên giao diện.
-    private static async Task SeedDefaultPasswordAsync(AppDbContext context, DefaultPasswordCipher cipher)
-    {
-        if (await context.SystemSettings.AnyAsync(s => s.Key == "DefaultPassword"))
-        {
-            return;
-        }
-
-        context.SystemSettings.Add(new SystemSetting { Key = "DefaultPassword", Value = cipher.Protect(InitialDefaultPassword) });
         await context.SaveChangesAsync();
     }
 
@@ -193,32 +181,15 @@ public static class DbSeeder
         var userByEmail = await context.Users.ToDictionaryAsync(u => u.Email, u => u.Id);
         var statusByCode = await context.DisposalStatuses.ToDictionaryAsync(s => s.Code, s => s);
 
-        // Dùng lại trạng thái phụ nếu đã có (vd: ai đó xoá hết phiếu thanh lý rồi chạy lại) — thêm trùng Code sẽ
-        // vi phạm unique index và làm ứng dụng không khởi động được.
-        if (!statusByCode.TryGetValue("custom-seed-docs", out var waitingDocs))
-        {
-            waitingDocs = new DisposalStatus
-            {
-                Code = "custom-seed-docs",
-                Name = "Chờ chứng từ",
-                Description = "Đang chờ biên bản/chứng từ thanh lý",
-                Color = "warning",
-                SortOrder = 10,
-                IsSystem = false,
-            };
-            context.DisposalStatuses.Add(waitingDocs);
-            await context.SaveChangesAsync();
-        }
-
         var now = DateTime.UtcNow;
         var requests = new[]
         {
             // code, status, tech, manager, admin, daysAgo, subStatus, reviewNote
-            new DisposalSeed("MI-003", DisposalStatusCodes.Inspected, "tech1@eaims.local", null, null, 2, null, null, "Brother HL-L2321D hỏng bộ phận kéo giấy, chi phí sửa cao."),
-            new DisposalSeed("PC-005", DisposalStatusCodes.Proposed, "tech2@eaims.local", null, null, 5, null, null, "Mainboard hỏng, không khởi động, hết bảo hành."),
-            new DisposalSeed("DT-003", DisposalStatusCodes.Approved, "tech3@eaims.local", "manager.ketoan@eaims.local", null, 9, waitingDocs, "Đồng ý thanh lý, chuyển Admin IT thực hiện.", "Vỡ màn hình và hỏng nguồn, không thay thế được linh kiện."),
-            new DisposalSeed("PC-003", DisposalStatusCodes.Rejected, "tech1@eaims.local", "manager.nhansu@eaims.local", null, 14, null, "Máy vẫn dùng tốt, chưa cần thanh lý.", "Máy cũ, chạy chậm."),
-            new DisposalSeed("MI-002", DisposalStatusCodes.Completed, "tech2@eaims.local", "manager.it@eaims.local", "admin@eaims.local", 30, null, "Đồng ý.", "Máy in đã hết tuổi thọ sử dụng."),
+            new DisposalSeed("MI-003", DisposalStatusCodes.Inspected, "tech1@gmail.com", null, null, 2, null, null, "Brother HL-L2321D hỏng bộ phận kéo giấy, chi phí sửa cao."),
+            new DisposalSeed("PC-005", DisposalStatusCodes.Proposed, "tech2@gmail.com", null, null, 5, null, null, "Mainboard hỏng, không khởi động, hết bảo hành."),
+            new DisposalSeed("DT-003", DisposalStatusCodes.Approved, "tech3@gmail.com", "manager.ketoan@gmail.com", null, 9, null, "Đồng ý thanh lý, chuyển Admin IT thực hiện.", "Vỡ màn hình và hỏng nguồn, không thay thế được linh kiện."),
+            new DisposalSeed("PC-003", DisposalStatusCodes.Rejected, "tech1@gmail.com", "manager.nhansu@gmail.com", null, 14, null, "Máy vẫn dùng tốt, chưa cần thanh lý.", "Máy cũ, chạy chậm."),
+            new DisposalSeed("MI-002", DisposalStatusCodes.Completed, "tech2@gmail.com", "manager.it@gmail.com", "admin@gmail.com", 30, null, "Đồng ý.", "Máy in đã hết tuổi thọ sử dụng."),
         };
 
         foreach (var seed in requests)
@@ -276,24 +247,33 @@ public static class DbSeeder
 
         var demoUsers = new[]
         {
-            new { FullName = "Nguyễn Văn Lý", Email = "manager.it@eaims.local", Role = "Manager", Department = "Phòng IT", Active = true },
-            new { FullName = "Trần Thị Trương", Email = "manager.ketoan@eaims.local", Role = "Manager", Department = "Phòng Kế toán", Active = true },
-            new { FullName = "Hoàng Văn Doanh", Email = "manager.kinhdoanh@eaims.local", Role = "Manager", Department = "Phòng Kinh doanh", Active = true },
-            new { FullName = "Lê Văn Thuật", Email = "tech1@eaims.local", Role = "Technician", Department = "Phòng IT", Active = true },
-            new { FullName = "Phạm Thị Trợ", Email = "tech2@eaims.local", Role = "Technician", Department = "Phòng IT", Active = true },
-            new { FullName = "Ngô Văn Hiếu", Email = "tech3@eaims.local", Role = "Technician", Department = "Phòng IT", Active = true },
+            new { FullName = "Nguyễn Văn Lý", Email = "manager.it@gmail.com", Role = "Manager", Department = "Phòng IT", Active = true },
+            new { FullName = "Trần Thị Trương", Email = "manager.ketoan@gmail.com", Role = "Manager", Department = "Phòng Kế toán", Active = true },
+            new { FullName = "Hoàng Văn Doanh", Email = "manager.kinhdoanh@gmail.com", Role = "Manager", Department = "Phòng Kinh doanh", Active = true },
+            new { FullName = "Lê Văn Thuật", Email = "tech1@gmail.com", Role = "Technician", Department = "Phòng IT", Active = true },
+            new { FullName = "Phạm Thị Trợ", Email = "tech2@gmail.com", Role = "Technician", Department = "Phòng IT", Active = true },
+            new { FullName = "Ngô Văn Hiếu", Email = "tech3@gmail.com", Role = "Technician", Department = "Phòng IT", Active = true },
 
             // --- Bộ mở rộng: Manager cho từng phòng ban + Admin thứ 2 + 1 tài khoản bị khoá ---
             // Technician: đúng 3 kỹ thuật viên hoạt động (tech1..3), cùng phục vụ MỌI phòng ban — DepartmentId chỉ là phòng ban quản lý hồ sơ.
-            new { FullName = "Bùi Quốc Bảo", Email = "admin.phu@eaims.local", Role = "Admin IT", Department = "Phòng IT", Active = true },
-            new { FullName = "Vũ Thị Lan", Email = "manager.nhansu@eaims.local", Role = "Manager", Department = "Phòng Nhân sự", Active = true },
-            new { FullName = "Đặng Minh Quân", Email = "manager.marketing@eaims.local", Role = "Manager", Department = "Phòng Marketing", Active = true },
+            new { FullName = "Bùi Quốc Bảo", Email = "admin.phu@gmail.com", Role = "Admin IT", Department = "Phòng IT", Active = true },
+            new { FullName = "Vũ Thị Lan", Email = "manager.nhansu@gmail.com", Role = "Manager", Department = "Phòng Nhân sự", Active = true },
+            new { FullName = "Đặng Minh Quân", Email = "manager.marketing@gmail.com", Role = "Manager", Department = "Phòng Marketing", Active = true },
             // Tài khoản đã bị khoá (IsActive = false) — minh hoạ UC-01 E2 và chức năng khoá/mở khoá của Admin (UC-03).
-            new { FullName = "Cao Văn Tùng", Email = "nghi.viec@eaims.local", Role = "Technician", Department = "Phòng IT", Active = false },
+            new { FullName = "Cao Văn Tùng", Email = "nghi.viec@gmail.com", Role = "Technician", Department = "Phòng IT", Active = false },
         };
 
+        // Đã có tài khoản bị xoá (xoá mềm, email gốc không còn để đối chiếu) thì không tạo bù tài khoản mẫu còn thiếu:
+        // tránh việc tài khoản vừa xoá "hiện lại" sau khi chạy lại hệ thống.
+        if (await context.Users.AnyAsync(u => u.IsDeleted))
+        {
+            return;
+        }
+
+        var phoneIndex = 0;
         foreach (var demoUser in demoUsers)
         {
+            phoneIndex++;
             if (await context.Users.AnyAsync(u => u.Email == demoUser.Email))
             {
                 continue;
@@ -303,6 +283,7 @@ public static class DbSeeder
             {
                 FullName = demoUser.FullName,
                 Email = demoUser.Email,
+                Phone = $"0901{234000 + phoneIndex:D6}",
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(DemoPassword, BCryptWorkFactor),
                 RoleId = roleIdByName[demoUser.Role],
                 DepartmentId = departmentIdByName[demoUser.Department],
@@ -444,7 +425,7 @@ public static class DbSeeder
 
         foreach (var seed in demoLicenses)
         {
-            if (await context.SoftwareLicenses.AnyAsync(l => l.LicenseKey == seed.LicenseKey))
+            if (await context.SoftwareLicenses.IgnoreQueryFilters().AnyAsync(l => l.LicenseKey == seed.LicenseKey))
             {
                 continue;
             }
@@ -478,8 +459,6 @@ public static class DbSeeder
             ("PC-003", "MS365-E3-XXXX-0001"),
             ("PC-001", "WINSRV-CAL-0004"),
             ("PC-004", "WINSRV-CAL-0004"),
-            ("MH-001", "WINSRV-CAL-0004"),
-            ("SW-001", "WINSRV-CAL-0004"),
             ("PC-001", "KASP-ENDPT-0005"),
             ("PC-002", "KASP-ENDPT-0005"),
 
@@ -493,12 +472,9 @@ public static class DbSeeder
             ("PC-002", "ZOOM-BIZ-0006"),
             ("PC-006", "ZOOM-BIZ-0006"),
             ("PC-007", "ZOOM-BIZ-0006"),
-            ("DT-002", "ZOOM-BIZ-0006"),
-            ("MC-001", "ZOOM-BIZ-0006"),
             ("PC-001", "SLACK-PRO-0007"),
             ("PC-003", "SLACK-PRO-0007"),
             ("PC-006", "SLACK-PRO-0007"),
-            ("DT-002", "SLACK-PRO-0007"),
             ("PC-002", "ACAD-2026-0008"),
             ("PC-006", "ACAD-2026-0008"),
             ("PC-007", "ACAD-2026-0008"),
@@ -520,10 +496,8 @@ public static class DbSeeder
             ("LT-002", "FORTI-VPN-0012"),
             ("LT-003", "FORTI-VPN-0012"),
             ("LT-004", "FORTI-VPN-0012"),
-            ("DT-005", "FORTI-VPN-0012"),
             ("PC-012", "CANVA-PRO-0013"),
             ("LT-004", "CANVA-PRO-0013"),
-            ("DT-007", "CANVA-PRO-0013"),
         };
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
@@ -580,27 +554,27 @@ public static class DbSeeder
             new TicketSeed("LT-002", "Pin chai, chỉ dùng được khoảng 30 phút.", TicketStatus.Pending, null, 5, null, null, TicketPriority.Low),
 
             // --- Pending, đã gán ---
-            new TicketSeed("SV-002", "Quạt tản nhiệt kêu to, nhiệt độ CPU cao bất thường.", TicketStatus.Pending, "tech1@eaims.local", 4, null, null, TicketPriority.Urgent),
-            new TicketSeed("PC-004", "Không lên nguồn sau khi mất điện đột ngột.", TicketStatus.Pending, "tech2@eaims.local", 6, null, null, TicketPriority.High),
-            new TicketSeed("LT-001", "Thay bàn phím và kiểm tra tình trạng pin.", TicketStatus.Pending, "tech2@eaims.local", 8, null, null),
-            new TicketSeed("DT-005", "Màn hình cảm ứng bị loạn cảm ứng ở góc dưới.", TicketStatus.Pending, "tech3@eaims.local", 2, null, null, TicketPriority.Normal),
+            new TicketSeed("SV-002", "Quạt tản nhiệt kêu to, nhiệt độ CPU cao bất thường.", TicketStatus.Pending, "tech1@gmail.com", 4, null, null, TicketPriority.Urgent),
+            new TicketSeed("PC-004", "Không lên nguồn sau khi mất điện đột ngột.", TicketStatus.Pending, "tech2@gmail.com", 6, null, null, TicketPriority.High),
+            new TicketSeed("LT-001", "Thay bàn phím và kiểm tra tình trạng pin.", TicketStatus.Pending, "tech2@gmail.com", 8, null, null),
+            new TicketSeed("DT-005", "Màn hình cảm ứng bị loạn cảm ứng ở góc dưới.", TicketStatus.Pending, "tech3@gmail.com", 2, null, null, TicketPriority.Normal),
             // Kỹ thuật viên phòng IT nhận phiếu của phòng Nhân sự (Admin/Manager được gán khác phòng ban).
-            new TicketSeed("PC-011", "Cài lại hệ điều hành và cập nhật driver.", TicketStatus.Pending, "tech1@eaims.local", 1, null, null, TicketPriority.Low),
+            new TicketSeed("PC-011", "Cài lại hệ điều hành và cập nhật driver.", TicketStatus.Pending, "tech1@gmail.com", 1, null, null, TicketPriority.Low),
 
             // --- Resolved (tài sản đang InUse) ---
-            new TicketSeed("PC-001", "Cập nhật BIOS và thay pin CMOS.", TicketStatus.Resolved, "tech1@eaims.local", 40, 6, "Đã thay pin CMOS, cập nhật BIOS bản mới nhất."),
-            new TicketSeed("PC-002", "Cài lại Windows và sao lưu dữ liệu kế toán.", TicketStatus.Resolved, "tech3@eaims.local", 25, 30, "Đã sao lưu dữ liệu, cài lại Windows 11 và cài phần mềm kế toán."),
-            new TicketSeed("MH-001", "Màn hình bị nhấp nháy khi chạy đồ họa.", TicketStatus.Resolved, "tech2@eaims.local", 12, 3.5, "Đổi cáp DisplayPort, hết nhấp nháy."),
-            new TicketSeed("MI-001", "Thay drum và vệ sinh máy in.", TicketStatus.Resolved, "tech3@eaims.local", 55, 26, "Đã thay drum mới."),
-            new TicketSeed("PC-006", "Máy chạy chậm, nâng cấp RAM từ 8GB lên 16GB.", TicketStatus.Resolved, "tech3@eaims.local", 70, 48, "Đã nâng cấp RAM."),
+            new TicketSeed("PC-001", "Cập nhật BIOS và thay pin CMOS.", TicketStatus.Resolved, "tech1@gmail.com", 40, 6, "Đã thay pin CMOS, cập nhật BIOS bản mới nhất."),
+            new TicketSeed("PC-002", "Cài lại Windows và sao lưu dữ liệu kế toán.", TicketStatus.Resolved, "tech3@gmail.com", 25, 30, "Đã sao lưu dữ liệu, cài lại Windows 11 và cài phần mềm kế toán."),
+            new TicketSeed("MH-001", "Màn hình bị nhấp nháy khi chạy đồ họa.", TicketStatus.Resolved, "tech2@gmail.com", 12, 3.5, "Đổi cáp DisplayPort, hết nhấp nháy."),
+            new TicketSeed("MI-001", "Thay drum và vệ sinh máy in.", TicketStatus.Resolved, "tech3@gmail.com", 55, 26, "Đã thay drum mới."),
+            new TicketSeed("PC-006", "Máy chạy chậm, nâng cấp RAM từ 8GB lên 16GB.", TicketStatus.Resolved, "tech3@gmail.com", 70, 48, "Đã nâng cấp RAM."),
             // Phiếu của năm trước — để thống kê "số lần bảo trì theo tài sản-năm" (UC-13) có nhiều năm.
-            new TicketSeed("SW-001", "Cập nhật firmware switch lên bản mới.", TicketStatus.Resolved, "tech1@eaims.local", 400, 5, "Cập nhật firmware thành công."),
-            new TicketSeed("PC-001", "Thay quạt tản nhiệt CPU bị kém.", TicketStatus.Resolved, "tech1@eaims.local", 420, 8, "Đã thay quạt mới."),
-            new TicketSeed("PC-003", "Thay ổ cứng SSD, cài lại hệ điều hành.", TicketStatus.Resolved, "tech2@eaims.local", 380, 20, "Đã thay SSD 256GB."),
+            new TicketSeed("SW-001", "Cập nhật firmware switch lên bản mới.", TicketStatus.Resolved, "tech1@gmail.com", 400, 5, "Cập nhật firmware thành công."),
+            new TicketSeed("PC-001", "Thay quạt tản nhiệt CPU bị kém.", TicketStatus.Resolved, "tech1@gmail.com", 420, 8, "Đã thay quạt mới."),
+            new TicketSeed("PC-003", "Thay ổ cứng SSD, cài lại hệ điều hành.", TicketStatus.Resolved, "tech2@gmail.com", 380, 20, "Đã thay SSD 256GB."),
 
             // --- Failed (tài sản đang Broken) ---
-            new TicketSeed("PC-005", "Mainboard hỏng, không thể khởi động.", TicketStatus.Failed, "tech3@eaims.local", 20, 72, "Chi phí sửa vượt giá trị máy, đề xuất thanh lý.", TicketPriority.High),
-            new TicketSeed("DT-003", "Vỡ màn hình và hỏng nguồn.", TicketStatus.Failed, "tech1@eaims.local", 33, 50, "Không thể thay thế linh kiện."),
+            new TicketSeed("PC-005", "Mainboard hỏng, không thể khởi động.", TicketStatus.Failed, "tech3@gmail.com", 20, 72, "Chi phí sửa vượt giá trị máy, đề xuất thanh lý.", TicketPriority.High),
+            new TicketSeed("DT-003", "Vỡ màn hình và hỏng nguồn.", TicketStatus.Failed, "tech1@gmail.com", 33, 50, "Không thể thay thế linh kiện."),
         };
 
         foreach (var seed in tickets)
@@ -670,7 +644,7 @@ public static class DbSeeder
     // chưa nhận tài sản và 1 người đã ngừng hoạt động để minh hoạ lọc/tìm kiếm.
     private static async Task SeedDemoEmployeesAsync(AppDbContext context)
     {
-        if (await context.Employees.AnyAsync())
+        if (await context.Employees.IgnoreQueryFilters().AnyAsync())
         {
             return;
         }
@@ -721,9 +695,50 @@ public static class DbSeeder
         foreach (var employee in await context.Employees.ToListAsync())
         {
             employee.EmployeeCode = $"NV{employee.Id:D4}";
+            // Email nhân viên mẫu: nvXXXX@gmail.com (đuôi @gmail.com theo yêu cầu).
+            employee.Email = $"nv{employee.Id:D4}@gmail.com";
+            employee.Phone = $"0912{345000 + employee.Id:D6}";
         }
 
         await context.SaveChangesAsync();
+    }
+
+    // Tài khoản đăng nhập mẫu cho một số nhân viên đang giữ tài sản (vai trò Employee) để thử cổng "Tài sản của tôi"
+    // và gửi yêu cầu bảo trì. Mật khẩu: Demo@123 (như các tài khoản demo khác).
+    private static async Task SeedDemoEmployeeAccountsAsync(AppDbContext context)
+    {
+        if (await context.Users.AnyAsync(u => u.IsDeleted))
+        {
+            return;   // như trên: không tạo lại tài khoản mẫu của nhân viên sau khi đã có tài khoản bị xoá
+        }
+
+        var employeeRoleId = await context.Roles.Where(r => r.Name == "Employee").Select(r => r.Id).SingleAsync();
+        var names = new[] { "Nguyễn Văn An", "Lê Thị Hoa", "Hoàng Văn Đức" };
+
+        foreach (var employee in await context.Employees.Where(e => names.Contains(e.FullName) && e.UserId == null).ToListAsync())
+        {
+            if (string.IsNullOrWhiteSpace(employee.Email) || await context.Users.AnyAsync(u => u.Email == employee.Email))
+            {
+                continue;
+            }
+
+            var user = new User
+            {
+                FullName = employee.FullName,
+                Email = employee.Email,
+                Phone = employee.Phone,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(DemoPassword, BCryptWorkFactor),
+                RoleId = employeeRoleId,
+                DepartmentId = employee.DepartmentId,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+            };
+            context.Users.Add(user);
+            await context.SaveChangesAsync();
+
+            employee.UserId = user.Id;
+            await context.SaveChangesAsync();
+        }
     }
 
     private static async Task SeedDemoAssetAllocationsAsync(AppDbContext context)

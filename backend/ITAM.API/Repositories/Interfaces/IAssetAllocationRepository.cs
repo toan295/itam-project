@@ -21,7 +21,8 @@ public interface IAssetAllocationRepository
         string? keyword,
         int? employeeId,
         int page,
-        int pageSize);
+        int pageSize,
+        AllocationListExtras extras);
 
     // Đơn giá tham khảo (VND) của loại tài sản — dùng cho cột "Thành tiền" trên biên bản; null nếu chưa cấu hình.
     Task<decimal?> GetReferencePriceAsync(int categoryId);
