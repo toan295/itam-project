@@ -27,5 +27,4 @@ public class User
     public Department Department { get; set; } = null!;
     public ICollection<MaintenanceTicket> MaintenanceTickets { get; set; } = new List<MaintenanceTicket>();
     public ICollection<AuditLog> AuditLogs { get; set; } = new List<AuditLog>();
-    public ICollection<ImportLog> ImportLogs { get; set; } = new List<ImportLog>();
 }

@@ -28,12 +28,13 @@ public class AssetAllocationRepository : IAssetAllocationRepository
             .Include(x => x.ReceivedBy).ThenInclude(u => u!.Department)
             .FirstOrDefaultAsync(x => x.Id == id);
 
-    public async Task<decimal?> GetReferencePriceAsync(int categoryId) =>
-        await _context.AssetCategoryReferencePrices
-            .AsNoTracking()
-            .Where(p => p.CategoryId == categoryId)
-            .Select(p => (decimal?)p.UnitPrice)
-            .FirstOrDefaultAsync();
+    // [ĐÃ ĐÓNG]
+    // public async Task<decimal?> GetReferencePriceAsync(int categoryId) =>
+    // await _context.AssetCategoryReferencePrices
+    // .AsNoTracking()
+    // .Where(p => p.CategoryId == categoryId)
+    // .Select(p => (decimal?)p.UnitPrice)
+    // .FirstOrDefaultAsync();
 
     // Tracked (không AsNoTracking) + Include(Asset) — xem giải thích trong interface.
     public Task<AssetAllocation?> GetEntityByIdAsync(int id) =>

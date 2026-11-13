@@ -17,7 +17,7 @@ public class AssetAllocationService : IAssetAllocationService
     private const string AdminRoleName = "Admin IT";
     private const string ManagerRoleName = "Manager";
     private const int NoAccessSentinelDepartmentId = -1;
-    private static readonly string[] DepartmentScopedRoles = { ManagerRoleName };
+    private static readonly string[] DepartmentScopedRoles = { ManagerRoleName, "Employee" };
 
     private readonly IAssetAllocationRepository _allocationRepository;
     private readonly IAssetRepository _assetRepository;
@@ -72,11 +72,13 @@ public class AssetAllocationService : IAssetAllocationService
             throw new DepartmentForbiddenException();
         }
 
-        // Manager chỉ thấy (và chỉ phân bổ cho) nhân viên thường — hồ sơ của Admin IT/Manager/Technician không hiện với họ.
-        if (string.Equals(currentUserRole, "Manager", StringComparison.Ordinal)
-            && employee.User?.Role?.Name is { } accountRole && !string.Equals(accountRole, "Employee", StringComparison.Ordinal))
+        // Chỉ nhân viên thường nhận tài sản (mọi vai trò người giao, kể cả Admin IT): hồ sơ gắn tài khoản Admin IT/Manager/Technician không được cấp.
+        // Manager còn không thấy các hồ sơ đó nên giữ thông báo "không tồn tại"; Admin IT được báo rõ lý do.
+        if (employee.User?.Role?.Name is { } accountRole && !string.Equals(accountRole, "Employee", StringComparison.Ordinal))
         {
-            throw new ArgumentException($"Nhân viên (EmployeeId={dto.EmployeeId}) không tồn tại.");
+            throw string.Equals(currentUserRole, "Manager", StringComparison.Ordinal)
+                ? new ArgumentException($"Nhân viên (EmployeeId={dto.EmployeeId}) không tồn tại.")
+                : new ArgumentException($"{employee.FullName} dùng tài khoản vai trò {accountRole}; tài sản chỉ được phân bổ cho nhân viên thường (vai trò Employee).");
         }
 
         // Gửi lại cùng một yêu cầu (bấm hai lần, timeout rồi client/proxy retry): nếu lần đầu đã thành công thì trả lại đúng
@@ -370,7 +372,8 @@ public class AssetAllocationService : IAssetAllocationService
             DepartmentName = u?.Department?.Name,
         };
 
-        var price = await _allocationRepository.GetReferencePriceAsync(allocation.Asset.CategoryId);
+        // [ĐÃ ĐÓNG]
+        // var price = await _allocationRepository.GetReferencePriceAsync(allocation.Asset.CategoryId);
 
         return new AllocationDocumentDto
         {
@@ -392,7 +395,7 @@ public class AssetAllocationService : IAssetAllocationService
                 Condition = isReturn
                     ? (allocation.ReturnCondition == AssetReturnCondition.Damaged ? "Hỏng" : "Tốt")
                     : allocation.HandoverCondition,
-                Amount = price,
+                Amount = null,   // [ĐÃ ĐÓNG] trước đây = đơn giá tham khảo của loại (bảng đơn giá dự báo)
             },
         };
     }
@@ -529,7 +532,7 @@ public class AssetAllocationService : IAssetAllocationService
         string? currentUserRole,
         int? currentUserDepartmentId,
         int targetDepartmentId) =>
-        string.Equals(currentUserRole, ManagerRoleName, StringComparison.Ordinal)
+        (string.Equals(currentUserRole, ManagerRoleName, StringComparison.Ordinal) || string.Equals(currentUserRole, "Employee", StringComparison.Ordinal))
         && currentUserDepartmentId != targetDepartmentId;
 
     private static bool IsOutsideDepartmentScope(

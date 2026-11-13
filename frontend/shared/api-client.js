@@ -168,3 +168,14 @@ const api = {
   patch: (path, data) => apiRequest(path, { method: "PATCH", body: JSON.stringify(data) }),
   del: (path) => apiRequest(path, { method: "DELETE" }),
 };
+
+// Tuổi hiển thị dạng "N năm M tháng" (đủ tháng, bỏ phần lẻ ngày): 3,95 năm -> "3 năm 11 tháng"; dưới 1 năm -> "5 tháng"; tròn năm -> "3 năm".
+// Nhận số năm (có phần thập phân) do API trả; null/undefined -> "—".
+function formatAge(years) {
+  if (years === null || years === undefined || Number.isNaN(Number(years))) return "—";
+  const totalMonths = Math.max(0, Math.floor(Number(years) * 12 + 1e-6));
+  const y = Math.floor(totalMonths / 12);
+  const m = totalMonths % 12;
+  if (y === 0) return m === 0 ? "Dưới 1 tháng" : `${m} tháng`;
+  return m === 0 ? `${y} năm` : `${y} năm ${m} tháng`;
+}

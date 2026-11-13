@@ -2,7 +2,6 @@ const session = requireAuth("login.html");
 renderNav({ active: "maintenance", basePath: "../" });
 
 const isAdmin = session.role === "Admin IT";
-const isManager = session.role === "Manager";
 const isTechnician = session.role === "Technician";
 const canViewStats = can("maintenance.stats"); // UC-13
 let currentPage = 1;

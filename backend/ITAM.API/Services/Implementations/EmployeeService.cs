@@ -48,7 +48,7 @@ public class EmployeeService : IEmployeeService
         // Manager chỉ thấy nhân viên thường của phòng mình: không thấy phòng ban khác, cũng không thấy hồ sơ của Admin IT/Manager/Technician.
         var manager = IsManager(currentUserRole);
         filter.DepartmentId = manager ? currentUserDepartmentId ?? NoAccessSentinelDepartmentId : filter.DepartmentId;
-        filter.ExcludeStaffAccounts = manager;
+        filter.ExcludeStaffAccounts = manager || filter.ExcludeStaffAccounts;   // receiversOnly (màn Phân bổ): chỉ nhân viên thường
 
         var (items, total) = await _repo.GetPagedAsync(filter, page, pageSize);
         return new PagedResultDto<EmployeeResponseDto>
@@ -304,7 +304,8 @@ public class EmployeeService : IEmployeeService
     private static string? NormalizeOptional(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : System.Text.RegularExpressions.Regex.Replace(value.Trim(), @"\s+", " ");
 
-    private static bool IsManager(string? role) => string.Equals(role, ManagerRoleName, StringComparison.Ordinal);
+    // Vai trò bị giới hạn theo phòng ban: Manager, và Employee (khi Admin IT cấp thêm quyền cho vai trò Nhân viên).
+    private static bool IsManager(string? role) => string.Equals(role, ManagerRoleName, StringComparison.Ordinal) || string.Equals(role, "Employee", StringComparison.Ordinal);
 
     private static EmployeeResponseDto MapToDto(Employee e) => new()
     {

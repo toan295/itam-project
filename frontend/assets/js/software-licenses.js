@@ -10,7 +10,6 @@ let licenseGuard;
 let assignModal;
 let assignMode = "assign"; // "assign" | "unassign"
 let assignLicenseId = null;
-let assetOptionsCache = null;
 const LICENSE_FILTER_IDS = ["searchText", "stateFilter", "assignment", "expiryFrom", "expiryTo", "sortBy"];
 let filterBar;
 let currentItems = []; // tra cứu lại theo id khi Sửa, thay vì nhúng JSON.stringify(item) vào onclick='...' (rủi ro XSS)

@@ -32,7 +32,8 @@ public class ReportRepository : IReportRepository
             .Take(limit + 1)
             .Select(a => new InventoryRow(
                 a.AssetCode, a.Name, a.Category.Name, a.Department.Name, a.SerialNumber, a.Status, a.PurchaseDate, a.WarrantyExpiry,
-                _db.AssetAllocations.Where(al => al.ActiveAssetId == a.Id).Select(al => al.RecipientName).FirstOrDefault()))
+                _db.AssetAllocations.Where(al => al.AssetId == a.Id && al.Status == AllocationStatus.Allocated && al.ReturnedDate == null)
+                    .OrderByDescending(al => al.AllocatedDate).Select(al => al.RecipientName).FirstOrDefault()))
             .ToListAsync();
     }
 

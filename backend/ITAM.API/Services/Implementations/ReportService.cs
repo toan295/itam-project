@@ -257,7 +257,7 @@ public class ReportService : IReportService
 
     private static void EnsureWithinLimit(int rows)
     {
-        if (rows > ReportExporter.MaxRows) throw new ReportTooLargeException(rows, ReportExporter.MaxRows);
+        if (rows > ReportExporter.MaxRows) throw new ReportTooLargeException(ReportExporter.MaxRows);
     }
 
     private async Task<ReportDocument> NewDocumentAsync(string title, ReportRequest request, (int? DepartmentId, string DepartmentName) scope)

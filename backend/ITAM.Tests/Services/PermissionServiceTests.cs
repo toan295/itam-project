@@ -31,6 +31,7 @@ public class PermissionServiceTests
         });
         _repo.Setup(r => r.GetAllByRoleIdAsync()).ReturnsAsync(new Dictionary<int, List<string>>
         {
+            [AdminId] = new() { Permissions.PermissionsManage, Permissions.UsersManage },
             [ManagerId] = new() { Permissions.AssetsCreate, Permissions.MaintenanceAssign },
         });
         _repo.Setup(r => r.CountUsersByRoleAsync()).ReturnsAsync(new Dictionary<int, int> { [ManagerId] = 2 });
@@ -98,8 +99,6 @@ public class PermissionServiceTests
         Assert.Equal(2, manager.UserCount);
         Assert.Equal(new[] { Permissions.AssetsCreate, Permissions.MaintenanceAssign }, manager.Permissions);
         Assert.Contains(Permissions.DisposalsApprove, manager.DefaultPermissions);
-        Assert.True(m.Roles.Single(r => r.Name == "Employee").IsLocked);
-        Assert.False(manager.IsLocked);
     }
 
     // ----- Cập nhật -----
@@ -130,12 +129,13 @@ public class PermissionServiceTests
     [Theory]
     [InlineData(ManagerId)]
     [InlineData(TechnicianId)]
-    public async Task UpdateRole_SystemPermissionForNonAdmin_IsRejected(int roleId)
+    public async Task UpdateRole_SystemPermissionForNonAdmin_IsAllowedWhenAdminTicksIt(int roleId)
     {
-        await Assert.ThrowsAsync<ArgumentException>(() => _sut.UpdateRoleAsync(roleId,
-            new UpdateRolePermissionsRequestDto { Permissions = { Permissions.UsersManage } }, Actor));
+        // Admin IT chủ động tích quyền hệ thống cho vai trò khác: được phép (Admin IT vẫn luôn giữ đủ quyền hệ thống).
+        await _sut.UpdateRoleAsync(roleId,
+            new UpdateRolePermissionsRequestDto { Permissions = { Permissions.UsersManage } }, Actor);
 
-        _repo.Verify(r => r.ReplaceAsync(It.IsAny<int>(), It.IsAny<IReadOnlyCollection<string>>()), Times.Never);
+        _repo.Verify(r => r.ReplaceAsync(roleId, It.Is<IReadOnlyCollection<string>>(c => c.Contains(Permissions.UsersManage))), Times.Once);
     }
 
     [Fact]
@@ -156,10 +156,37 @@ public class PermissionServiceTests
     }
 
     [Fact]
-    public async Task UpdateRole_EmployeeIsLocked_ThrowsInvalidOperation()
+    public async Task UpdateRole_Employee_CanBeEdited()
     {
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _sut.UpdateRoleAsync(EmployeeId,
-            new UpdateRolePermissionsRequestDto { Permissions = { Permissions.MaintenanceCreate } }, Actor));
+        await _sut.UpdateRoleAsync(EmployeeId,
+            new UpdateRolePermissionsRequestDto { Permissions = { Permissions.MaintenanceCreate, Permissions.AssetsCreate } }, Actor);
+
+        _repo.Verify(r => r.ReplaceAsync(EmployeeId, It.Is<IReadOnlyCollection<string>>(c => c.Contains(Permissions.AssetsCreate))), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateRole_AdminCanUntickSystemPermissions_ButNotTheLastPermissionsManage()
+    {
+        // Bỏ quyền hệ thống khác: được.
+        await _sut.UpdateRoleAsync(AdminId, new UpdateRolePermissionsRequestDto { Permissions = { Permissions.PermissionsManage } }, Actor);
+
+        // Gỡ quyền Quản lý phân quyền khỏi vai trò duy nhất đang giữ: bị chặn, không ai sửa lại được ma trận.
+        await Assert.ThrowsAsync<ArgumentException>(() => _sut.UpdateRoleAsync(AdminId,
+            new UpdateRolePermissionsRequestDto { Permissions = { Permissions.UsersManage } }, Actor));
+    }
+
+    [Fact]
+    public async Task UpdateRole_PermissionsManageCanMoveToAnotherRole()
+    {
+        _repo.Setup(r => r.GetAllByRoleIdAsync()).ReturnsAsync(new Dictionary<int, List<string>>
+        {
+            [AdminId] = new() { Permissions.PermissionsManage },
+            [ManagerId] = new() { Permissions.PermissionsManage },
+        });
+
+        await _sut.UpdateRoleAsync(AdminId, new UpdateRolePermissionsRequestDto { Permissions = { Permissions.UsersManage } }, Actor);
+
+        _repo.Verify(r => r.ReplaceAsync(AdminId, It.IsAny<IReadOnlyCollection<string>>()), Times.Once);
     }
 
     [Fact]
@@ -180,9 +207,12 @@ public class PermissionServiceTests
     }
 
     [Fact]
-    public async Task ResetRole_Employee_IsLocked()
+    public async Task ResetRole_Employee_RestoresDefaults()
     {
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _sut.ResetRoleAsync(EmployeeId, null, Actor));
+        await _sut.ResetRoleAsync(EmployeeId, null, Actor);
+
+        _repo.Verify(r => r.ReplaceAsync(EmployeeId, It.Is<IReadOnlyCollection<string>>(c =>
+            c.ToHashSet().SetEquals(PermissionCatalog.DefaultsFor("Employee")))), Times.Once);
     }
 
     // ----- Sửa đồng thời / revision -----
@@ -263,7 +293,7 @@ public class PermissionServiceTests
             Roles =
             {
                 Change(ManagerId, ManagerRevision(), Permissions.AssetsCreate),
-                Change(TechnicianId, PermissionRevision.Compute(Array.Empty<string>()), Permissions.UsersManage),
+                Change(TechnicianId, PermissionRevision.Compute(Array.Empty<string>()), "unknown.permission"),
             },
         }, Actor));
 
@@ -304,15 +334,11 @@ public class PermissionServiceTests
     }
 
     [Fact]
-    public async Task UpdateMatrix_EmployeeRole_IsLocked_AndAdminMustKeepSystemCodes()
+    public async Task UpdateMatrix_CannotLeaveNoRoleWithPermissionsManage()
     {
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _sut.UpdateMatrixAsync(new UpdatePermissionMatrixRequestDto
-        {
-            Roles = { Change(EmployeeId, "x", Permissions.MaintenanceCreate) },
-        }, Actor));
         await Assert.ThrowsAsync<ArgumentException>(() => _sut.UpdateMatrixAsync(new UpdatePermissionMatrixRequestDto
         {
-            Roles = { Change(AdminId, PermissionRevision.Compute(Array.Empty<string>()), Permissions.AssetsCreate) },
+            Roles = { Change(AdminId, PermissionRevision.Compute(new[] { Permissions.PermissionsManage, Permissions.UsersManage }), Permissions.AssetsCreate) },
         }, Actor));
     }
 

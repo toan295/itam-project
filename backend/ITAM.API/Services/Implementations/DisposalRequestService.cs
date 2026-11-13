@@ -363,7 +363,8 @@ public class DisposalRequestService : IDisposalRequestService
 
     private static bool IsTechnician(string? role) => string.Equals(role, "Technician", StringComparison.Ordinal);
 
-    private static bool IsManager(string? role) => string.Equals(role, ManagerRoleName, StringComparison.Ordinal);
+    // Vai trò bị giới hạn theo phòng ban: Manager, và Employee (khi Admin IT cấp thêm quyền cho vai trò Nhân viên).
+    private static bool IsManager(string? role) => string.Equals(role, ManagerRoleName, StringComparison.Ordinal) || string.Equals(role, "Employee", StringComparison.Ordinal);
 
     private static DisposalRequestResponseDto MapToDto(DisposalRequest r) => new()
     {

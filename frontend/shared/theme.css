@@ -363,7 +363,6 @@ a { text-decoration: none; }
 .status-dot.off { color: var(--eaims-danger); border-color: var(--eaims-danger-bg); }
 
 .filter-card .form-label { font-size: 0.78rem; margin-bottom: 4px; color: var(--eaims-slate); font-weight: 600; }
-.filter-card .filter-count { font-size: 0.68rem; vertical-align: middle; }
 .filter-card .advanced-panel { border-top: 1px dashed #e5e7eb; margin-top: 12px; padding-top: 12px; }
 
 .row-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; white-space: nowrap; }

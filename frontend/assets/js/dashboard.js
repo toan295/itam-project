@@ -4,7 +4,6 @@ const session = requireAuth("pages/login.html");
 
 const STATUS_COLORS = { InUse: "#15803d", Maintenance: "#b45309", Broken: "#b91c1c" };
 const STATUS_LABELS = { InUse: "Đang sử dụng", Maintenance: "Đang bảo trì", Broken: "Hỏng" };
-const COLOR_PRIMARY = "#2563eb";
 const COLOR_MUTED = "#94a3b8";
 const COLOR_WARN = "#d97706";
 
@@ -17,25 +16,12 @@ const percentFmt = new Intl.NumberFormat("vi-VN", { minimumFractionDigits: 1, ma
 
 const fmtInt = (n) => numberFmt.format(Number(n || 0));
 const fmtPercent = (ratio) => `${percentFmt.format(Number(ratio || 0) * 100)}%`;
-const fmtMoney = (n) => `${numberFmt.format(Math.round(Number(n || 0)))} ₫`;
-
-function fmtDate(value) {
-  if (!value) return "—";
-  const [y, m, d] = String(value).slice(0, 10).split("-");
-  return d && m && y ? `${d}/${m}/${y}` : escapeHtml(value);
-}
 
 function fmtDateTime(value) {
   if (!value) return "—";
   // API trả giờ UTC không kèm "Z" -> thêm "Z" để trình duyệt đổi đúng sang giờ địa phương.
   const date = new Date(/(Z|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`);
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString("vi-VN");
-}
-
-// Ngày theo lịch Việt Nam (UTC+7) của một thời điểm UTC từ API, dạng yyyy-mm-dd.
-function vnDate(utcValue) {
-  const date = new Date(/(Z|[+-]\d{2}:?\d{2})$/.test(utcValue) ? utcValue : `${utcValue}Z`);
-  return new Date(date.getTime() + 7 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
 function el(id) {

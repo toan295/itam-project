@@ -22,10 +22,11 @@ public class ExclusiveSection : IExclusiveSection
             return await work();
         }
 
-        if (target == LockTarget.ForecastYear)
-        {
-            return await RunWithNamedLockAsync($"eaims-forecast-{id}", () => new ForecastBusyException(id), work);
-        }
+        // [ĐÃ ĐÓNG]
+        // if (target == LockTarget.ForecastYear)
+        // {
+            // return await RunWithNamedLockAsync($"eaims-forecast-{id}", () => new ForecastBusyException(id), work);
+        // }
 
         // Câu SQL là hằng theo từng loại ổ khoá (không ghép chuỗi từ đầu vào); id truyền bằng tham số.
         var lockSql = target switch

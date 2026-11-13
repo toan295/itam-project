@@ -39,12 +39,13 @@ public class AssetCategoryRepository : IAssetCategoryRepository
         // Cấu hình gắn với loại này (ngưỡng vòng đời, định mức) trước đây bị xoá theo (cascade); giữ hành vi đó để không còn
         // cấu hình mồ côi trỏ vào loại đã xoá. Đơn giá tham khảo vốn dùng xoá mềm nên chỉ đánh dấu.
         _db.AssetCategoryLifecyclePolicies.RemoveRange(_db.AssetCategoryLifecyclePolicies.Where(x => x.CategoryId == category.Id).ToList());
-        _db.AssetCategoryDeviceRatios.RemoveRange(_db.AssetCategoryDeviceRatios.Where(x => x.CategoryId == category.Id).ToList());
-        foreach (var price in _db.AssetCategoryReferencePrices.Where(x => x.CategoryId == category.Id).ToList())
-        {
-            price.IsDeleted = true;
-            price.DeletedAt = DateTime.UtcNow;
-        }
+        // [ĐÃ ĐÓNG]
+        // _db.AssetCategoryDeviceRatios.RemoveRange(_db.AssetCategoryDeviceRatios.Where(x => x.CategoryId == category.Id).ToList());
+        // foreach (var price in _db.AssetCategoryReferencePrices.Where(x => x.CategoryId == category.Id).ToList())
+        // {
+            // price.IsDeleted = true;
+            // price.DeletedAt = DateTime.UtcNow;
+        // }
     }
 
     public Task<bool> IsReferencedByAssetsAsync(int categoryId) =>

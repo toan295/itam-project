@@ -15,7 +15,7 @@ public class AssetService : IAssetService
     private const string AdminRoleName = "Admin IT";
     private const string ManagerRoleName = "Manager";
     private const int NoAccessSentinelDepartmentId = -1; // DepartmentId không tồn tại -> query luôn trả rỗng.
-    private static readonly string[] DepartmentScopedRoles = { ManagerRoleName };
+    private static readonly string[] DepartmentScopedRoles = { ManagerRoleName, "Employee" };
 
     private readonly IAssetRepository _repo;
     private readonly IMaintenanceTicketRepository _ticketRepo;
@@ -410,7 +410,7 @@ public class AssetService : IAssetService
 
     private static bool IsManagerOutsideDepartment(
         string? currentUserRole, int? currentUserDepartmentId, int targetDepartmentId) =>
-        string.Equals(currentUserRole, ManagerRoleName, StringComparison.Ordinal)
+        (string.Equals(currentUserRole, ManagerRoleName, StringComparison.Ordinal) || string.Equals(currentUserRole, "Employee", StringComparison.Ordinal))
         && currentUserDepartmentId != targetDepartmentId;
 
     // Dùng cho các thao tác chỉ-đọc (GetById): chỉ Manager bị giới hạn theo phòng ban.

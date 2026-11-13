@@ -129,7 +129,7 @@ function renderTable(items, loadFailed = false) {
       : '<span class="badge-soft slate"><i class="bi bi-box-arrow-in-down-left"></i> Đã thu hồi</span>';
 
     return `<tr>
-      <td class="fw-semibold">${escapeHtml(item.assetCode)}</td>
+      <td class="fw-semibold text-nowrap">${escapeHtml(item.assetCode)}</td>
       <td>${escapeHtml(item.departmentName)}
         ${isOpen && item.employeeCurrentDepartmentName && item.employeeCurrentDepartmentName !== item.departmentName ? `<div class="small text-muted" title="Phòng ban hiện tại của nhân viên khác phòng ban ghi nhận lúc giao">Nhân viên hiện ở: ${escapeHtml(item.employeeCurrentDepartmentName)}</div>` : ""}</td>
       <td>
@@ -139,7 +139,7 @@ function renderTable(items, loadFailed = false) {
       <td>${escapeHtml(DateVi.toDisplay(item.allocatedDate))}</td>
       <td>${item.returnedDate ? escapeHtml(DateVi.toDisplay(item.returnedDate)) : '<span class="text-muted">-</span>'}</td>
       <td class="text-nowrap">${item.holdingDays} ngày<div class="small text-muted">${isOpen ? "đang giữ" : "đã giữ"}</div></td>
-      <td>${statusHtml}</td>
+      <td class="text-nowrap">${statusHtml}</td>
       <td class="text-end text-nowrap">
         <button class="btn btn-sm btn-outline-secondary me-1" onclick="printAllocation(${item.id}, 'handover')"><i class="bi bi-printer"></i> BB bàn giao</button>
         ${item.returnedDate ? `<button class="btn btn-sm btn-outline-secondary me-1" onclick="printAllocation(${item.id}, 'return')"><i class="bi bi-printer"></i> BB thu hồi</button>` : ""}
@@ -265,7 +265,7 @@ function employeeLabel(e) {
 
 async function searchEmployees(keyword = "") {
   try {
-    const params = new URLSearchParams({ isActive: "true", page: 1, pageSize: 20 });
+    const params = new URLSearchParams({ isActive: "true", receiversOnly: "true", page: 1, pageSize: 20 });
     if (keyword.trim()) params.set("keyword", keyword.trim());
     const result = await api.get(`/employees?${params}`);
     employeeSuggestionMap = new Map();

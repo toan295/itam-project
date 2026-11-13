@@ -80,7 +80,7 @@ async function exportReport(button) {
   try {
     const { blob, filename, rows } = await api.download(spec.path + query(params));
     saveBlob(blob, filename);
-    showOk(`Đã tải "${filename}"${rows !== null ? ` (${rows.toLocaleString("vi-VN")} dòng)` : ""} — ${(blob.size / 1024).toLocaleString("vi-VN", { maximumFractionDigits: 0 })} KB.`);
+    showOk(`Đã tạo xong "${filename}"${rows !== null ? ` (${rows.toLocaleString("vi-VN")} dòng)` : ""}, ${(blob.size / 1024).toLocaleString("vi-VN", { maximumFractionDigits: 0 })} KB. Trình duyệt đang lưu file về máy (thường ở thư mục Tải xuống); nếu hiện hộp thoại hỏi nơi lưu, hãy chọn Lưu. Không thấy file thì kiểm tra trình duyệt có chặn tải xuống không.`);
   } catch (err) {
     showError(err.message);
   } finally {

@@ -24,12 +24,15 @@ public class AppDbContext : DbContext
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<DisposalStatus> DisposalStatuses => Set<DisposalStatus>();
     public DbSet<DisposalRequest> DisposalRequests => Set<DisposalRequest>();
-    public DbSet<BudgetForecast> BudgetForecasts => Set<BudgetForecast>();
-    public DbSet<ImportLog> ImportLogs => Set<ImportLog>();
-    public DbSet<AssetCategoryReferencePrice> AssetCategoryReferencePrices => Set<AssetCategoryReferencePrice>();
+    // [ĐÃ ĐÓNG]
+    // public DbSet<BudgetForecast> BudgetForecasts => Set<BudgetForecast>();
+    // [ĐÃ ĐÓNG]
+    // public DbSet<AssetCategoryReferencePrice> AssetCategoryReferencePrices => Set<AssetCategoryReferencePrice>();
     public DbSet<AccountActivation> AccountActivations => Set<AccountActivation>();
-    public DbSet<DepartmentExpansionPlan> DepartmentExpansionPlans => Set<DepartmentExpansionPlan>();
-    public DbSet<AssetCategoryDeviceRatio> AssetCategoryDeviceRatios => Set<AssetCategoryDeviceRatio>();
+    // [ĐÃ ĐÓNG]
+    // public DbSet<DepartmentExpansionPlan> DepartmentExpansionPlans => Set<DepartmentExpansionPlan>();
+    // [ĐÃ ĐÓNG]
+    // public DbSet<AssetCategoryDeviceRatio> AssetCategoryDeviceRatios => Set<AssetCategoryDeviceRatio>();
     public DbSet<MaintenanceTicketHistory> MaintenanceTicketHistories => Set<MaintenanceTicketHistory>();
 
     // Tài sản và phiếu bảo trì mang số phiên bản (optimistic concurrency): mỗi lần bản ghi bị sửa — dù từ màn nào
@@ -38,8 +41,7 @@ public class AppDbContext : DbContext
     {
         foreach (var entry in ChangeTracker.Entries().Where(e => e.State == EntityState.Modified))
         {
-            if (entry.Entity is not (Asset or MaintenanceTicket or AssetCategoryLifecyclePolicy or AssetCategoryReferencePrice
-                or AssetCategoryDeviceRatio or DepartmentExpansionPlan))
+            if (entry.Entity is not (Asset or MaintenanceTicket or AssetCategoryLifecyclePolicy /* [ĐÃ ĐÓNG] or AssetCategoryReferencePrice or AssetCategoryDeviceRatio or DepartmentExpansionPlan */))
             {
                 continue;
             }
@@ -366,81 +368,69 @@ public class AppDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
-        modelBuilder.Entity<BudgetForecast>(entity =>
-        {
-            entity.Property(e => e.EstimatedBudget).HasColumnType("decimal(18,2)");
-            entity.Property(e => e.Notes).HasMaxLength(500);
-            entity.Property(e => e.BreakdownJson).HasColumnType("longtext");
-            entity.Property(e => e.EstimatedExpansionBudget).HasColumnType("decimal(18,2)");
-            entity.Property(e => e.Revision).HasDefaultValue(1);
-            entity.Property(e => e.InputsHash).HasMaxLength(64);
-            entity.Property(e => e.InputsJson).HasColumnType("longtext");
-            entity.Property(e => e.ExpansionBreakdownJson).HasColumnType("longtext");
-            entity.HasIndex(e => new { e.Year, e.DepartmentId }).IsUnique();
-            entity.HasQueryFilter(e => !e.IsDeleted);
+        // [ĐÃ ĐÓNG] Cấu hình 4 bảng của chức năng Dự báo ngân sách (BudgetForecasts, AssetCategoryReferencePrices, DepartmentExpansionPlans, AssetCategoryDeviceRatios)
+        // modelBuilder.Entity<BudgetForecast>(entity =>
+        // {
+            // entity.Property(e => e.EstimatedBudget).HasColumnType("decimal(18,2)");
+            // entity.Property(e => e.Notes).HasMaxLength(500);
+            // entity.Property(e => e.BreakdownJson).HasColumnType("longtext");
+            // entity.Property(e => e.EstimatedExpansionBudget).HasColumnType("decimal(18,2)");
+            // entity.Property(e => e.Revision).HasDefaultValue(1);
+            // entity.Property(e => e.InputsHash).HasMaxLength(64);
+            // entity.Property(e => e.InputsJson).HasColumnType("longtext");
+            // entity.Property(e => e.ExpansionBreakdownJson).HasColumnType("longtext");
+            // entity.HasIndex(e => new { e.Year, e.DepartmentId }).IsUnique();
+            // entity.HasQueryFilter(e => !e.IsDeleted);
 
-            entity.HasOne(e => e.Department)
-                .WithMany(d => d.BudgetForecasts)
-                .HasForeignKey(e => e.DepartmentId)
-                .OnDelete(DeleteBehavior.Restrict);
-        });
+            // entity.HasOne(e => e.Department)
+                // .WithMany(d => d.BudgetForecasts)
+                // .HasForeignKey(e => e.DepartmentId)
+                // .OnDelete(DeleteBehavior.Restrict);
+        // });
 
-        // Module Dự báo ngân sách — đơn giá tham khảo theo loại (VND).
-        modelBuilder.Entity<AssetCategoryReferencePrice>(entity =>
-        {
-            entity.ToTable("AssetCategoryReferencePrices");
-            entity.HasKey(e => e.CategoryId);
-            entity.Property(e => e.UnitPrice).HasColumnType("decimal(18,2)");
-            entity.Property(e => e.Version).HasDefaultValue(1).IsConcurrencyToken();
-            entity.HasQueryFilter(e => !e.IsDeleted);
+        // // Module Dự báo ngân sách — đơn giá tham khảo theo loại (VND).
+        // modelBuilder.Entity<AssetCategoryReferencePrice>(entity =>
+        // {
+            // entity.ToTable("AssetCategoryReferencePrices");
+            // entity.HasKey(e => e.CategoryId);
+            // entity.Property(e => e.UnitPrice).HasColumnType("decimal(18,2)");
+            // entity.Property(e => e.Version).HasDefaultValue(1).IsConcurrencyToken();
+            // entity.HasQueryFilter(e => !e.IsDeleted);
 
-            entity.HasOne(e => e.Category)
-                .WithOne()
-                .HasForeignKey<AssetCategoryReferencePrice>(e => e.CategoryId)
-                .OnDelete(DeleteBehavior.Cascade);
-        });
+            // entity.HasOne(e => e.Category)
+                // .WithOne()
+                // .HasForeignKey<AssetCategoryReferencePrice>(e => e.CategoryId)
+                // .OnDelete(DeleteBehavior.Cascade);
+        // });
 
-        // Module Dự báo ngân sách — kế hoạch mở rộng nhân sự theo (năm, phòng ban).
-        modelBuilder.Entity<DepartmentExpansionPlan>(entity =>
-        {
-            entity.ToTable("DepartmentExpansionPlans");
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Notes).HasMaxLength(500);
-            entity.Property(e => e.Version).HasDefaultValue(1).IsConcurrencyToken();
-            entity.HasIndex(e => new { e.Year, e.DepartmentId }).IsUnique();   // mỗi (năm, phòng ban) tối đa 1 dòng
+        // // Module Dự báo ngân sách — kế hoạch mở rộng nhân sự theo (năm, phòng ban).
+        // modelBuilder.Entity<DepartmentExpansionPlan>(entity =>
+        // {
+            // entity.ToTable("DepartmentExpansionPlans");
+            // entity.HasKey(e => e.Id);
+            // entity.Property(e => e.Notes).HasMaxLength(500);
+            // entity.Property(e => e.Version).HasDefaultValue(1).IsConcurrencyToken();
+            // entity.HasIndex(e => new { e.Year, e.DepartmentId }).IsUnique();   // mỗi (năm, phòng ban) tối đa 1 dòng
 
-            entity.HasOne(e => e.Department)
-                .WithMany()
-                .HasForeignKey(e => e.DepartmentId)
-                .OnDelete(DeleteBehavior.Restrict);   // không âm thầm xoá kế hoạch khi xoá phòng ban
-        });
+            // entity.HasOne(e => e.Department)
+                // .WithMany()
+                // .HasForeignKey(e => e.DepartmentId)
+                // .OnDelete(DeleteBehavior.Restrict);   // không âm thầm xoá kế hoạch khi xoá phòng ban
+        // });
 
-        // Module Dự báo ngân sách — định mức thiết bị/người theo loại tài sản.
-        modelBuilder.Entity<AssetCategoryDeviceRatio>(entity =>
-        {
-            entity.ToTable("AssetCategoryDeviceRatios");
-            entity.HasKey(e => e.CategoryId);
-            entity.Property(e => e.DevicesPerPerson).HasColumnType("decimal(6,2)");
-            entity.Property(e => e.Version).HasDefaultValue(1).IsConcurrencyToken();
+        // // Module Dự báo ngân sách — định mức thiết bị/người theo loại tài sản.
+        // modelBuilder.Entity<AssetCategoryDeviceRatio>(entity =>
+        // {
+            // entity.ToTable("AssetCategoryDeviceRatios");
+            // entity.HasKey(e => e.CategoryId);
+            // entity.Property(e => e.DevicesPerPerson).HasColumnType("decimal(6,2)");
+            // entity.Property(e => e.Version).HasDefaultValue(1).IsConcurrencyToken();
 
-            entity.HasOne(e => e.Category)
-                .WithOne()
-                .HasForeignKey<AssetCategoryDeviceRatio>(e => e.CategoryId)
-                .OnDelete(DeleteBehavior.Cascade);
-        });
+            // entity.HasOne(e => e.Category)
+                // .WithOne()
+                // .HasForeignKey<AssetCategoryDeviceRatio>(e => e.CategoryId)
+                // .OnDelete(DeleteBehavior.Cascade);
+        // });
 
-        modelBuilder.Entity<ImportLog>(entity =>
-        {
-            entity.Property(e => e.FileName).HasMaxLength(255);
-            entity.Property(e => e.Mode).HasMaxLength(20).HasDefaultValue("skip-errors");
-            entity.Property(e => e.FileSha256).HasMaxLength(64);
-            entity.Property(e => e.ErrorsJson).HasColumnType("longtext");
-            entity.HasIndex(e => e.FileSha256);
-
-            entity.HasOne(e => e.ImportedByUser)
-                .WithMany(u => u.ImportLogs)
-                .HasForeignKey(e => e.ImportedBy)
-                .OnDelete(DeleteBehavior.Restrict);
-        });
     }
 }

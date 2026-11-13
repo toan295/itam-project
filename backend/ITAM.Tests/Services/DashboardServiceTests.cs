@@ -23,7 +23,9 @@ public class DashboardServiceTests
 
     private static readonly IReadOnlySet<string> AdminPerms = new HashSet<string>
     {
-        Permissions.DashboardView, Permissions.LicensesManage, Permissions.ForecastsManage,
+        // [ĐÃ ĐÓNG]
+        // Permissions.DashboardView, Permissions.LicensesManage, Permissions.ForecastsManage,
+        Permissions.DashboardView, Permissions.LicensesManage,
     };
     private static readonly IReadOnlySet<string> ManagerPerms = new HashSet<string> { Permissions.DashboardView };
 
@@ -54,8 +56,9 @@ public class DashboardServiceTests
             new(0, 10, 1), new(2022, 40, 20), new(2024, 50, 5),
         });
         _repo.Setup(r => r.GetLicenseCountsAsync(It.IsAny<DateOnly>(), It.IsAny<int>())).ReturnsAsync(new LicenseCounts(12, 3, 2));
-        _repo.Setup(r => r.GetBudgetTotalsAsync(It.IsAny<int>(), It.IsAny<int?>()))
-            .ReturnsAsync(new BudgetTotals(6, 10, 4, 200_000_000m, 80_000_000m, new DateTime(2026, 10, 28, 12, 0, 0, DateTimeKind.Utc)));
+        // [ĐÃ ĐÓNG]
+        // _repo.Setup(r => r.GetBudgetTotalsAsync(It.IsAny<int>(), It.IsAny<int?>()))
+            // .ReturnsAsync(new BudgetTotals(6, 10, 4, 200_000_000m, 80_000_000m, new DateTime(2026, 10, 28, 12, 0, 0, DateTimeKind.Utc)));
 
         _lifecycle.Setup(l => l.GetStatsAsync(It.IsAny<int?>(), It.IsAny<int?>())).ReturnsAsync(new LifecycleStatsDto
         {
@@ -95,7 +98,8 @@ public class DashboardServiceTests
 
         Assert.Equal((2, "Phòng 2", false), (result.Scope.DepartmentId, result.Scope.DepartmentName, result.Scope.IsLocked));
         _repo.Verify(r => r.GetCategoryStatusCountsAsync(2), Times.Once);
-        _repo.Verify(r => r.GetBudgetTotalsAsync(It.IsAny<int>(), 2), Times.Once);
+        // [ĐÃ ĐÓNG]
+        // _repo.Verify(r => r.GetBudgetTotalsAsync(It.IsAny<int>(), 2), Times.Once);
         _lifecycle.Verify(l => l.GetStatsAsync(2, null), Times.Once);
     }
 
@@ -156,10 +160,12 @@ public class DashboardServiceTests
         var result = await _sut.GetSummaryAsync(Manager(1));
 
         Assert.Equal("hidden", result.Licenses.Status);
-        Assert.Equal("hidden", result.Budget.Status);
+        // [ĐÃ ĐÓNG]
+        // Assert.Equal("hidden", result.Budget.Status);
         Assert.Null(result.Licenses.Data);
         _repo.Verify(r => r.GetLicenseCountsAsync(It.IsAny<DateOnly>(), It.IsAny<int>()), Times.Never);
-        _repo.Verify(r => r.GetBudgetTotalsAsync(It.IsAny<int>(), It.IsAny<int?>()), Times.Never);
+        // [ĐÃ ĐÓNG]
+        // _repo.Verify(r => r.GetBudgetTotalsAsync(It.IsAny<int>(), It.IsAny<int?>()), Times.Never);
         Assert.Equal("ok", result.Replacement.Status);          // vòng đời trong phòng ban mình vẫn thấy (UC-18)
     }
 
@@ -169,9 +175,10 @@ public class DashboardServiceTests
         var result = await _sut.GetSummaryAsync(Admin());
 
         Assert.Equal((12, 3, 2), (result.Licenses.Data!.Total, result.Licenses.Data.ExpiringSoon, result.Licenses.Data.Expired));
-        var budget = result.Budget.Data!;
-        Assert.Equal(280_000_000m, budget.TotalBudget);                      // thay thế + mua thêm
-        Assert.Equal((6, 14), (budget.ForecastCount, budget.ReplacementCount + budget.ExpansionCount));
+        // [ĐÃ ĐÓNG]
+        // var budget = result.Budget.Data!;
+        // Assert.Equal(280_000_000m, budget.TotalBudget);                      // thay thế + mua thêm
+        // Assert.Equal((6, 14), (budget.ForecastCount, budget.ReplacementCount + budget.ExpansionCount));
     }
 
     // ---------- Số liệu ----------
@@ -259,7 +266,8 @@ public class DashboardServiceTests
         Assert.DoesNotContain("secret", result.ByCategory.Message);
         Assert.Equal("ok", result.Overview.Status);
         Assert.Equal("ok", result.ByDepartment.Status);
-        Assert.Equal("ok", result.Budget.Status);
+        // [ĐÃ ĐÓNG]
+        // Assert.Equal("ok", result.Budget.Status);
     }
 
     [Fact]
@@ -325,8 +333,12 @@ public class DashboardServiceTests
         var manager = await _sut.GetSummaryAsync(Manager(1));
 
         Assert.False(manager.FromCache);
-        Assert.Equal("ok", admin.Budget.Status);
-        Assert.Equal("hidden", manager.Budget.Status);
+        // [ĐÃ ĐÓNG]
+        // Assert.Equal("ok", admin.Budget.Status);
+        Assert.Equal("ok", admin.Licenses.Status);
+        // [ĐÃ ĐÓNG]
+        // Assert.Equal("hidden", manager.Budget.Status);
+        Assert.Equal("hidden", manager.Licenses.Status);
     }
 
     [Fact]

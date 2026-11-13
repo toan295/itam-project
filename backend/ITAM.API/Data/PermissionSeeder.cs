@@ -46,12 +46,14 @@ public static class PermissionSeeder
             return;
         }
 
-        var missing = PermissionCatalog.SystemCodes.Except(adminCodes, StringComparer.Ordinal).ToList();
-        if (missing.Count > 0)
+        // Admin IT được tự tích/bỏ quyền hệ thống ở màn Phân quyền nên KHÔNG tự bù lại như trước. Chỉ khi không còn vai trò nào giữ
+        // "Quản lý phân quyền" (không ai sửa lại được ma trận) mới cấp lại cho Admin IT để cứu hệ thống.
+        var anyHolder = await db.RolePermissions.AnyAsync(rp => rp.PermissionCode == Authorization.Permissions.PermissionsManage);
+        if (!anyHolder)
         {
-            db.RolePermissions.AddRange(missing.Select(code => new Models.Entities.RolePermission { RoleId = admin.Id, PermissionCode = code }));
+            db.RolePermissions.Add(new Models.Entities.RolePermission { RoleId = admin.Id, PermissionCode = Authorization.Permissions.PermissionsManage });
             await db.SaveChangesAsync();
-            logger.LogWarning("Đã bổ sung quyền hệ thống còn thiếu cho Admin IT: {Codes}", string.Join(", ", missing));
+            logger.LogWarning("Không vai trò nào giữ quyền Quản lý phân quyền — đã cấp lại cho Admin IT.");
         }
     }
 }

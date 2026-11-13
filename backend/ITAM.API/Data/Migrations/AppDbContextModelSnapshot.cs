@@ -264,31 +264,6 @@ namespace ITAM.API.Data.Migrations
                     b.ToTable("AssetCategories");
                 });
 
-            modelBuilder.Entity("ITAM.API.Models.Entities.AssetCategoryDeviceRatio", b =>
-                {
-                    b.Property<int>("CategoryId")
-                        .HasColumnType("int");
-
-                    b.Property<decimal>("DevicesPerPerson")
-                        .HasColumnType("decimal(6,2)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<int?>("UpdatedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Version")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(1);
-
-                    b.HasKey("CategoryId");
-
-                    b.ToTable("AssetCategoryDeviceRatios", (string)null);
-                });
-
             modelBuilder.Entity("ITAM.API.Models.Entities.AssetCategoryLifecyclePolicy", b =>
                 {
                     b.Property<int>("Id")
@@ -324,37 +299,6 @@ namespace ITAM.API.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("AssetCategoryLifecyclePolicies");
-                });
-
-            modelBuilder.Entity("ITAM.API.Models.Entities.AssetCategoryReferencePrice", b =>
-                {
-                    b.Property<int>("CategoryId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<decimal>("UnitPrice")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<int?>("UpdatedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Version")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(1);
-
-                    b.HasKey("CategoryId");
-
-                    b.ToTable("AssetCategoryReferencePrices", (string)null);
                 });
 
             modelBuilder.Entity("ITAM.API.Models.Entities.AssetSoftwareLicense", b =>
@@ -467,73 +411,6 @@ namespace ITAM.API.Data.Migrations
                     b.ToTable("AuditLogs");
                 });
 
-            modelBuilder.Entity("ITAM.API.Models.Entities.BudgetForecast", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("BreakdownJson")
-                        .HasColumnType("longtext");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<int>("DepartmentId")
-                        .HasColumnType("int");
-
-                    b.Property<decimal>("EstimatedBudget")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("EstimatedExpansionBudget")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<int>("EstimatedExpansionCount")
-                        .HasColumnType("int");
-
-                    b.Property<int>("EstimatedReplacementCount")
-                        .HasColumnType("int");
-
-                    b.Property<string>("ExpansionBreakdownJson")
-                        .HasColumnType("longtext");
-
-                    b.Property<DateTime?>("GeneratedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("InputsHash")
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<string>("InputsJson")
-                        .HasColumnType("longtext");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
-
-                    b.Property<int>("Revision")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(1);
-
-                    b.Property<int>("Year")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DepartmentId");
-
-                    b.HasIndex("Year", "DepartmentId")
-                        .IsUnique();
-
-                    b.ToTable("BudgetForecasts");
-                });
-
             modelBuilder.Entity("ITAM.API.Models.Entities.Department", b =>
                 {
                     b.Property<int>("Id")
@@ -569,49 +446,6 @@ namespace ITAM.API.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Departments");
-                });
-
-            modelBuilder.Entity("ITAM.API.Models.Entities.DepartmentExpansionPlan", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("AdditionalHeadcount")
-                        .HasColumnType("int");
-
-                    b.Property<int>("DepartmentId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<int?>("UpdatedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Version")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(1);
-
-                    b.Property<int>("Year")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DepartmentId");
-
-                    b.HasIndex("Year", "DepartmentId")
-                        .IsUnique();
-
-                    b.ToTable("DepartmentExpansionPlans", (string)null);
                 });
 
             modelBuilder.Entity("ITAM.API.Models.Entities.DisposalRequest", b =>
@@ -899,57 +733,6 @@ namespace ITAM.API.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Employees");
-                });
-
-            modelBuilder.Entity("ITAM.API.Models.Entities.ImportLog", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("ErrorsJson")
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("FailedRows")
-                        .HasColumnType("int");
-
-                    b.Property<string>("FileName")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("varchar(255)");
-
-                    b.Property<string>("FileSha256")
-                        .HasMaxLength(64)
-                        .HasColumnType("varchar(64)");
-
-                    b.Property<DateTime>("ImportedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<int>("ImportedBy")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Mode")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)")
-                        .HasDefaultValue("skip-errors");
-
-                    b.Property<int>("SuccessRows")
-                        .HasColumnType("int");
-
-                    b.Property<int>("TotalRows")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("FileSha256");
-
-                    b.HasIndex("ImportedBy");
-
-                    b.ToTable("ImportLogs");
                 });
 
             modelBuilder.Entity("ITAM.API.Models.Entities.MaintenanceTicket", b =>
@@ -1274,33 +1057,11 @@ namespace ITAM.API.Data.Migrations
                     b.Navigation("ReceivedBy");
                 });
 
-            modelBuilder.Entity("ITAM.API.Models.Entities.AssetCategoryDeviceRatio", b =>
-                {
-                    b.HasOne("ITAM.API.Models.Entities.AssetCategory", "Category")
-                        .WithOne()
-                        .HasForeignKey("ITAM.API.Models.Entities.AssetCategoryDeviceRatio", "CategoryId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Category");
-                });
-
             modelBuilder.Entity("ITAM.API.Models.Entities.AssetCategoryLifecyclePolicy", b =>
                 {
                     b.HasOne("ITAM.API.Models.Entities.AssetCategory", "Category")
                         .WithMany()
                         .HasForeignKey("CategoryId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Category");
-                });
-
-            modelBuilder.Entity("ITAM.API.Models.Entities.AssetCategoryReferencePrice", b =>
-                {
-                    b.HasOne("ITAM.API.Models.Entities.AssetCategory", "Category")
-                        .WithOne()
-                        .HasForeignKey("ITAM.API.Models.Entities.AssetCategoryReferencePrice", "CategoryId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -1335,28 +1096,6 @@ namespace ITAM.API.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("ITAM.API.Models.Entities.BudgetForecast", b =>
-                {
-                    b.HasOne("ITAM.API.Models.Entities.Department", "Department")
-                        .WithMany("BudgetForecasts")
-                        .HasForeignKey("DepartmentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Department");
-                });
-
-            modelBuilder.Entity("ITAM.API.Models.Entities.DepartmentExpansionPlan", b =>
-                {
-                    b.HasOne("ITAM.API.Models.Entities.Department", "Department")
-                        .WithMany()
-                        .HasForeignKey("DepartmentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Department");
                 });
 
             modelBuilder.Entity("ITAM.API.Models.Entities.DisposalRequest", b =>
@@ -1430,17 +1169,6 @@ namespace ITAM.API.Data.Migrations
                     b.Navigation("Department");
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("ITAM.API.Models.Entities.ImportLog", b =>
-                {
-                    b.HasOne("ITAM.API.Models.Entities.User", "ImportedByUser")
-                        .WithMany("ImportLogs")
-                        .HasForeignKey("ImportedBy")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("ImportedByUser");
                 });
 
             modelBuilder.Entity("ITAM.API.Models.Entities.MaintenanceTicket", b =>
@@ -1529,8 +1257,6 @@ namespace ITAM.API.Data.Migrations
 
                     b.Navigation("Assets");
 
-                    b.Navigation("BudgetForecasts");
-
                     b.Navigation("Users");
                 });
 
@@ -1552,8 +1278,6 @@ namespace ITAM.API.Data.Migrations
             modelBuilder.Entity("ITAM.API.Models.Entities.User", b =>
                 {
                     b.Navigation("AuditLogs");
-
-                    b.Navigation("ImportLogs");
 
                     b.Navigation("MaintenanceTickets");
                 });

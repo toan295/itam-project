@@ -17,7 +17,7 @@ public class ReportExporter : IReportExporter
         ArgumentNullException.ThrowIfNull(document);
         if (document.TotalRows > MaxRows)
         {
-            throw new ReportTooLargeException(document.TotalRows, MaxRows);
+            throw new ReportTooLargeException(MaxRows);
         }
 
         return format switch

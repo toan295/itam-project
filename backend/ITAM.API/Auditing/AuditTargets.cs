@@ -56,8 +56,9 @@ public static class AuditTargets
             case "Reports":   // mọi lần xuất file (kể cả bị từ chối/lỗi) đều để lại dấu vết: ai, loại báo cáo, bộ lọc
                 return method == "GET" ? new AuditTarget("Report", "Export", null, NoKeys, null, false) : null;
 
-            case "BudgetForecasts":
-                return ResolveForecast(method, first);
+            // [ĐÃ ĐÓNG]
+            // case "BudgetForecasts":
+                // return ResolveForecast(method, first);
 
             case "Lifecycle":
                 if (first != "policies" || method is not ("PUT" or "DELETE")) return null;
@@ -74,19 +75,20 @@ public static class AuditTargets
         return action is null ? null : new AuditTarget(map.Entity, action, map.Clr, ById, "id", map.ServiceLogs);
     }
 
-    private static AuditTarget? ResolveForecast(string method, string? first)
-    {
-        if (method == "GET") return null;
-        var upsert = method == "PUT" ? "Upsert" : "Delete";
-        return first switch
-        {
-            "generate" when method == "POST" => new AuditTarget("BudgetForecast", "Generate", null, NoKeys, null, false),
-            "reference-prices" => new AuditTarget("ReferencePrice", upsert, typeof(AssetCategoryReferencePrice), ByCategory, "categoryId", false),
-            "device-ratios" => new AuditTarget("DeviceRatio", upsert, typeof(AssetCategoryDeviceRatio), ByCategory, "categoryId", false),
-            "expansion-plans" => new AuditTarget("ExpansionPlan", upsert, typeof(DepartmentExpansionPlan),
-                new[] { ("Year", "year"), ("DepartmentId", "departmentId") }, "departmentId", false),
-            null when method == "DELETE" => new AuditTarget("BudgetForecast", "Delete", typeof(BudgetForecast), ById, "id", false),
-            _ => null,
-        };
-    }
+    // [ĐÃ ĐÓNG]
+    // private static AuditTarget? ResolveForecast(string method, string? first)
+    // {
+    // if (method == "GET") return null;
+    // var upsert = method == "PUT" ? "Upsert" : "Delete";
+    // return first switch
+    // {
+    // "generate" when method == "POST" => new AuditTarget("BudgetForecast", "Generate", null, NoKeys, null, false),
+    // "reference-prices" => new AuditTarget("ReferencePrice", upsert, typeof(AssetCategoryReferencePrice), ByCategory, "categoryId", false),
+    // "device-ratios" => new AuditTarget("DeviceRatio", upsert, typeof(AssetCategoryDeviceRatio), ByCategory, "categoryId", false),
+    // "expansion-plans" => new AuditTarget("ExpansionPlan", upsert, typeof(DepartmentExpansionPlan),
+    // new[] { ("Year", "year"), ("DepartmentId", "departmentId") }, "departmentId", false),
+    // null when method == "DELETE" => new AuditTarget("BudgetForecast", "Delete", typeof(BudgetForecast), ById, "id", false),
+    // _ => null,
+    // };
+    // }
 }

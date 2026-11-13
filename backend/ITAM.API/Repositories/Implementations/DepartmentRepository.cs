@@ -41,8 +41,8 @@ public class DepartmentRepository : IDepartmentRepository
     public async Task<bool> IsReferencedAsync(int departmentId) =>
         await _db.Users.AnyAsync(u => u.DepartmentId == departmentId)
         || await _db.Assets.AnyAsync(a => a.DepartmentId == departmentId)
-        || await _db.AssetAllocations.AnyAsync(a => a.DepartmentId == departmentId)
-        || await _db.BudgetForecasts.IgnoreQueryFilters().AnyAsync(b => b.DepartmentId == departmentId);
+        || await _db.AssetAllocations.AnyAsync(a => a.DepartmentId == departmentId);
+        // [ĐÃ ĐÓNG] || await _db.BudgetForecasts.IgnoreQueryFilters().AnyAsync(b => b.DepartmentId == departmentId);
 
     public Task<int> SaveChangesAsync() => _db.SaveChangesAsync();
 }

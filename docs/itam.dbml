@@ -200,69 +200,73 @@ Table AuditLogs {
   }
 }
 
-Table BudgetForecasts {
-  Id int [pk, increment]
-  Year int [not null]
-  DepartmentId int [not null]
-  EstimatedReplacementCount int [not null]
-  EstimatedBudget decimal(18,2) [not null]
-  Notes varchar(500)
-  BreakdownJson longtext [note: 'chi tiet theo loai tai san + danh sach tai san de xuat (JSON camelCase), nullable']
-  GeneratedAt datetime [note: 'lan tao/cap nhat du bao gan nhat (UTC), nullable']
-  EstimatedExpansionCount int [not null, default: 0, note: 'so thiet bi can MUA THEM theo ke hoach mo rong phong ban (Tuan 8)']
-  EstimatedExpansionBudget decimal(18,2) [not null, default: 0, note: 'VND - chi phan mua them. EstimatedBudget van chi la phan THAY THE; tong tinh khi map DTO']
-  ExpansionBreakdownJson longtext [note: 'object { baselineHeadcount, additionalHeadcount, projectedHeadcount, items[] } (JSON camelCase), nullable - dong cu truoc Tuan 8 = null']
-  Revision int [not null, default: 1, note: 'tang moi khi tao lai lam doi ket qua; dau vao y het thi khong ghi gi']
-  InputsHash varchar(64) [note: 'SHA-256 cua InputsJson; null = dong cu chua luu anh chup dau vao']
-  InputsJson longtext [note: 'anh chup dau vao luc tao: nhan su hien tai, ke hoach, dinh muc, don gia, ton kho, danh sach tai san den han (dung de bao du bao da cu va giai thich vi sao khac)']
-  IsDeleted boolean [not null, default: false, note: 'xoa mem - chi an tren giao dien, dong van con trong DB']
-  DeletedAt datetime [note: 'thoi diem xoa mem (UTC), nullable']
+// [ĐÃ ĐÓNG] Bảng thuộc chức năng Dự báo ngân sách (đang đóng)
+// Table BudgetForecasts {
+//   Id int [pk, increment]
+//   Year int [not null]
+//   DepartmentId int [not null]
+//   EstimatedReplacementCount int [not null]
+//   EstimatedBudget decimal(18,2) [not null]
+//   Notes varchar(500)
+//   BreakdownJson longtext [note: 'chi tiet theo loai tai san + danh sach tai san de xuat (JSON camelCase), nullable']
+//   GeneratedAt datetime [note: 'lan tao/cap nhat du bao gan nhat (UTC), nullable']
+//   EstimatedExpansionCount int [not null, default: 0, note: 'so thiet bi can MUA THEM theo ke hoach mo rong phong ban (Tuan 8)']
+//   EstimatedExpansionBudget decimal(18,2) [not null, default: 0, note: 'VND - chi phan mua them. EstimatedBudget van chi la phan THAY THE; tong tinh khi map DTO']
+//   ExpansionBreakdownJson longtext [note: 'object { baselineHeadcount, additionalHeadcount, projectedHeadcount, items[] } (JSON camelCase), nullable - dong cu truoc Tuan 8 = null']
+//   Revision int [not null, default: 1, note: 'tang moi khi tao lai lam doi ket qua; dau vao y het thi khong ghi gi']
+//   InputsHash varchar(64) [note: 'SHA-256 cua InputsJson; null = dong cu chua luu anh chup dau vao']
+//   InputsJson longtext [note: 'anh chup dau vao luc tao: nhan su hien tai, ke hoach, dinh muc, don gia, ton kho, danh sach tai san den han (dung de bao du bao da cu va giai thich vi sao khac)']
+//   IsDeleted boolean [not null, default: false, note: 'xoa mem - chi an tren giao dien, dong van con trong DB']
+//   DeletedAt datetime [note: 'thoi diem xoa mem (UTC), nullable']
+//
+//   indexes {
+//     (Year, DepartmentId) [unique, note: 'moi phong ban chi co 1 du bao/nam']
+//   }
+//
+//   Note: 'Uu tien Could - MoSCoW, co the cat giam'
+// }
 
-  indexes {
-    (Year, DepartmentId) [unique, note: 'moi phong ban chi co 1 du bao/nam']
-  }
+// [ĐÃ ĐÓNG] Bảng thuộc chức năng Dự báo ngân sách (đang đóng)
+// Table AssetCategoryReferencePrices {
+//   CategoryId int [pk, note: 'vua la PK vua la FK - moi loai toi da 1 don gia']
+//   UnitPrice decimal(18,2) [not null, note: 'VND, > 0']
+//   Version int [not null, default: 1, note: 'optimistic concurrency; client gui lai khi sua/xoa (409 neu lech)']
+//   UpdatedAt datetime(6) [note: 'UTC']
+//   UpdatedByUserId int
+//   IsDeleted boolean [not null, default: false, note: 'xoa mem - nhap lai don gia se khoi phuc']
+//   DeletedAt datetime [note: 'thoi diem xoa mem (UTC), nullable']
+//
+//   Note: 'Don gia tham khao theo loai tai san - dung uoc tinh ngan sach thay the (UC-17)'
+// }
 
-  Note: 'Uu tien Could - MoSCoW, co the cat giam'
-}
+// [ĐÃ ĐÓNG] Bảng thuộc chức năng Dự báo ngân sách (đang đóng)
+// Table DepartmentExpansionPlans {
+//   Id int [pk, increment]
+//   Year int [not null]
+//   DepartmentId int [not null]
+//   AdditionalHeadcount int [not null, note: 'thay doi RONG nhan su TRONG nam do (khong cong don), am = giam, -5000..5000']
+//   Notes varchar(500)
+//   UpdatedAt datetime [not null, note: 'UTC']
+//   UpdatedByUserId int
+//   Version int [not null, default: 1, note: 'optimistic concurrency']
+//
+//   indexes {
+//     (Year, DepartmentId) [unique, note: 'moi (nam, phong ban) toi da 1 ke hoach']
+//   }
+//
+//   Note: 'Ke hoach mo rong nhan su theo phong ban - dau vao tinh nhu cau mua them thiet bi (UC-17)'
+// }
 
-Table AssetCategoryReferencePrices {
-  CategoryId int [pk, note: 'vua la PK vua la FK - moi loai toi da 1 don gia']
-  UnitPrice decimal(18,2) [not null, note: 'VND, > 0']
-  Version int [not null, default: 1, note: 'optimistic concurrency; client gui lai khi sua/xoa (409 neu lech)']
-  UpdatedAt datetime(6) [note: 'UTC']
-  UpdatedByUserId int
-  IsDeleted boolean [not null, default: false, note: 'xoa mem - nhap lai don gia se khoi phuc']
-  DeletedAt datetime [note: 'thoi diem xoa mem (UTC), nullable']
-
-  Note: 'Don gia tham khao theo loai tai san - dung uoc tinh ngan sach thay the (UC-17)'
-}
-
-Table DepartmentExpansionPlans {
-  Id int [pk, increment]
-  Year int [not null]
-  DepartmentId int [not null]
-  AdditionalHeadcount int [not null, note: 'thay doi RONG nhan su TRONG nam do (khong cong don), am = giam, -5000..5000']
-  Notes varchar(500)
-  UpdatedAt datetime [not null, note: 'UTC']
-  UpdatedByUserId int
-  Version int [not null, default: 1, note: 'optimistic concurrency']
-
-  indexes {
-    (Year, DepartmentId) [unique, note: 'moi (nam, phong ban) toi da 1 ke hoach']
-  }
-
-  Note: 'Ke hoach mo rong nhan su theo phong ban - dau vao tinh nhu cau mua them thiet bi (UC-17)'
-}
-
-Table AssetCategoryDeviceRatios {
-  CategoryId int [pk, note: 'vua la PK vua la FK - moi loai toi da 1 dinh muc']
-  DevicesPerPerson decimal(6,2) [not null, note: '0,01..20,00']
-  Version int [not null, default: 1, note: 'optimistic concurrency']
-  UpdatedAt datetime(6) [note: 'UTC']
-  UpdatedByUserId int
-
-  Note: 'Dinh muc so thiet bi tren moi nhan su theo loai tai san (toan he thong) - UC-17'
-}
+// [ĐÃ ĐÓNG] Bảng thuộc chức năng Dự báo ngân sách (đang đóng)
+// Table AssetCategoryDeviceRatios {
+//   CategoryId int [pk, note: 'vua la PK vua la FK - moi loai toi da 1 dinh muc']
+//   DevicesPerPerson decimal(6,2) [not null, note: '0,01..20,00']
+//   Version int [not null, default: 1, note: 'optimistic concurrency']
+//   UpdatedAt datetime(6) [note: 'UTC']
+//   UpdatedByUserId int
+//
+//   Note: 'Dinh muc so thiet bi tren moi nhan su theo loai tai san (toan he thong) - UC-17'
+// }
 
 Table Employees {
   Id int [pk, increment]
@@ -334,21 +338,6 @@ Table DisposalRequests {
   Note: 'Luong: Technician kiem tra -> de xuat -> Manager duyet/tu choi -> Admin IT thanh ly -> hoan tat'
 }
 
-Table ImportLogs {
-  Id int [pk, increment]
-  FileName varchar(255) [not null]
-  ImportedBy int [not null]
-  TotalRows int [not null]
-  SuccessRows int [not null]
-  FailedRows int [not null]
-  ImportedAt datetime [not null, default: `now()`]
-  Mode varchar(20) [not null, default: 'skip-errors', note: 'skip-errors | all-or-nothing']
-  FileSha256 varchar(64) [note: 'SHA-256 noi dung file, phat hien import lai dung file da dung; co index']
-  ErrorsJson longtext [note: 'cac dong bi bo qua va ly do (toi da 500 dong dau), JSON camelCase']
-
-  Note: 'Chuc nang Import tai san da bi go (11/11/2026); bang giu lai de bao toan lich su, khong con ghi them.'
-}
-
 Ref: Users.RoleId > Roles.Id
 Ref: Users.DepartmentId > Departments.Id
 Ref: AssetCategoryLifecyclePolicies.CategoryId > AssetCategories.Id
@@ -361,11 +350,10 @@ Ref: MaintenanceTickets.TechnicianId > Users.Id
 Ref: AssetAllocations.AssetId > Assets.Id
 Ref: AssetAllocations.DepartmentId > Departments.Id
 Ref: AuditLogs.UserId > Users.Id
-Ref: BudgetForecasts.DepartmentId > Departments.Id
-Ref: AssetCategoryReferencePrices.CategoryId - AssetCategories.Id
-Ref: DepartmentExpansionPlans.DepartmentId > Departments.Id
-Ref: AssetCategoryDeviceRatios.CategoryId - AssetCategories.Id
-Ref: ImportLogs.ImportedBy > Users.Id
+// Ref: BudgetForecasts.DepartmentId > Departments.Id
+// Ref: AssetCategoryReferencePrices.CategoryId - AssetCategories.Id
+// Ref: DepartmentExpansionPlans.DepartmentId > Departments.Id
+// Ref: AssetCategoryDeviceRatios.CategoryId - AssetCategories.Id
 
 Ref: DisposalRequests.AssetId > Assets.Id
 Ref: DisposalRequests.StatusId > DisposalStatuses.Id

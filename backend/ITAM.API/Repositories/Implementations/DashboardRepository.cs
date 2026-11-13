@@ -90,28 +90,29 @@ public class DashboardRepository : IDashboardRepository
         return row is null ? new LicenseCounts(0, 0, 0) : new LicenseCounts(row.Total, row.Soon, row.Expired);
     }
 
-    public async Task<BudgetTotals> GetBudgetTotalsAsync(int year, int? departmentId)
-    {
-        var query = _db.BudgetForecasts.AsNoTracking().Where(f => f.Year == year);   // query filter đã loại dòng xoá mềm
-        if (departmentId.HasValue)
-        {
-            query = query.Where(f => f.DepartmentId == departmentId.Value);
-        }
+    // [ĐÃ ĐÓNG]
+    // public async Task<BudgetTotals> GetBudgetTotalsAsync(int year, int? departmentId)
+    // {
+    // var query = _db.BudgetForecasts.AsNoTracking().Where(f => f.Year == year);   // query filter đã loại dòng xoá mềm
+    // if (departmentId.HasValue)
+    // {
+    // query = query.Where(f => f.DepartmentId == departmentId.Value);
+    // }
 
-        var row = await query.GroupBy(_ => 1).Select(g => new
-        {
-            Count = g.Count(),
-            Replacement = g.Sum(f => f.EstimatedReplacementCount),
-            Expansion = g.Sum(f => f.EstimatedExpansionCount),
-            ReplacementBudget = g.Sum(f => f.EstimatedBudget),
-            ExpansionBudget = g.Sum(f => f.EstimatedExpansionBudget),
-            Latest = g.Max(f => f.GeneratedAt),
-        }).FirstOrDefaultAsync();
+    // var row = await query.GroupBy(_ => 1).Select(g => new
+    // {
+    // Count = g.Count(),
+    // Replacement = g.Sum(f => f.EstimatedReplacementCount),
+    // Expansion = g.Sum(f => f.EstimatedExpansionCount),
+    // ReplacementBudget = g.Sum(f => f.EstimatedBudget),
+    // ExpansionBudget = g.Sum(f => f.EstimatedExpansionBudget),
+    // Latest = g.Max(f => f.GeneratedAt),
+    // }).FirstOrDefaultAsync();
 
-        return row is null
-            ? new BudgetTotals(0, 0, 0, 0m, 0m, null)
-            : new BudgetTotals(row.Count, row.Replacement, row.Expansion, row.ReplacementBudget, row.ExpansionBudget, row.Latest);
-    }
+    // return row is null
+    // ? new BudgetTotals(0, 0, 0, 0m, 0m, null)
+    // : new BudgetTotals(row.Count, row.Replacement, row.Expansion, row.ReplacementBudget, row.ExpansionBudget, row.Latest);
+    // }
 
     public Task<string?> GetDepartmentNameAsync(int departmentId) =>
         _db.Departments.AsNoTracking().Where(d => d.Id == departmentId).Select(d => (string?)d.Name).FirstOrDefaultAsync();

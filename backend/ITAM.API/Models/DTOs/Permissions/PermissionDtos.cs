@@ -21,7 +21,6 @@ public class RolePermissionsDto
     public string Name { get; set; } = string.Empty;
     public int UserCount { get; set; }
     /// <summary>Vai trò bị khoá (Nhân viên): xem được, không sửa được.</summary>
-    public bool IsLocked { get; set; }
     public List<string> Permissions { get; set; } = new();
     public List<string> DefaultPermissions { get; set; } = new();
     /// <summary>Dấu phiên bản của tập quyền hiện tại — gửi lại làm ExpectedRevision khi lưu để phát hiện sửa đồng thời.</summary>

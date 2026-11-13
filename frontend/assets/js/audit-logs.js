@@ -66,6 +66,10 @@ async function loadCatalogAndActors() {
   try {
     const [cat, actors] = await Promise.all([api.get("/audit-logs/catalog"), api.get("/audit-logs/actors")]);
     catalog = cat;
+    try {
+      const matrix = await api.get("/permissions/matrix");
+      permissionLabels = Object.fromEntries(matrix.groups.flatMap((g) => g.items.map((i) => [i.code, i.label])));
+    } catch { /* không có quyền xem ma trận: hiện mã quyền */ }
     fillOptions("action", catalog.actions);
     fillOptions("entityName", catalog.entities);
     fillOptions("outcome", catalog.outcomes);
@@ -183,31 +187,156 @@ function integrityBadge(value) {
   return `<span class="badge ${css}">${escapeHtml(label)}</span>`;
 }
 
-// Bảng so sánh cũ → mới theo từng trường (khi cả hai là đối tượng cùng khoá); ngược lại hiện JSON thô.
+// ---------- Hiển thị dữ liệu thay đổi / thông tin đã nhập theo ngôn ngữ người dùng ----------
+const FIELD_LABELS = {
+  name: "Tên", fullName: "Họ tên", email: "Email", phone: "Số điện thoại", description: "Mô tả", notes: "Ghi chú", note: "Ghi chú",
+  departmentName: "Phòng ban", departmentId: "Phòng ban (mã)", categoryName: "Loại tài sản", categoryId: "Loại tài sản (mã)",
+  roleName: "Vai trò", role: "Vai trò", roleId: "Vai trò (mã)", isActive: "Đang hoạt động", isDeleted: "Đã xoá", deleted: "Đã xoá",
+  status: "Trạng thái", assetCode: "Mã tài sản", assetName: "Tên tài sản", serialNumber: "Số serial", purchaseDate: "Ngày mua",
+  warrantyExpiry: "Hết bảo hành", position: "Chức danh", employeeCode: "Mã nhân viên", recipientName: "Người nhận",
+  allocatedDate: "Ngày giao", returnedDate: "Ngày thu hồi", softwareName: "Tên phần mềm", licenseKey: "Khoá license", expiryDate: "Ngày hết hạn",
+  maxUsage: "Số máy tối đa", priority: "Mức độ", technicianName: "Kỹ thuật viên", technicianId: "Kỹ thuật viên (mã)", title: "Tiêu đề",
+  condition: "Tình trạng", reason: "Lý do", color: "Màu", sortOrder: "Thứ tự", code: "Mã", isSystem: "Trạng thái hệ thống",
+  maxAgeYears: "Tuổi tối đa (năm)", maxFailureCount: "Số lần lỗi tối đa", additionalHeadcount: "Nhân sự thay đổi", ratio: "Định mức",
+  unitPrice: "Đơn giá", year: "Năm", format: "Định dạng", permissions: "Quyền", added: "Quyền được thêm", removed: "Quyền bị gỡ",
+  handoverNote: "Ghi chú bàn giao", handoverReason: "Lý do bàn giao", handoverLocation: "Địa điểm bàn giao", handoverCondition: "Tình trạng bàn giao",
+  returnCondition: "Tình trạng khi thu hồi", returnNote: "Ghi chú thu hồi", currentPassword: "Mật khẩu hiện tại", newPassword: "Mật khẩu mới",
+  assetId: "Tài sản (mã)", releasedLicenses: "License đã gỡ khỏi tài sản", userId: "Người dùng (mã)", licenseId: "License (mã)", employeeId: "Nhân viên (mã)", confirmText: "Xác nhận", file: "Tệp", length: "Dung lượng (byte)", report: "Báo cáo", comment: "Nhận xét", mustChangePassword: "Phải đổi mật khẩu",
+};
+const REPORT_NAMES = { assets: "Tồn kho thiết bị", "maintenance-due": "Thiết bị sắp bảo trì", "short-lifecycle": "Thiết bị vòng đời ngắn", licenses: "Phần mềm & Giấy phép" };
+const VALUE_TEXT = {
+  reason: { WrongPassword: "Sai mật khẩu", AccountLocked: "Tài khoản đang bị khoá do nhập sai nhiều lần" },
+  format: { excel: "Excel", pdf: "PDF" },
+  status: { InUse: "Đang sử dụng", Maintenance: "Đang bảo trì", Broken: "Hỏng", Disposed: "Đã thanh lý", Pending: "Chờ xử lý", Completed: "Hoàn tất", Failed: "Không sửa được", Allocated: "Đang phân bổ", Returned: "Đã thu hồi", Inspected: "Đã kiểm tra", Proposed: "Đã đề xuất", Approved: "Đã duyệt", Rejected: "Từ chối" },
+  role: { "Admin IT": "Admin IT", Manager: "Quản lý", Technician: "Nhân viên kỹ thuật", Employee: "Nhân viên" },
+};
+// Nhãn quyền (mã -> tên) lấy từ ma trận phân quyền; không tải được thì hiện mã.
+let permissionLabels = {};
+const PERMISSION_KEYS = new Set(["added", "removed", "permissions"]);
+
+// Khoá chỉ dùng cho kỹ thuật (mã nội bộ) — ẩn khỏi người dùng.
+const HIDDEN_KEYS = new Set(["id", "requestId", "version", "revision", "activeAssetId", "passwordHash"]);
+
+function humanizeKey(key) {
+  if (FIELD_LABELS[key]) return FIELD_LABELS[key];
+  const spaced = key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+function humanizeValue(key, value) {
+  if (value === null || value === undefined || value === "") return "(trống)";
+  if (typeof value === "boolean") return value ? "Có" : "Không";
+  if (Array.isArray(value)) return value.length ? value.map((v) => humanizeValue(key, v)).join(", ") : "(không có)";
+  if (typeof value === "object") {
+    return Object.entries(value).filter(([k]) => !HIDDEN_KEYS.has(k)).map(([k, v]) => `${humanizeKey(k)}: ${humanizeValue(k, v)}`).join("; ") || "(trống)";
+  }
+  if (typeof value === "string") {
+    if (key === "report") {
+      const seg = value.split("/").filter(Boolean);
+      const i = seg.indexOf("reports");
+      return REPORT_NAMES[seg[i + 1]] || value;
+    }
+    if (PERMISSION_KEYS.has(key) && permissionLabels[value]) return permissionLabels[value];
+    if (key === "roleName") key = "role";
+    if (VALUE_TEXT[key] && VALUE_TEXT[key][value]) return VALUE_TEXT[key][value];
+    const iso = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(value);
+    if (iso) return iso[4] ? `${iso[3]}/${iso[2]}/${iso[1]} ${iso[4]}:${iso[5]}` : `${iso[3]}/${iso[2]}/${iso[1]}`;
+  }
+  return String(value);
+}
+
+// Gộp đối tượng lồng nhau (vd "request": {...}) thành các dòng phẳng; bỏ khoá kỹ thuật.
+function flattenEntries(obj) {
+  const rows = [];
+  for (const [key, value] of Object.entries(obj || {})) {
+    if (HIDDEN_KEYS.has(key)) continue;
+    if (key === "request" && value && typeof value === "object" && !Array.isArray(value)) rows.push(...flattenEntries(value));
+    else rows.push([key, value]);
+  }
+  return rows;
+}
+
+function parseJson(raw) {
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return undefined; }
+}
+
+function keyValueTable(rows, headers) {
+  return `<div class="table-responsive"><table class="table table-sm mb-0"><thead><tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
+}
+
+function rawDetails(raw) {
+  return raw ? `<details class="mt-2"><summary class="small text-muted" style="cursor:pointer">Xem dữ liệu gốc (dành cho kỹ thuật)</summary><pre class="bg-light border rounded p-3 small mt-2 mb-0" style="white-space:pre-wrap">${escapeHtml(formatJson(raw))}</pre></details>` : "";
+}
+
+// "Nội dung thay đổi": sửa -> bảng Trước/Sau chỉ gồm các mục thật sự đổi; thêm mới -> các mục đã nhập; xoá -> các mục của bản ghi đã xoá.
 function renderChanges(item) {
   const box = document.getElementById("detailChanges");
-  let oldObj = null;
-  let newObj = null;
-  try { oldObj = item.oldValue ? JSON.parse(item.oldValue) : null; } catch { /* hiển thị JSON thô */ }
-  try { newObj = item.newValue ? JSON.parse(item.newValue) : null; } catch { /* hiển thị JSON thô */ }
-
   if (item.outcome !== "Success") {
-    box.innerHTML = `<div class="alert alert-warning mb-0"><i class="bi bi-info-circle"></i> Thao tác ${item.outcome === "Rejected" ? "bị từ chối" : "thất bại"} nên <strong>không có thay đổi dữ liệu</strong>.</div>`;
+    box.innerHTML = `<div class="alert alert-warning mb-0"><i class="bi bi-info-circle"></i> Thao tác ${item.outcome === "Rejected" ? "bị từ chối" : "thất bại"} nên <strong>không có dữ liệu nào bị thay đổi</strong>.</div>`;
     return;
   }
+  const oldObj = parseJson(item.oldValue);
+  const newObj = parseJson(item.newValue);
+  const isObj = (v) => v && typeof v === "object" && !Array.isArray(v);
+
   if (!item.oldValue && !item.newValue) {
-    box.innerHTML = '<div class="text-muted">Không có giá trị cũ/mới (thao tác không làm đổi dữ liệu của đối tượng, hoặc chỉ xem/in).</div>';
+    box.innerHTML = '<div class="text-muted">Thao tác này không làm thay đổi dữ liệu (chỉ xem, in hoặc xuất file).</div>';
     return;
   }
-  if (oldObj && newObj && typeof oldObj === "object" && typeof newObj === "object") {
-    const rows = Object.keys(newObj).map((key) => `<tr><td class="fw-semibold">${escapeHtml(key)}</td>
-      <td class="text-danger">${escapeHtml(JSON.stringify(oldObj[key] ?? null))}</td><td class="text-success">${escapeHtml(JSON.stringify(newObj[key]))}</td></tr>`).join("");
-    box.innerHTML = `<table class="table table-sm mb-0"><thead><tr><th>Trường</th><th>Giá trị cũ</th><th>Giá trị mới</th></tr></thead><tbody>${rows}</tbody></table>`;
+  if (isObj(newObj) && (Array.isArray(newObj.added) || Array.isArray(newObj.removed))) {
+    const rows = flattenEntries(newObj).map(([k, v]) => `<tr><td class="fw-semibold">${escapeHtml(humanizeKey(k))}</td><td>${escapeHtml(humanizeValue(k, v))}</td></tr>`);
+    box.innerHTML = keyValueTable(rows, ["Mục", "Nội dung"]);
     return;
   }
+  if (isObj(oldObj) && isObj(newObj)) {
+    const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+    const onlyDeletedFlag = Object.keys(newObj).every((k) => k === "deleted" || HIDDEN_KEYS.has(k));
+    if (onlyDeletedFlag) {
+      const rows = flattenEntries(oldObj).map(([k, v]) => `<tr><td class="fw-semibold">${escapeHtml(humanizeKey(k))}</td><td>${escapeHtml(humanizeValue(k, v))}</td></tr>`);
+      box.innerHTML = `<div class="small text-muted mb-1">Dữ liệu đã bị xoá (nội dung trước khi xoá):</div>${keyValueTable(rows, ["Mục", "Giá trị"])}${rawDetails(item.oldValue)}`;
+      return;
+    }
+    const rows = flattenEntries(newObj).filter(([k, v]) => !same(oldObj[k], v)).map(([k, v]) =>
+      `<tr><td class="fw-semibold">${escapeHtml(humanizeKey(k))}</td><td class="text-danger">${escapeHtml(humanizeValue(k, oldObj[k]))}</td><td class="text-success">${escapeHtml(humanizeValue(k, v))}</td></tr>`);
+    box.innerHTML = rows.length
+      ? `<div class="small text-muted mb-1">Chỉ hiển thị các mục đã thay đổi.</div>${keyValueTable(rows, ["Mục", "Trước khi sửa", "Sau khi sửa"])}${rawDetails(item.newValue)}`
+      : '<div class="text-muted">Không có mục nào thay đổi giá trị.</div>';
+    return;
+  }
+  if (isObj(newObj) && !item.oldValue) {
+    const rows = flattenEntries(newObj).map(([k, v]) => `<tr><td class="fw-semibold">${escapeHtml(humanizeKey(k))}</td><td>${escapeHtml(humanizeValue(k, v))}</td></tr>`);
+    box.innerHTML = `<div class="small text-muted mb-1">Dữ liệu được thêm mới:</div>${keyValueTable(rows, ["Mục", "Giá trị"])}${rawDetails(item.newValue)}`;
+    return;
+  }
+  if (isObj(oldObj) && !item.newValue) {
+    const rows = flattenEntries(oldObj).map(([k, v]) => `<tr><td class="fw-semibold">${escapeHtml(humanizeKey(k))}</td><td>${escapeHtml(humanizeValue(k, v))}</td></tr>`);
+    box.innerHTML = `<div class="small text-muted mb-1">Dữ liệu đã bị xoá (nội dung trước khi xoá):</div>${keyValueTable(rows, ["Mục", "Giá trị"])}${rawDetails(item.oldValue)}`;
+    return;
+  }
+  // Dạng khác (danh sách, giá trị đơn): hiển thị gọn trước/sau.
+  const line = (raw, key) => {
+    const v = parseJson(raw);
+    return v === undefined ? raw : isObj(v) ? flattenEntries(v).map(([k, x]) => `${humanizeKey(k)}: ${humanizeValue(k, x)}`).join("; ") : humanizeValue(key, v);
+  };
   box.innerHTML = `<div class="row g-3">
-    <div class="col-md-6"><h6>Giá trị cũ</h6><pre class="bg-light border rounded p-3 small mb-0" style="white-space:pre-wrap">${escapeHtml(formatJson(item.oldValue) || "(Không có — bản ghi mới)")}</pre></div>
-    <div class="col-md-6"><h6>Giá trị mới</h6><pre class="bg-light border rounded p-3 small mb-0" style="white-space:pre-wrap">${escapeHtml(formatJson(item.newValue) || "(Không có — bản ghi đã bị xoá)")}</pre></div></div>`;
+    <div class="col-md-6"><h6 class="small text-muted">Trước</h6><div class="border rounded p-2 small">${escapeHtml(item.oldValue ? line(item.oldValue, "old") : "(trống)")}</div></div>
+    <div class="col-md-6"><h6 class="small text-muted">Sau</h6><div class="border rounded p-2 small">${escapeHtml(item.newValue ? line(item.newValue, "new") : "(trống)")}</div></div></div>${rawDetails(item.newValue || item.oldValue)}`;
+}
+
+// "Thông tin người dùng đã nhập": các mục người dùng gửi lên (mật khẩu và dữ liệu nhạy cảm đã được hệ thống che từ trước).
+function renderRequest(item) {
+  const el = document.getElementById("detailRequest");
+  const obj = parseJson(item.detail);
+  if (!item.detail) { el.innerHTML = '<div class="text-muted">Không có thông tin nhập thêm.</div>'; return; }
+  if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+    const rows = flattenEntries(obj).map(([k, v]) => `<tr><td class="fw-semibold" style="width:35%">${escapeHtml(humanizeKey(k))}</td><td>${escapeHtml(humanizeValue(k, v))}</td></tr>`);
+    if (rows.length) {
+      el.innerHTML = `<div class="table-responsive"><table class="table table-sm mb-0"><tbody>${rows.join("")}</tbody></table></div>${rawDetails(item.detail)}`;
+      return;
+    }
+  }
+  el.innerHTML = `<div class="text-muted">Không có thông tin nhập thêm.</div>${rawDetails(item.detail)}`;
 }
 
 async function viewDetail(id) {
@@ -216,7 +345,7 @@ async function viewDetail(id) {
     const item = await api.get(`/audit-logs/${id}`);
     document.getElementById("detailTimestamp").textContent = formatDateTime(item.timestamp);
     document.getElementById("detailUser").innerHTML = `${escapeHtml(item.userName || "Tài khoản không xác định")}${item.actorRole ? ` (${escapeHtml(item.actorRole)})` : ""}
-      <div class="small text-muted">${escapeHtml(item.userIsDeleted ? "tài khoản đã xoá" : item.userEmail || "")}${item.ipAddress ? ` · IP ${escapeHtml(item.ipAddress)}` : ""}</div>`;
+      <div class="small text-muted">${escapeHtml(item.userIsDeleted ? "tài khoản đã xoá" : item.userEmail || "")}</div>`;
     document.getElementById("detailAction").innerHTML = actionBadge(item.action);
     document.getElementById("detailEntity").textContent = entityLabel(item.entityName);
     document.getElementById("detailOutcome").innerHTML = `${outcomeBadge(item)}${item.statusCode ? ` <span class="text-muted small">HTTP ${item.statusCode}</span>` : ""}`;
@@ -224,7 +353,7 @@ async function viewDetail(id) {
     document.getElementById("detailRequestId").textContent = item.requestId || "-";
     document.getElementById("detailIntegrity").innerHTML = integrityBadge(item.integrity);
     renderChanges(item);
-    document.getElementById("detailRequest").textContent = formatJson(item.detail) || "(Không có)";
+    renderRequest(item);
     detailModal.show();
   } catch (err) {
     showError(err.message);

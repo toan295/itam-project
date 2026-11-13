@@ -49,7 +49,7 @@ const labelOf = (code) => matrix.groups.flatMap((g) => g.items).find((p) => p.co
 const roleLabel = (role) => (ROLE_INFO[role.name] || {}).label || role.name;
 
 function dirtyRoles() {
-  return matrix.roles.filter((r) => !r.isLocked && !sameSet(draft[r.id], saved[r.id]));
+  return matrix.roles.filter((r) => !sameSet(draft[r.id], saved[r.id]));
 }
 
 // Giữ bản nháp qua lần tải lại trang: lưu theo từng vai trò kèm revision nền để biết bản nháp dựa trên dữ liệu nào.
@@ -81,7 +81,7 @@ function applyMatrix(fresh, preserve = {}) {
   for (const role of matrix.roles) {
     saved[role.id] = new Set(role.permissions);
     revision[role.id] = role.revision;
-    const keep = !role.isLocked && preserve[role.id];
+    const keep = preserve[role.id];
     let wanted = keep ? new Set(keep.codes) : null;
     // Người khác đã đổi vai trò này sau khi bản nháp được tạo: áp phần thay đổi của bạn (cấp/thu hồi) lên bản mới nhất,
     // để không vô tình hoàn lại thay đổi của người kia.
@@ -107,7 +107,7 @@ function applyMatrix(fresh, preserve = {}) {
 function currentDrafts() {
   const out = {};
   for (const role of matrix.roles) {
-    if (!role.isLocked && !sameSet(draft[role.id], saved[role.id])) out[role.id] = { base: revision[role.id], baseCodes: [...saved[role.id]], codes: [...draft[role.id]] };
+    if (!sameSet(draft[role.id], saved[role.id])) out[role.id] = { base: revision[role.id], baseCodes: [...saved[role.id]], codes: [...draft[role.id]] };
   }
   return out;
 }
@@ -134,10 +134,8 @@ async function load({ keepDrafts = false, restoreStored = false } = {}) {
 
 function roleHeader(role) {
   const info = ROLE_INFO[role.name] || { label: role.name, sub: "" };
-  const reset = role.isLocked
-    ? `<div class="small text-muted mt-1"><i class="bi bi-lock-fill"></i> Luôn đủ quyền</div>`
-    : `<button class="btn btn-link btn-sm p-0 mt-1" data-reset="${role.id}" title="Đưa quyền của vai trò này về mặc định của hệ thống">Khôi phục mặc định</button>`;
-  return `<th class="role-col ${role.isLocked ? "locked" : ""}">
+  const reset = `<button class="btn btn-link btn-sm p-0 mt-1" data-reset="${role.id}" title="Đưa quyền của vai trò này về mặc định của hệ thống">Khôi phục mặc định</button>`;
+  return `<th class="role-col">
     <div class="fw-bold text-body" style="text-transform:none;font-size:.9rem">${escapeHtml(info.label)}</div>
     <div class="fw-normal" style="text-transform:none">${escapeHtml(info.sub)}</div>
     <div class="fw-normal" style="text-transform:none"><i class="bi bi-people"></i> ${role.userCount} người</div>
@@ -146,21 +144,13 @@ function roleHeader(role) {
 }
 
 function cell(role, perm) {
-  const isAdmin = role.name === "Admin IT";
   const checked = draft[role.id].has(perm.code);
   const changed = checked !== saved[role.id].has(perm.code);
   const offDefault = checked !== role.defaultPermissions.includes(perm.code);
 
-  // Quyền hệ thống: Admin IT luôn bật (không gỡ được); vai trò khác không bao giờ có.
-  if (perm.systemOnly) {
-    return isAdmin
-      ? `<td title="Quyền hệ thống, luôn bật cho Admin IT"><i class="bi bi-lock-fill text-success"></i></td>`
-      : `<td title="Quyền hệ thống chỉ dành cho Admin IT"><i class="bi bi-dash text-muted"></i></td>`;
-  }
-
-  const disabled = role.isLocked || busy ? "disabled" : "";
-  return `<td class="${role.isLocked ? "role-col locked" : ""}">
-    <span class="perm-cell ${changed ? "changed" : ""} ${!role.isLocked && offDefault ? "off-default" : ""}">
+  const disabled = busy ? "disabled" : "";
+  return `<td>
+    <span class="perm-cell ${changed ? "changed" : ""} ${offDefault ? "off-default" : ""}">
       <input type="checkbox" class="form-check-input" ${checked ? "checked" : ""} ${disabled}
              data-role="${role.id}" data-perm="${escapeHtml(perm.code)}"
              aria-label="${escapeHtml(perm.label)} - ${escapeHtml(role.name)}">

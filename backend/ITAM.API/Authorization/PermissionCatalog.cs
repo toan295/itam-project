@@ -20,7 +20,8 @@ public static class Permissions
     public const string DisposalsExecute = "disposals.execute";
     public const string DisposalStatusesManage = "disposal-statuses.manage";
     public const string LifecycleView = "lifecycle.view";
-    public const string ForecastsManage = "forecasts.manage";
+    // [ĐÃ ĐÓNG]
+    // public const string ForecastsManage = "forecasts.manage";
     public const string DashboardView = "dashboard.view";
     public const string ReportsExport = "reports.export";
     public const string UsersManage = "users.manage";
@@ -42,9 +43,6 @@ public static class PermissionCatalog
     public const string TechnicianRole = "Technician";
     public const string EmployeeRole = "Employee";
 
-    /// <summary>Vai trò bị khoá, không chỉnh được: nhân viên chỉ dùng cổng "Tài sản của tôi".</summary>
-    public static bool IsLockedRole(string roleName) => roleName == EmployeeRole;
-
     public static readonly IReadOnlyList<PermissionDefinition> All = new List<PermissionDefinition>
     {
         new(Permissions.AssetsCreate, "Tài sản", "Thêm tài sản", "Tạo tài sản mới (Quản lý chỉ trong phòng ban mình)."),
@@ -64,7 +62,8 @@ public static class PermissionCatalog
         new(Permissions.DisposalsExecute, "Thanh lý", "Thực hiện thanh lý", "Hoàn tất thanh lý, gán trạng thái phụ."),
         new(Permissions.DisposalStatusesManage, "Thanh lý", "Quản lý trạng thái thanh lý", "Đổi tên, màu, thứ tự các bước của quy trình."),
         new(Permissions.LifecycleView, "Phân tích & dự báo", "Vòng đời tài sản", "Đề xuất thay thế, thống kê tuổi/tỷ lệ lỗi, ngưỡng theo loại."),
-        new(Permissions.ForecastsManage, "Phân tích & dự báo", "Dự báo ngân sách", "Kế hoạch mở rộng, định mức, đơn giá, tạo dự báo."),
+        // [ĐÃ ĐÓNG]
+        // new(Permissions.ForecastsManage, "Phân tích & dự báo", "Dự báo ngân sách", "Kế hoạch mở rộng, định mức, đơn giá, tạo dự báo."),
         new(Permissions.DashboardView, "Phân tích & dự báo", "Xem Dashboard", "Xem số liệu tổng quan và biểu đồ (Quản lý chỉ thấy phòng ban mình; giấy phép và ngân sách cần thêm quyền tương ứng)."),
         new(Permissions.ReportsExport, "Phân tích & dự báo", "Xuất báo cáo Excel/PDF", "Xuất tồn kho, sắp bảo trì, vòng đời, ngân sách (Quản lý chỉ trong phòng ban mình; báo cáo ngân sách cần thêm quyền Dự báo ngân sách)."),
         new(Permissions.UsersManage, "Hệ thống", "Quản lý người dùng", "Tạo/sửa/khoá tài khoản, đặt lại mật khẩu, gán vai trò.", SystemOnly: true),

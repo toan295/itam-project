@@ -28,14 +28,14 @@ public class EmployeesController : ControllerBase
     [HttpGet]
     public Task<IActionResult> GetList(
         [FromQuery] int? departmentId, [FromQuery] string? keyword, [FromQuery] bool? isActive,
-        [FromQuery] string? accountState, [FromQuery] string? roleName, [FromQuery] bool? holdingAssets, [FromQuery] string? sort,
+        [FromQuery] string? accountState, [FromQuery] string? roleName, [FromQuery] bool? holdingAssets, [FromQuery] string? sort, [FromQuery] bool receiversOnly = false,
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20) =>
         Run(async () =>
         {
             var filter = new EmployeeListFilter
             {
                 DepartmentId = departmentId, Keyword = keyword, IsActive = isActive, AccountState = accountState,
-                RoleName = roleName, HoldingAssets = holdingAssets, Sort = sort,
+                RoleName = roleName, HoldingAssets = holdingAssets, Sort = sort, ExcludeStaffAccounts = receiversOnly,
             };
             var result = await _service.GetPagedAsync(filter, page, pageSize, GetRole(), GetDepartmentId());
             return Ok(ApiResponse<object>.Ok(result));

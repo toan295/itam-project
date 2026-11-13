@@ -36,8 +36,7 @@ public static class DbSeeder
         await SeedDemoAssetAllocationsAsync(context);
         await SeedDemoEmployeeAccountsAsync(context);
         await SeedDemoDisposalRequestsAsync(context);
-        // Chưa seed BudgetForecasts / AuditLogs / ImportLogs: chưa có module nào đọc/ghi các bảng này
-        // (UC-17 Tuần 7-8, AuditLog Service và Import Tuần 9+) — seed sớm dễ lệch với thiết kế sau này.
+        // Cố ý không seed BudgetForecasts / AuditLogs: do người dùng tạo ra khi dùng hệ thống.
     }
 
     private static async Task SeedRolesAsync(AppDbContext context)
@@ -809,8 +808,14 @@ public static class DbSeeder
                 ReturnCondition = seed.ReturnCondition,
                 ReturnNote = seed.ReturnNote,
                 Status = returnedDate.HasValue ? AllocationStatus.Returned : AllocationStatus.Allocated,
+                ActiveAssetId = returnedDate.HasValue ? null : assetId,   // chốt chặn "mỗi tài sản một phân bổ đang hiệu lực" (như khi tạo qua Service)
             });
         }
+
+        // Sửa dữ liệu mẫu cũ đã nạp trước khi có dòng trên: phân bổ đang giữ nhưng thiếu ActiveAssetId.
+        await context.AssetAllocations
+            .Where(a => a.Status == AllocationStatus.Allocated && a.ReturnedDate == null && a.ActiveAssetId == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(a => a.ActiveAssetId, a => a.AssetId));
 
         if (context.ChangeTracker.HasChanges())
         {

@@ -29,9 +29,6 @@ public class DisposalStatusRepository : IDisposalStatusRepository
     public Task<bool> NameExistsAsync(string name, int? excludeId = null) =>
         _db.DisposalStatuses.AnyAsync(s => s.Name == name && (excludeId == null || s.Id != excludeId));
 
-    public Task<bool> IsUsedAsSubStatusAsync(int id) =>
-        _db.DisposalRequests.AnyAsync(r => r.SubStatusId == id);
-
     public Task<bool> IsInUseAsync(int id) =>
         _db.DisposalRequests.AnyAsync(r => r.StatusId == id || r.SubStatusId == id);
 

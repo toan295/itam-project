@@ -146,6 +146,28 @@ public class AssetAllocationServiceTests
         _allocationRepository.Verify(x => x.AddAsync(It.IsAny<AssetAllocation>()), Times.Never);
     }
 
+    [Theory]
+    [InlineData("Admin IT")]
+    [InlineData("Manager")]
+    [InlineData("Technician")]
+    public async Task CreateAsync_AdminTargetsAStaffProfile_IsRejectedWithReason(string accountRole)
+    {
+        // Chỉ nhân viên thường (vai trò Employee) được nhận tài sản — Admin IT cũng không cấp cho hồ sơ Manager/Technician/Admin.
+        var asset = CreateAsset(departmentId: 1);
+        _assetRepository.Setup(x => x.GetByIdWithDetailsAsync(asset.Id)).ReturnsAsync(asset);
+        _employeeRepository.Setup(x => x.GetByIdAsync(100)).ReturnsAsync(new Employee
+        {
+            Id = 100, FullName = "Nhan Su IT", DepartmentId = 1, IsActive = true, UserId = 5,
+            User = new User { Id = 5, Role = new Role { Id = 9, Name = accountRole } },
+        });
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            CreateService().CreateAsync(CreateRequest(asset.Id, asset.DepartmentId), "Admin IT", 1));
+
+        Assert.Contains("nhân viên thường", ex.Message);
+        _allocationRepository.Verify(x => x.AddAsync(It.IsAny<AssetAllocation>()), Times.Never);
+    }
+
     [Fact]
     public async Task CreateAsync_ManagerTargetsOtherDepartment_ThrowsDepartmentForbiddenException()
     {
@@ -565,7 +587,8 @@ public class AssetAllocationServiceTests
     public async Task GetDocumentAsync_Handover_GiverIsCompanyUserAndReceiverIsEmployee()
     {
         var allocation = DocumentAllocation();
-        _allocationRepository.Setup(x => x.GetReferencePriceAsync(1)).ReturnsAsync(15_000_000m);
+        // [ĐÃ ĐÓNG]
+        // _allocationRepository.Setup(x => x.GetReferencePriceAsync(1)).ReturnsAsync(15_000_000m);
 
         var doc = await CreateService().GetDocumentAsync(allocation.Id, null, "Admin IT", null);
 
@@ -578,7 +601,9 @@ public class AssetAllocationServiceTests
         // Biên bản ghi phòng ban LÚC GIAO (bản chụp trên phân bổ), không phải phòng ban hiện tại của nhân viên.
         Assert.Equal("Phong 1", doc.Receiver.DepartmentName);
         Assert.Equal("Mới", doc.Asset.Condition);
-        Assert.Equal(15_000_000m, doc.Asset.Amount);
+        // [ĐÃ ĐÓNG]
+        // Assert.Equal(15_000_000m, doc.Asset.Amount);
+        Assert.Null(doc.Asset.Amount);   // biên bản không còn lấy "giá trị" từ bảng đơn giá dự báo
         Assert.Equal("Văn phòng", doc.Location);
         Assert.Equal(allocation.AllocatedDate, doc.DocumentDate);
     }
@@ -587,7 +612,8 @@ public class AssetAllocationServiceTests
     public async Task GetDocumentAsync_NoReferencePrice_AmountIsNull()
     {
         var allocation = DocumentAllocation();
-        _allocationRepository.Setup(x => x.GetReferencePriceAsync(It.IsAny<int>())).ReturnsAsync((decimal?)null);
+        // [ĐÃ ĐÓNG]
+        // _allocationRepository.Setup(x => x.GetReferencePriceAsync(It.IsAny<int>())).ReturnsAsync((decimal?)null);
 
         var doc = await CreateService().GetDocumentAsync(allocation.Id, "handover", "Admin IT", null);
 

@@ -50,7 +50,7 @@ public sealed record ReportFile(byte[] Content, string ContentType, string FileN
 
 public class ReportTooLargeException : Exception
 {
-    public ReportTooLargeException(int rows, int limit)
+    public ReportTooLargeException(int limit)
         : base($"Báo cáo vượt giới hạn {limit:N0} dòng. Hãy thu hẹp bộ lọc (phòng ban, loại, năm) rồi xuất lại.")
     {
     }

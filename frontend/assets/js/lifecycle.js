@@ -30,11 +30,6 @@ function clearOk() {
   document.getElementById("okAlert").classList.add("d-none");
 }
 
-function formatOneDecimal(value) {
-  if (value === null || value === undefined) return "—";
-  return oneDecimalFormatter.format(Number(value));
-}
-
 function formatPercent(value) {
   return `${oneDecimalFormatter.format(Number(value || 0) * 100)}%`;
 }
@@ -86,7 +81,7 @@ function currentCategoryId() {
 }
 
 function currentSortBy() {
-  return document.getElementById("sortBy").value || "score";
+  return document.getElementById("sortBy").value || "age";
 }
 
 // Khoảng cảnh báo hợp lệ 1–60 tháng (khớp backend); trả null nếu người dùng nhập sai để báo lỗi ngay thay vì chờ 400.
@@ -118,10 +113,7 @@ async function loadStats() {
     `<strong>Phạm vi thống kê:</strong> Phòng ban: ${escapeHtml(optionText("departmentId"))} · Loại: ${escapeHtml(optionText("categoryId"))} · ` +
     `${stats.totalAssets} tài sản chưa thanh lý · ${stats.totalTickets} phiếu bảo trì · tính đến ${formatDateOnly(stats.asOfDate)}`;
   document.getElementById("statTotalAssets").textContent = stats.totalAssets;
-  document.getElementById("statAverageAge").textContent = formatOneDecimal(stats.averageAgeYears);
-  document.getElementById("statMedianAge").textContent = formatOneDecimal(stats.medianAgeYears);
-  document.getElementById("statFailureRatio").textContent = formatPercent(stats.failureRatio);
-  document.getElementById("statAverageTickets").textContent = formatOneDecimal(stats.averageTicketsPerAsset);
+  document.getElementById("statAverageAge").textContent = formatAge(stats.averageAgeYears);
   document.getElementById("statOverdue").textContent = stats.overdueNowCount;
   document.getElementById("statUnknownPurchase").textContent = invalidDates === 0
     ? "Mọi tài sản đều có ngày mua hợp lệ"
@@ -129,7 +121,6 @@ async function loadStats() {
       (stats.assetsWithFuturePurchaseDate ? ` — ${stats.assetsWithFuturePurchaseDate} có ngày mua ở tương lai` : "");
 
   renderCategoryStats(stats.byCategory || []);
-  renderAgeBuckets(stats.ageBuckets || []);
   renderDepartmentStats(stats.byDepartment || []);
   renderTopFailing(stats.topFailingAssets || []);
 }
@@ -145,27 +136,10 @@ function renderCategoryStats(items) {
     <tr>
       <td class="fw-semibold">${escapeHtml(item.categoryName)}</td>
       <td>${item.assetCount}</td>
-      <td>${formatOneDecimal(item.averageAgeYears)}</td>
+      <td>${formatAge(item.averageAgeYears)}</td>
       <td>${formatPercent(item.failureRatio)}</td>
       <td>${item.maxAgeYears} năm / ${item.maxFailureCount} lần</td>
       <td>${item.overdueNowCount > 0 ? `<span class="badge text-bg-danger">${item.overdueNowCount}</span>` : "0"}</td>
-    </tr>`).join("");
-}
-
-function renderAgeBuckets(items) {
-  const body = document.getElementById("ageBucketsBody");
-  if (!items.length) {
-    body.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Không có dữ liệu.</td></tr>';
-    return;
-  }
-
-  body.innerHTML = items.map((item) => `
-    <tr>
-      <td class="fw-semibold">${escapeHtml(item.label)}</td>
-      <td>${item.count}</td>
-      <td>${item.assetsWithAtLeastOneTicket}</td>
-      <td>${formatPercent(item.failureRatio)}</td>
-      <td>${formatOneDecimal(item.averageTicketsPerAsset)}</td>
     </tr>`).join("");
 }
 
@@ -180,7 +154,7 @@ function renderDepartmentStats(items) {
     <tr>
       <td class="fw-semibold">${escapeHtml(item.departmentName)}</td>
       <td>${item.assetCount}</td>
-      <td>${formatOneDecimal(item.averageAgeYears)}</td>
+      <td>${formatAge(item.averageAgeYears)}</td>
       <td>${formatPercent(item.failureRatio)}</td>
       <td>${item.overdueNowCount}</td>
     </tr>`).join("");
@@ -199,7 +173,7 @@ function renderTopFailing(items) {
       <td>${escapeHtml(item.assetName)}</td>
       <td>${escapeHtml(item.categoryName)}</td>
       <td>${escapeHtml(item.departmentName)}</td>
-      <td>${formatOneDecimal(item.ageYears)}</td>
+      <td>${formatAge(item.ageYears)}</td>
       <td>${item.ticketCount}</td>
       <td>${item.failedTicketCount}</td>
     </tr>`).join("");
@@ -213,7 +187,7 @@ function buildCandidateQuery(page) {
   });
   if (currentDepartmentId()) params.set("departmentId", currentDepartmentId());
   if (currentCategoryId()) params.set("categoryId", currentCategoryId());
-  for (const [id, name] of [["keyword", "keyword"], ["reason", "reason"], ["underWarranty", "underWarranty"], ["minScore", "minScore"]]) {
+  for (const [id, name] of [["keyword", "keyword"], ["reason", "reason"], ["underWarranty", "underWarranty"]]) {
     const value = document.getElementById(id).value.trim();
     if (value) params.set(name, value);
   }
@@ -235,18 +209,6 @@ async function loadCandidates(page = 1) {
   document.getElementById("candidateTotalLabel").textContent = `Tổng cộng: ${result.totalItems} tài sản`;
 }
 
-function priorityBar(score) {
-  const value = Math.max(0, Math.min(100, Number(score || 0)));
-  const css = value >= 80 ? "bg-danger" : value >= 50 ? "bg-warning" : "bg-success";
-  return `
-    <div class="d-flex align-items-center gap-2" style="min-width: 120px;">
-      <div class="progress flex-grow-1" style="height: 8px;">
-        <div class="progress-bar ${css}" role="progressbar" style="width: ${value}%" aria-valuenow="${value}" aria-valuemin="0" aria-valuemax="100"></div>
-      </div>
-      <span class="fw-semibold">${value}</span>
-    </div>`;
-}
-
 function warrantyBadge(item) {
   if (!item.isUnderWarranty) return "";
   return '<span class="badge text-bg-success ms-1" title="Còn bảo hành — cân nhắc sửa/đổi trả trước khi thay">Còn bảo hành</span>';
@@ -255,7 +217,7 @@ function warrantyBadge(item) {
 function renderCandidates(items) {
   const body = document.getElementById("candidateBody");
   if (!items.length) {
-    body.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Không có tài sản đã vượt ngưỡng thay thế.</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Không có tài sản đã vượt ngưỡng thay thế.</td></tr>';
     return;
   }
 
@@ -265,9 +227,8 @@ function renderCandidates(items) {
       <td>${escapeHtml(item.assetName)}</td>
       <td>${escapeHtml(item.categoryName)}</td>
       <td>${escapeHtml(item.departmentName)}</td>
-      <td title="Ngưỡng áp dụng: ${item.appliedMaxAgeYears} năm">${formatOneDecimal(item.ageYears)}</td>
-      <td title="Ngưỡng áp dụng: ${item.appliedMaxFailureCount} phiếu">${item.ticketCount} <span class="text-muted small">(${item.failedTicketCount} lỗi)</span></td>
-      <td>${priorityBar(item.priorityScore)}</td>
+      <td title="Ngưỡng áp dụng: ${item.appliedMaxAgeYears} năm">${formatAge(item.ageYears)}</td>
+      <td title="Ngưỡng áp dụng: ${item.appliedMaxFailureCount} phiếu">${item.ticketCount}</td>
       <td>${escapeHtml(item.reasonText || "—")}</td>
     </tr>`).join("");
 }
@@ -317,7 +278,7 @@ function renderUpcoming(items) {
       <td>${escapeHtml(item.assetName)}</td>
       <td>${escapeHtml(item.categoryName)}</td>
       <td>${escapeHtml(item.departmentName)}</td>
-      <td>${formatOneDecimal(item.ageYears)}</td>
+      <td>${formatAge(item.ageYears)}</td>
       <td>${item.ticketCount}</td>
       <td>${formatDateOnly(item.ageDueDate)}</td>
       <td>${item.daysUntilAgeDue ?? "—"}</td>
@@ -482,9 +443,9 @@ async function reloadData(page = 1) {
 
 // Đổi bộ lọc chỉ tải lại thống kê và hai danh sách (không đụng tới bảng ngưỡng chính sách đang chỉnh dở).
 initFilterBar({
-  fields: ["keyword", "departmentId", "categoryId", "reason", "underWarranty", "minScore", "sortBy", "upcomingReason", "minTickets"],
+  fields: ["keyword", "departmentId", "categoryId", "reason", "underWarranty", "sortBy", "upcomingReason", "minTickets"],
   uncounted: ["sortBy"],
-  textFields: ["keyword", "minScore", "minTickets"],
+  textFields: ["keyword", "minTickets"],
   onChange: () => {
     clearError();
     clearOk();
@@ -537,7 +498,7 @@ function renderAssetDetail(d) {
   setText("adPurchaseAge", d.purchaseDateStatus === "InFuture"
     ? `${formatDateOnly(d.purchaseDate)} — ngày mua ở TƯƠNG LAI (dữ liệu sai, không tính tuổi; hãy sửa trong màn Tài sản)`
     : d.purchaseDate
-      ? `${formatDateOnly(d.purchaseDate)} (${formatOneDecimal(d.ageYears)} năm)`
+      ? `${formatDateOnly(d.purchaseDate)} (${formatAge(d.ageYears)})`
       : "Chưa có ngày mua");
   document.getElementById("adWarranty").innerHTML = d.warrantyExpiry
     ? `${formatDateOnly(d.warrantyExpiry)} ${d.isUnderWarranty
@@ -552,14 +513,6 @@ function renderAssetDetail(d) {
     : '<span class="badge text-bg-success">Chưa vượt ngưỡng</span>';
   document.getElementById("adStatus").innerHTML =
     `${status} <span class="text-muted small ms-1">${d.dueYear ? `Năm đến hạn: ${d.dueYear}` : "Chưa xác định năm đến hạn (thiếu ngày mua)"}</span>`;
-  const b = d.scoreBreakdown;
-  const ratio = (value) => oneDecimalFormatter.format(Number(value || 0));
-  const drivenBy = { Age: "tuổi", Failures: "số phiếu bảo trì", Both: "cả tuổi và số phiếu (bằng nhau)", None: "chưa có thành phần nào" }[b.drivenBy] || b.drivenBy;
-  document.getElementById("adScore").innerHTML = `${priorityBar(d.priorityScore)}
-    <div class="small mt-1">Tuổi: ${b.ageYears === null ? "không rõ" : `${formatOneDecimal(b.ageYears)} ÷ ${b.maxAgeYears} năm = ${ratio(b.ageRatio)}`}
-      · Phiếu: ${b.ticketCount} ÷ ${b.maxFailureCount} = ${ratio(b.failureRatio)}</div>
-    <div class="small">Điểm = làm tròn(50 × ${ratio(b.severity)}) = <strong>${b.score}</strong> (thành phần quyết định: ${drivenBy}).</div>
-    <div class="text-muted small">Chỉ dùng để xếp hạng, không quyết định có thay thế hay không.</div>`;
   setText("adReason", d.reasonText || "Chưa vượt ngưỡng nào.");
 
   setText("adTicketCount", `(${d.tickets.length} phiếu, ${d.failedTicketCount} không sửa được)`);

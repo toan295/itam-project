@@ -68,10 +68,11 @@ public class DashboardService : IDashboardService
         }
 
         var canLicenses = query.Permissions.Contains(Permissions.LicensesManage);
-        var canBudget = query.Permissions.Contains(Permissions.ForecastsManage);
+        // [ĐÃ ĐÓNG]
+        // var canBudget = query.Permissions.Contains(Permissions.ForecastsManage);
 
         // Cùng phạm vi + cùng quyền xem + cùng năm => cùng dữ liệu, nên dùng chung bản cache (khoá không chứa danh tính người dùng).
-        var key = $"dashboard:{departmentId?.ToString() ?? "all"}:{(locked ? "L" : "A")}:{year}:{(canLicenses ? 1 : 0)}{(canBudget ? 1 : 0)}";
+        var key = $"dashboard:{departmentId?.ToString() ?? "all"}:{(locked ? "L" : "A")}:{year}:{(canLicenses ? 1 : 0)}";   // [ĐÃ ĐÓNG] trước đây thêm {(canBudget ? 1 : 0)}
         if (!query.Refresh && _cache.TryGetValue(key, out DashboardSummaryDto? hit) && hit is not null)
         {
             return Clone(hit, fromCache: true);
@@ -87,7 +88,7 @@ public class DashboardService : IDashboardService
                 return Clone(hit, fromCache: true);
             }
 
-            var summary = await BuildAsync(departmentId, departmentName, locked, year, today, canLicenses, canBudget);
+            var summary = await BuildAsync(departmentId, departmentName, locked, year, today, canLicenses /* [ĐÃ ĐÓNG] , canBudget */);
             _cache.Set(key, summary, TimeSpan.FromSeconds(CacheSeconds));
             return Clone(summary, fromCache: false);
         }
@@ -97,7 +98,7 @@ public class DashboardService : IDashboardService
         }
     }
 
-    private async Task<DashboardSummaryDto> BuildAsync(int? departmentId, string? departmentName, bool locked, int year, DateOnly today, bool canLicenses, bool canBudget)
+    private async Task<DashboardSummaryDto> BuildAsync(int? departmentId, string? departmentName, bool locked, int year, DateOnly today, bool canLicenses /* [ĐÃ ĐÓNG] , bool canBudget */)
     {
         var summary = new DashboardSummaryDto
         {
@@ -203,23 +204,24 @@ public class DashboardService : IDashboardService
             })
             : Hidden<DashboardLicensesDto>();
 
-        summary.Budget = canBudget
-            ? await Safe("Budget", async () =>
-            {
-                var totals = await _repo.GetBudgetTotalsAsync(year, departmentId);
-                return new DashboardBudgetDto
-                {
-                    Year = year,
-                    ForecastCount = totals.ForecastCount,
-                    ReplacementCount = totals.ReplacementCount,
-                    ExpansionCount = totals.ExpansionCount,
-                    ReplacementBudget = totals.ReplacementBudget,
-                    ExpansionBudget = totals.ExpansionBudget,
-                    TotalBudget = totals.ReplacementBudget + totals.ExpansionBudget,
-                    LatestGeneratedAt = totals.LatestGeneratedAt,
-                };
-            })
-            : Hidden<DashboardBudgetDto>();
+        // [ĐÃ ĐÓNG] Widget ngân sách của Dashboard (đọc bảng BudgetForecasts)
+        // summary.Budget = canBudget
+        // ? await Safe("Budget", async () =>
+        // {
+        // var totals = await _repo.GetBudgetTotalsAsync(year, departmentId);
+        // return new DashboardBudgetDto
+        // {
+        // Year = year,
+        // ForecastCount = totals.ForecastCount,
+        // ReplacementCount = totals.ReplacementCount,
+        // ExpansionCount = totals.ExpansionCount,
+        // ReplacementBudget = totals.ReplacementBudget,
+        // ExpansionBudget = totals.ExpansionBudget,
+        // TotalBudget = totals.ReplacementBudget + totals.ExpansionBudget,
+        // LatestGeneratedAt = totals.LatestGeneratedAt,
+        // };
+        // })
+        // : Hidden<DashboardBudgetDto>();
 
         return summary;
     }
@@ -273,6 +275,7 @@ public class DashboardService : IDashboardService
         Replacement = s.Replacement,
         Maintenance = s.Maintenance,
         Licenses = s.Licenses,
-        Budget = s.Budget,
+        // [ĐÃ ĐÓNG]
+        // Budget = s.Budget,
     };
 }

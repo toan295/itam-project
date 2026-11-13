@@ -86,11 +86,11 @@ public class AuditTrailTests
     [InlineData("Permissions", "PUT", new[] { "matrix" }, "Role", "UpdatePermissions", true)]
     [InlineData("Permissions", "POST", new[] { "roles", "2", "reset" }, "Role", "ResetPermissions", true)]
     [InlineData("Auth", "POST", new[] { "change-password" }, "User", "ChangePassword", true)]
-    [InlineData("BudgetForecasts", "POST", new[] { "generate" }, "BudgetForecast", "Generate", false)]
-    [InlineData("BudgetForecasts", "DELETE", new[] { "5" }, "BudgetForecast", "Delete", false)]
-    [InlineData("BudgetForecasts", "PUT", new[] { "reference-prices", "3" }, "ReferencePrice", "Upsert", false)]
-    [InlineData("BudgetForecasts", "DELETE", new[] { "expansion-plans", "2027", "1" }, "ExpansionPlan", "Delete", false)]
-    [InlineData("BudgetForecasts", "PUT", new[] { "device-ratios", "3" }, "DeviceRatio", "Upsert", false)]
+    // [ĐÃ ĐÓNG] [InlineData("BudgetForecasts", "POST", new[] { "generate" }, "BudgetForecast", "Generate", false)]
+    // [ĐÃ ĐÓNG] [InlineData("BudgetForecasts", "DELETE", new[] { "5" }, "BudgetForecast", "Delete", false)]
+    // [ĐÃ ĐÓNG] [InlineData("BudgetForecasts", "PUT", new[] { "reference-prices", "3" }, "ReferencePrice", "Upsert", false)]
+    // [ĐÃ ĐÓNG] [InlineData("BudgetForecasts", "DELETE", new[] { "expansion-plans", "2027", "1" }, "ExpansionPlan", "Delete", false)]
+    // [ĐÃ ĐÓNG] [InlineData("BudgetForecasts", "PUT", new[] { "device-ratios", "3" }, "DeviceRatio", "Upsert", false)]
     [InlineData("Lifecycle", "PUT", new[] { "policies", "3" }, "LifecyclePolicy", "Upsert", false)]
     public void Targets_MapEveryWriteEndpoint(string controller, string method, string[] segments, string entity, string action, bool serviceLogs)
     {
@@ -105,7 +105,7 @@ public class AuditTrailTests
     [Theory]
     [InlineData("Assets", "GET", new string[0])]
     [InlineData("Lifecycle", "GET", new[] { "stats" })]
-    [InlineData("BudgetForecasts", "GET", new[] { "expansion-plans" })]
+    // [ĐÃ ĐÓNG] [InlineData("BudgetForecasts", "GET", new[] { "expansion-plans" })]
     [InlineData("AuditLogs", "POST", new string[0])]
     [InlineData("Auth", "POST", new[] { "login" })]
     public void Targets_ReadsAndUnlistedControllers_AreNotAudited(string controller, string method, string[] segments) =>
@@ -121,8 +121,8 @@ public class AuditTrailTests
             ("AssetAllocations", "POST", new[] { "1", "return" }), ("Employees", "DELETE", new[] { "1" }), ("Users", "DELETE", new[] { "1" }),
             ("DisposalRequests", "POST", new[] { "1", "approve" }), ("DisposalRequests", "POST", new[] { "1", "reject" }),
             ("DisposalRequests", "POST", new[] { "1", "complete" }), ("DisposalRequests", "POST", new[] { "1", "propose" }),
-            ("Permissions", "PUT", new[] { "matrix" }), ("BudgetForecasts", "POST", new[] { "generate" }),
-            ("BudgetForecasts", "PUT", new[] { "expansion-plans", "2027", "1" }), ("BudgetForecasts", "PUT", new[] { "device-ratios", "1" }),
+            ("Permissions", "PUT", new[] { "matrix" }),
+            // [ĐÃ ĐÓNG] ("BudgetForecasts", "POST", new[] { "generate" }), ("BudgetForecasts", "PUT", new[] { "expansion-plans", "2027", "1" }), ("BudgetForecasts", "PUT", new[] { "device-ratios", "1" }),
             ("Lifecycle", "DELETE", new[] { "policies", "1" }), ("Auth", "POST", new[] { "change-password" }),
         };
         foreach (var (controller, method, segments) in samples)
@@ -318,7 +318,8 @@ public class AuditTrailTests
 
         var catalog = await Service().GetCatalogAsync();
 
-        Assert.Contains(catalog.Entities, e => e.Code == "ExpansionPlan" && e.Count == 0 && e.Known);
+        // [ĐÃ ĐÓNG] Assert.Contains(catalog.Entities, e => e.Code == "ExpansionPlan" && e.Count == 0 && e.Known);
+        Assert.Contains(catalog.Entities, e => e.Code == "LifecyclePolicy" && e.Count == 0 && e.Known);
         Assert.Contains(catalog.Entities, e => e.Code == "Asset" && e.Count == 4);
         Assert.Contains(catalog.Entities, e => e.Code == "LegacyThing" && e.Count == 2 && !e.Known);
         Assert.Equal(3, catalog.Outcomes.Count);

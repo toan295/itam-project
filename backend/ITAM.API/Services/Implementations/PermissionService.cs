@@ -54,8 +54,10 @@ public class PermissionService : IPermissionService
             var roles = await _roleRepo.GetAllAsync();
             var role = FindEditableRole(roles, roleId);
             var requested = NormalizeAndValidate(role, dto.Permissions);
-            var before = (await _repo.GetAllByRoleIdAsync()).GetValueOrDefault(role.Id) ?? new List<string>();
+            var allGranted = await _repo.GetAllByRoleIdAsync();
+            var before = allGranted.GetValueOrDefault(role.Id) ?? new List<string>();
             EnsureRevision(role, before, dto.ExpectedRevision);
+            EnsurePermissionsManageSurvives(roles, allGranted, new Dictionary<int, HashSet<string>> { [role.Id] = requested });
             return await SaveAsync(role, before, requested, "UpdatePermissions", actorUserId);
         });
 
@@ -64,9 +66,12 @@ public class PermissionService : IPermissionService
         {
             var roles = await _roleRepo.GetAllAsync();
             var role = FindEditableRole(roles, roleId);
-            var before = (await _repo.GetAllByRoleIdAsync()).GetValueOrDefault(role.Id) ?? new List<string>();
+            var allGranted = await _repo.GetAllByRoleIdAsync();
+            var before = allGranted.GetValueOrDefault(role.Id) ?? new List<string>();
             EnsureRevision(role, before, dto?.ExpectedRevision);
-            return await SaveAsync(role, before, PermissionCatalog.DefaultsFor(role.Name).ToHashSet(StringComparer.Ordinal), "ResetPermissions", actorUserId);
+            var defaults = PermissionCatalog.DefaultsFor(role.Name).ToHashSet(StringComparer.Ordinal);
+            EnsurePermissionsManageSurvives(roles, allGranted, new Dictionary<int, HashSet<string>> { [role.Id] = defaults });
+            return await SaveAsync(role, before, defaults, "ResetPermissions", actorUserId);
         });
 
     // Lưu nhiều vai trò trong MỘT transaction: kiểm tra hết trước, rồi ghi một lần. Một vai trò sai/lệch revision thì không vai trò nào được ghi.
@@ -111,6 +116,8 @@ public class PermissionService : IPermissionService
                 return 0;
             }
 
+            EnsurePermissionsManageSurvives(roles, granted, plan.ToDictionary(p => p.Role.Id, p => p.After));
+
             foreach (var (role, before, after) in plan)
             {
                 await RecordAuditAsync("UpdatePermissions", actorUserId, role, before, after.OrderBy(c => c, StringComparer.Ordinal).ToList());
@@ -141,11 +148,6 @@ public class PermissionService : IPermissionService
         var role = roles.FirstOrDefault(r => r.Id == roleId)
             ?? throw new KeyNotFoundException($"Không tìm thấy vai trò Id = {roleId}.");
 
-        if (PermissionCatalog.IsLockedRole(role.Name))
-        {
-            throw new InvalidOperationException("Vai trò Nhân viên chỉ dùng cổng \"Tài sản của tôi\", không chỉnh được quyền.");
-        }
-
         return role;
     }
 
@@ -164,25 +166,19 @@ public class PermissionService : IPermissionService
             throw new ArgumentException($"Mã quyền không hợp lệ: {string.Join(", ", unknown)}.");
         }
 
-        if (role.Name == PermissionCatalog.AdminRole)
-        {
-            // Admin IT luôn giữ quyền hệ thống — nếu gỡ, không ai còn vào được trang phân công hay quản lý người dùng.
-            var missing = PermissionCatalog.SystemCodes.Where(c => !requested.Contains(c)).OrderBy(c => c, StringComparer.Ordinal).ToList();
-            if (missing.Count > 0)
-            {
-                throw new ArgumentException($"Admin IT phải luôn giữ các quyền hệ thống: {string.Join(", ", missing)}.");
-            }
-        }
-        else
-        {
-            var system = requested.Where(PermissionCatalog.IsSystemOnly).OrderBy(c => c, StringComparer.Ordinal).ToList();
-            if (system.Count > 0)
-            {
-                throw new ArgumentException($"Quyền hệ thống chỉ dành cho Admin IT: {string.Join(", ", system)}.");
-            }
-        }
-
         return requested;
+    }
+
+    // Chốt chặn duy nhất: sau khi lưu phải còn ít nhất MỘT vai trò giữ quyền "Quản lý phân quyền", nếu không không ai sửa lại được ma trận.
+    private static void EnsurePermissionsManageSurvives(
+        IEnumerable<Role> roles, IReadOnlyDictionary<int, List<string>> granted, IReadOnlyDictionary<int, HashSet<string>> changes)
+    {
+        var anyHolder = roles.Any(r => (changes.TryGetValue(r.Id, out var after) ? after : (IEnumerable<string>)(granted.GetValueOrDefault(r.Id) ?? new List<string>()))
+            .Contains(Permissions.PermissionsManage));
+        if (!anyHolder)
+        {
+            throw new ArgumentException("Phải còn ít nhất một vai trò giữ quyền \"Quản lý phân quyền\"; nếu không sẽ không ai sửa lại được ma trận này.");
+        }
     }
 
     private static void EnsureRevision(Role role, List<string> current, string? expectedRevision)
@@ -222,7 +218,6 @@ public class PermissionService : IPermissionService
         Id = role.Id,
         Name = role.Name,
         UserCount = userCount,
-        IsLocked = PermissionCatalog.IsLockedRole(role.Name),
         Permissions = (granted ?? new List<string>()).OrderBy(c => c, StringComparer.Ordinal).ToList(),
         DefaultPermissions = PermissionCatalog.DefaultsFor(role.Name).OrderBy(c => c, StringComparer.Ordinal).ToList(),
         Revision = PermissionRevision.Compute(granted ?? new List<string>()),

@@ -43,7 +43,8 @@ function renderNav({ active, basePath }) {
     { key: "licenses", group: "Quản lý tài sản", label: "Phần mềm & Giấy phép", icon: "bi-key", href: `${basePath}pages/software-licenses.html`, perm: "licenses.manage" },
 
     { key: "lifecycle", group: "Phân tích & Báo cáo", label: "Vòng đời tài sản", icon: "bi-hourglass-split", href: `${basePath}pages/lifecycle.html`, perm: "lifecycle.view" },
-    { key: "forecasts", group: "Phân tích & Báo cáo", label: "Dự báo ngân sách", icon: "bi-graph-up-arrow", href: `${basePath}pages/forecasts.html`, perm: "forecasts.manage" },
+    // [ĐÃ ĐÓNG] Mục menu Dự báo ngân sách (chức năng đang đóng)
+    // { key: "forecasts", group: "Phân tích & Báo cáo", label: "Dự báo ngân sách", icon: "bi-graph-up-arrow", href: `${basePath}pages/forecasts.html`, perm: "forecasts.manage" },
     { key: "reports", group: "Phân tích & Báo cáo", label: "Báo cáo", icon: "bi-file-earmark-arrow-down", href: `${basePath}pages/reports.html`, perm: "reports.export" },
 
     { key: "categories", group: "Danh mục", label: "Loại tài sản", icon: "bi-tags", href: `${basePath}pages/asset-categories.html`, perm: "asset-categories.manage" },

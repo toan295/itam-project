@@ -25,7 +25,8 @@ public interface IAssetAllocationRepository
         AllocationListExtras extras);
 
     // Đơn giá tham khảo (VND) của loại tài sản — dùng cho cột "Thành tiền" trên biên bản; null nếu chưa cấu hình.
-    Task<decimal?> GetReferencePriceAsync(int categoryId);
+    // [ĐÃ ĐÓNG]
+    // Task<decimal?> GetReferencePriceAsync(int categoryId);
 
     // Dữ liệu thô (allocation đang mở + ngày bảo trì gần nhất của tài sản) — Service tự quyết định
     // "quá hạn" theo thresholdDays (Repository chỉ đọc dữ liệu, không chứa nghiệp vụ).

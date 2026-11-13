@@ -12,7 +12,8 @@ using ITAM.API.Models.DTOs.AssetCategories;
 using ITAM.API.Models.DTOs.AssetAllocations;
 using ITAM.API.Models.DTOs.Assets;
 using ITAM.API.Models.DTOs.Departments;
-using ITAM.API.Models.DTOs.Forecasts;
+// [ĐÃ ĐÓNG]
+// using ITAM.API.Models.DTOs.Forecasts;
 using ITAM.API.Models.DTOs.Disposals;
 using ITAM.API.Models.DTOs.Employees;
 using ITAM.API.Models.DTOs.Lifecycle;
@@ -192,13 +193,14 @@ builder.Services.AddScoped<ILifecycleAnalysisService, LifecycleAnalysisService>(
 builder.Services.AddScoped<IValidator<UpsertLifecyclePolicyRequestDto>, UpsertLifecyclePolicyRequestValidator>();
 
 // Module Dự báo ngân sách — Tuần 7 (lần 2), Lâm Toàn.
-builder.Services.AddScoped<IBudgetForecastRepository, BudgetForecastRepository>();
-builder.Services.AddScoped<IBudgetForecastService, BudgetForecastService>();
-builder.Services.AddScoped<IValidator<GenerateForecastRequestDto>, GenerateForecastRequestValidator>();
-builder.Services.AddScoped<IValidator<UpsertReferencePriceRequestDto>, UpsertReferencePriceRequestValidator>();
-builder.Services.AddScoped<IExpansionPlanningService, ExpansionPlanningService>();
-builder.Services.AddScoped<IValidator<UpsertExpansionPlanRequestDto>, UpsertExpansionPlanRequestValidator>();
-builder.Services.AddScoped<IValidator<UpsertDeviceRatioRequestDto>, UpsertDeviceRatioRequestValidator>();
+// [ĐÃ ĐÓNG]
+// builder.Services.AddScoped<IBudgetForecastRepository, BudgetForecastRepository>();
+// builder.Services.AddScoped<IBudgetForecastService, BudgetForecastService>();
+// builder.Services.AddScoped<IValidator<GenerateForecastRequestDto>, GenerateForecastRequestValidator>();
+// builder.Services.AddScoped<IValidator<UpsertReferencePriceRequestDto>, UpsertReferencePriceRequestValidator>();
+// builder.Services.AddScoped<IExpansionPlanningService, ExpansionPlanningService>();
+// builder.Services.AddScoped<IValidator<UpsertExpansionPlanRequestDto>, UpsertExpansionPlanRequestValidator>();
+// builder.Services.AddScoped<IValidator<UpsertDeviceRatioRequestDto>, UpsertDeviceRatioRequestValidator>();
 
 // Cho phép frontend (chạy ở origin khác — Live Server/static server) gọi API qua fetch().
 // Danh sách origin cấu hình trong appsettings (Development): Cors:AllowedOrigins.
@@ -395,7 +397,8 @@ app.Use(async (context, next) =>
             // (POST /maintenance-tickets — Service tự giới hạn ở tài sản họ đang được cấp). Mọi API khác bị chặn theo
             // kiểu "mặc định cấm" để thêm module mới không vô tình mở dữ liệu cho nhân viên.
             if (state is { IsActive: true } && string.Equals(state.RoleName, "Employee", StringComparison.Ordinal)
-                && !IsEmployeePortalRequest(context.Request))
+                && !IsEmployeePortalRequest(context.Request)
+                && !RequiresMatrixPermission(context))
             {
                 await ITAM.API.Auditing.AuditDenied.RecordAsync(context, StatusCodes.Status403Forbidden,
                     "Tài khoản nhân viên chỉ được xem tài sản của mình và gửi yêu cầu bảo trì.");
@@ -460,6 +463,11 @@ using (var permissionScope = app.Services.CreateScope())
 }
 
 app.Run();
+
+// API khai báo [HasPermission(...)]: quyền do ma trận phân quyền quyết định (kể cả vai trò Employee). API không khai báo thì vẫn bị chặn với Employee.
+static bool RequiresMatrixPermission(HttpContext context) =>
+    context.GetEndpoint()?.Metadata.GetOrderedMetadata<Microsoft.AspNetCore.Authorization.IAuthorizeData>()
+        .OfType<ITAM.API.Authorization.HasPermissionAttribute>().Any() == true;
 
 // Các request tài khoản nhân viên (vai trò Employee) được phép gọi.
 static bool IsEmployeePortalRequest(HttpRequest request) =>

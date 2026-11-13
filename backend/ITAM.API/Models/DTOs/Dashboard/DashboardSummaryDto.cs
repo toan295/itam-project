@@ -34,7 +34,8 @@ public class DashboardSummaryDto
     public DashboardWidget<DashboardReplacementDto> Replacement { get; set; } = new();
     public DashboardWidget<DashboardMaintenanceDto> Maintenance { get; set; } = new();
     public DashboardWidget<DashboardLicensesDto> Licenses { get; set; } = new();
-    public DashboardWidget<DashboardBudgetDto> Budget { get; set; } = new();
+    // [ĐÃ ĐÓNG]
+    // public DashboardWidget<DashboardBudgetDto> Budget { get; set; } = new();
 }
 
 public class DashboardOverviewDto
@@ -108,14 +109,15 @@ public class DashboardLicensesDto
     public int ExpiringDays { get; set; }
 }
 
-public class DashboardBudgetDto
-{
-    public int Year { get; set; }
-    public int ForecastCount { get; set; }           // số phòng ban đã có dự báo của năm
-    public int ReplacementCount { get; set; }
-    public int ExpansionCount { get; set; }
-    public decimal ReplacementBudget { get; set; }
-    public decimal ExpansionBudget { get; set; }
-    public decimal TotalBudget { get; set; }         // = thay thế + mua thêm
-    public DateTime? LatestGeneratedAt { get; set; }
-}
+// [ĐÃ ĐÓNG]
+// public class DashboardBudgetDto
+// {
+//     public int Year { get; set; }
+//     public int ForecastCount { get; set; }           // số phòng ban đã có dự báo của năm
+//     public int ReplacementCount { get; set; }
+//     public int ExpansionCount { get; set; }
+//     public decimal ReplacementBudget { get; set; }
+//     public decimal ExpansionBudget { get; set; }
+//     public decimal TotalBudget { get; set; }         // = thay thế + mua thêm
+//     public DateTime? LatestGeneratedAt { get; set; }
+// }

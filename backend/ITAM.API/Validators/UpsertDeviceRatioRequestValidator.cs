@@ -1,23 +1,25 @@
-using FluentValidation;
-using ITAM.API.Models.DTOs.Forecasts;
-
-namespace ITAM.API.Validators;
-
-public class UpsertDeviceRatioRequestValidator : AbstractValidator<UpsertDeviceRatioRequestDto>
-{
-    public const decimal MinRatio = 0.01m;
-    public const decimal MaxRatio = 20m;
-
-    public UpsertDeviceRatioRequestValidator()
-    {
-        RuleFor(x => x.DevicesPerPerson)
-            .InclusiveBetween(MinRatio, MaxRatio)
-            .WithMessage("Định mức phải từ 0,01 đến 20 thiết bị/người.");
-
-        RuleFor(x => x.Version).GreaterThan(0).When(x => x.Version.HasValue).WithMessage("Version không hợp lệ.");
-
-        RuleFor(x => x.DevicesPerPerson)
-            .Must(x => decimal.Round(x, 2) == x)
-            .WithMessage("Tối đa 2 chữ số thập phân.");
-    }
-}
+// [ĐÃ ĐÓNG] Chức năng Dự báo ngân sách (UC-17) đang được đóng (comment). Muốn mở lại: bỏ "// " ở đầu mỗi dòng của file này
+// và của các chỗ đánh dấu [ĐÃ ĐÓNG] ở file khác, rồi tạo migration (dotnet ef migrations add ...) để tạo lại 4 bảng dự báo.
+// using FluentValidation;
+// using ITAM.API.Models.DTOs.Forecasts;
+//
+// namespace ITAM.API.Validators;
+//
+// public class UpsertDeviceRatioRequestValidator : AbstractValidator<UpsertDeviceRatioRequestDto>
+// {
+//     public const decimal MinRatio = 0.01m;
+//     public const decimal MaxRatio = 20m;
+//
+//     public UpsertDeviceRatioRequestValidator()
+//     {
+//         RuleFor(x => x.DevicesPerPerson)
+//             .InclusiveBetween(MinRatio, MaxRatio)
+//             .WithMessage("Định mức phải từ 0,01 đến 20 thiết bị/người.");
+//
+//         RuleFor(x => x.Version).GreaterThan(0).When(x => x.Version.HasValue).WithMessage("Version không hợp lệ.");
+//
+//         RuleFor(x => x.DevicesPerPerson)
+//             .Must(x => decimal.Round(x, 2) == x)
+//             .WithMessage("Tối đa 2 chữ số thập phân.");
+//     }
+// }
